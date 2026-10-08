@@ -4,6 +4,13 @@
 
 팀 개발은 [3인 협업 안내](CONTRIBUTING.md)를 먼저 확인하세요. 생성된 대시보드 HTML은 Git에서 제외하며 `npm run build`로 만듭니다.
 
+## 중장기 개발 브랜치
+
+`feat/midlongterm-dangjin`에서 기존 중장기 Python 수요예측·석탄 MIP·SQLite 수급 API를
+`backend/`로 이관했다. React 합성데이터 화면은 유지하고 Python 당진 화면은 로컬 8093에서
+별도로 실행한다. 실행·복원 방법은 [backend 안내](backend/README.md), 계산/계약 차이는
+[이관 기록](docs/MIDTERM_INTEGRATION.md)에 있다. 실제 자료·DB·학습 모델·저장 결과는 Git 제외다.
+
 상단 바와 좌측 사이드바 구조를 유지하면서 발전운영 중심으로 개편한 오프라인 데모입니다.
 
 ## 바로 열기

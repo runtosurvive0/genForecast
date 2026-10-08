@@ -17,3 +17,15 @@ coverage/
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
+
+# 중장기 Python 서비스: 실제 자료와 학습 산출물은 로컬에서만 관리
+/backend/data/
+/backend/inputs/
+/backend/models/
+/backend/runs/
+/backend/output/
+/backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/

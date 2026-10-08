@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>당진본부 | 연료 계획 대시보드</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #f4f6f9; --panel: #ffffff; --ink: #1c2430; --muted: #5d6b7c; --line: #dfe4ea;
+  --brand: #1f4e79; --brand-2: #2f6fa8; --accent: #d9822b; --ok: #2e7d4f; --warn: #b4531a;
+  --bar: #2f6fa8; --bar-2: #9cc0e0; --grid: #e8ecf1; --nuc: #7a5fa8; --coal: #475569;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+       background: var(--bg); color: var(--ink); font-size: 14px; }
+header { background: var(--brand); color: #fff; padding: 14px 24px; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 18px; font-weight: 700; }
+header span { opacity: .8; font-size: 12.5px; }
+nav { display: flex; gap: 4px; padding: 0 24px; background: var(--brand); }
+nav button { background: transparent; color: #cfe0f1; border: 0; padding: 10px 16px; font-size: 14px; cursor: pointer;
+             border-radius: 6px 6px 0 0; font-family: inherit; }
+nav button.on { background: var(--bg); color: var(--brand); font-weight: 700; }
+main { padding: 18px 24px 60px; max-width: 1400px; margin: 0 auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+.card h2 { margin: 0 0 12px; font-size: 15px; color: var(--brand); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card h2 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 14px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+input, select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); min-width: 0; }
+input:focus, select:focus { outline: 2px solid var(--brand-2); outline-offset: -1px; }
+.months { display: grid; grid-template-columns: repeat(12, minmax(48px, 1fr)); gap: 6px; }
+.months input { text-align: right; width: 100%; }
+.btn { font: inherit; border: 1px solid var(--brand); background: #fff; color: var(--brand); padding: 7px 14px;
+       border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: #eef4fa; }
+.btn.primary { background: var(--brand); color: #fff; }
+.btn.primary:hover { background: var(--brand-2); }
+.btn.small { padding: 3px 9px; font-size: 12px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: right; white-space: nowrap; }
+th { background: #f0f4f8; color: #354052; font-weight: 600; position: sticky; top: 0; }
+td.l, th.l { text-align: left; }
+.scroll { overflow: auto; max-height: 420px; border: 1px solid var(--line); border-radius: 8px; }
+.oh td { padding: 3px 6px; }
+.oh input, .oh select { width: 100%; padding: 4px 6px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.kpi b { display: block; font-size: 24px; color: var(--brand); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 12px; color: var(--muted); }
+.warn { background: #fff4e8; border: 1px solid #f1c79b; color: #7a3d0c; padding: 8px 12px; border-radius: 8px; margin: 6px 0; font-size: 13px; }
+.err { background: #fdecec; border: 1px solid #f0b4b4; color: #8a1f1f; padding: 8px 12px; border-radius: 8px; margin: 6px 0; white-space: pre-wrap; }
+.muted { color: var(--muted); font-size: 12px; }
+.progress { height: 10px; background: #e3e9f0; border-radius: 5px; overflow: hidden; margin: 8px 0; }
+.progress div { height: 100%; background: var(--brand-2); width: 0; transition: width .4s; }
+svg text { font-family: inherit; }
+.chart { width: 100%; overflow-x: auto; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; margin-top: 4px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -2px; }
+.hidden { display: none !important; }
+.tag { font-size: 11px; background: #e9f0f7; color: var(--brand); border-radius: 10px; padding: 1px 8px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .two { grid-template-columns: 1fr; } main { padding: 12px 16px 40px; } .months { grid-template-columns: repeat(6, 1fr); } }
+.hist tr { cursor: pointer; }
+.hist tr:hover td { background: #f4f8fc; }
+</style>
+<link rel="stylesheet" href="/assets/dashboard.css">
+</head>
+<body>
+  <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-9 12h7l-1 8 10-13h-7l1-7Z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-5 4 3 6-8"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M14 14h2M8 17h2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="10" cy="18" r="2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H3V10Zm6 10v-7h6v7"/></symbol>
+    <symbol id="i-fuel" viewBox="0 0 24 24"><path d="m4 15 4-8h8l4 8-5 5H9l-5-5ZM8 7l4 8 4-8M4 15h16M12 15v5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.1"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  </defs></svg>
+<aside class="sidebar" id="sidebar" aria-label="주 메뉴">
+  <a class="brand" href="#overview" onclick="tab('dashboard')" aria-label="당진본부 대시보드 처음으로"><div class="brand-logo"><svg class="icon"><use href="#i-bolt"/></svg></div><div><b>당진본부</b><small>연료 · 발전 계획</small></div></a>
+  <nav>
+    <a class="nav-item" href="/" style="text-decoration:none"><svg class="icon"><use href="#i-home"/></svg><span class="nav-text">연료수급 종합 ↗</span></a>
+    <p class="nav-label">PLANNING</p>
+    <button class="nav-item on" data-tab="dashboard" aria-label="연료 대시보드" aria-current="page"><svg class="icon"><use href="#i-grid"/></svg><span class="nav-text">연료 대시보드</span><span class="nav-dot"></span></button>
+    <button class="nav-item" data-tab="result" aria-label="발전 분석"><svg class="icon"><use href="#i-chart"/></svg><span class="nav-text">발전 분석</span></button>
+    <button class="nav-item" data-tab="dashboard" data-target="maintenance" aria-label="정비 일정"><svg class="icon"><use href="#i-calendar"/></svg><span class="nav-text">정비 일정</span></button>
+    <button class="nav-item" data-tab="history" aria-label="실행 이력"><svg class="icon"><use href="#i-clock"/></svg><span class="nav-text">실행 이력</span></button>
+    <div class="nav-divider"></div><p class="nav-label">CONFIGURATION</p>
+    <button class="nav-item" data-tab="input" aria-label="DB · 계획 관리"><svg class="icon"><use href="#i-settings"/></svg><span class="nav-text">DB · 계획 관리</span></button>
+  </nav>
+  <div class="sidebar-bottom"><div class="workspace"><b>연간 계획 워크스페이스</b><span>당진 1–10호기 · 내부 DB</span></div><div class="side-footer">MID-TERM PLANNING / v1.0</div></div>
+</aside>
+<header class="topbar"><div class="breadcrumb"><button class="menu-button" id="menu-button" onclick="toggleSidebar()" aria-label="메뉴 열기" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><svg class="icon"><use href="#i-home"/></svg><span>중기 발전 계획</span><svg class="icon" style="width:11px"><use href="#i-chevron"/></svg><strong id="breadcrumb-current">연료 대시보드</strong></div><div class="topbar-right"><span class="status-badge" id="dashboard-status" role="status">불러오는 중</span><div class="profile"><div class="avatar">DJ</div><span>계획 담당자</span></div></div></header>
+<main id="overview">
+<section id="tab-dashboard">
+  <div class="page-heading"><div><div class="eyebrow">ANNUAL FUEL OUTLOOK</div><h1>연료 계획 대시보드</h1><p class="page-description" id="dashboard-period">저장된 계획을 불러오는 중입니다.</p></div><div class="heading-actions"><button class="btn" onclick="refreshDashboard()" id="dashboard-refresh"><svg class="icon"><use href="#i-refresh"/></svg>새로고침</button><button class="btn primary" onclick="exportFuel('monthly')" id="dashboard-export"><svg class="icon"><use href="#i-download"/></svg>계획 내보내기</button></div></div>
+  <div id="dashboard-error" role="alert"></div>
+  <div class="filters dashboard-filters" aria-label="대시보드 필터"><div class="filter"><label for="dash-run">발전계획</label><select id="dash-run" onchange="refreshDashboard(this.value)"><option>불러오는 중</option></select></div><div class="filter-divider"></div><div class="filter"><label for="dash-unit">조회 호기</label><select id="dash-unit" onchange="renderDashboard()"><option value="all">당진 전체</option></select></div><span class="spacer"></span><span class="fuel-basis" id="fuel-basis"></span></div>
+  <div class="kpis dashboard-kpis" id="dashboard-kpis"></div>
+  <div id="dashboard-notice"></div>
+  <div class="dashboard-grid charts">
+    <article class="card panel monthly-panel"><div class="panel-head"><div><h2>월별 석탄 사용 예정량</h2><p class="panel-subtitle" id="monthly-subtitle">선택한 발전계획의 월별 전망</p></div><button class="text-button" onclick="exportFuel('monthly')" aria-label="월별 계획 CSV 내보내기"><svg class="icon"><use href="#i-download"/></svg>CSV</button></div><div class="chart-summary"><strong id="monthly-value">—</strong><span>계획기간 합계</span><span class="month-tag" id="selected-month-tag"></span></div><div class="chart chart-wrap" id="fuel-monthly"></div><div class="chart-foot"><div class="legend"><span><i class="dot"></i>계획 · 추정</span><span id="monthly-comparison-legend"><i class="dot gray"></i>전년 동월 · 실적 추정</span></div><span>월 선택으로 일별 조회</span></div><p class="comparison-note" id="monthly-comparison-note"></p></article>
+    <article class="card panel daily-panel"><div class="panel-head"><div><h2>일별 석탄 사용량</h2><p class="panel-subtitle" id="daily-subtitle">발전계획 기반 추정</p></div><div class="month-controls"><button class="icon-button" onclick="stepDashboardMonth(-1)" aria-label="이전 월"><svg class="icon" style="transform:rotate(180deg)"><use href="#i-chevron"/></svg></button><label class="sr-only" for="dash-month">일별 조회 월</label><select id="dash-month" onchange="renderDashboard()"></select><button class="icon-button" onclick="stepDashboardMonth(1)" aria-label="다음 월"><svg class="icon"><use href="#i-chevron"/></svg></button></div></div><div class="daily-controls"><div class="segmented" role="group" aria-label="일별 연료 데이터"><button class="on" data-fuel-mode="plan" onclick="setFuelMode('plan')" aria-pressed="true">계획</button><button data-fuel-mode="historical" onclick="setFuelMode('historical')" aria-pressed="false">실적 추정</button><button data-fuel-mode="actual" onclick="setFuelMode('actual')" aria-pressed="false">실측</button></div><button class="text-button" onclick="exportFuel('daily')" aria-label="일별 사용량 CSV 내보내기"><svg class="icon"><use href="#i-download"/></svg>CSV</button></div><div class="chart-summary"><strong id="daily-value">—</strong><span>조회 월 합계</span><span class="month-tag" id="daily-days"></span></div><div class="chart chart-wrap" id="fuel-daily"></div><div class="chart-foot"><div class="legend" id="daily-legend"></div><button class="text-button" id="daily-detail-button" onclick="openFuelDailyTable()">일별 상세<svg class="icon"><use href="#i-chevron"/></svg></button></div><div class="daily-summary" id="daily-summary"></div></article>
+  </div>
+  <div class="lower-grid" id="maintenance"><article class="card panel outage-panel"><div class="panel-head"><div><h2>호기별 계획정지 일정</h2><p class="panel-subtitle" id="outage-subtitle">발전계획에 반영된 정지 일정</p></div><span class="event-count" id="outage-count"></span></div><div class="gantt-toolbar"><div class="row"><label class="sr-only" for="outage-source">일정 기준</label><select id="outage-source" onchange="renderDashboard()"><option value="run">발전계획 반영 일정</option><option value="db">DB 최신 일정</option></select><label class="sr-only" for="outage-scope">정지 호기 범위</label><select id="outage-scope" onchange="renderDashboard()"><option value="dangjin">당진 호기</option><option value="coal">전국 석탄</option><option value="nuclear">원전</option></select></div><div class="legend"><span><i class="dot amber"></i>석탄</span><span><i class="dot teal"></i>원전</span></div></div><div class="chart gantt-scroll" id="dashboard-gantt"></div><div class="panel-bottom"><span>정비 구간을 선택해 상세 일정 확인</span><span id="outage-total"></span></div><div id="outage-empty"></div></article><article class="card panel"><div class="panel-head"><div><h2>다가오는 정비 일정</h2><p class="panel-subtitle" id="events-subtitle"></p></div><svg class="icon" style="color:#95a5bd;width:16px"><use href="#i-clock"/></svg></div><div class="events" id="dashboard-events"></div><div class="panel-bottom"><span>조회 월에 진행 중인 정비 포함</span></div></article></div>
+  <article class="card panel unit-section" id="generation"><div class="panel-head"><div><h2>호기별 발전·연료 계획</h2><p class="panel-subtitle" id="dashboard-unit-subtitle">선택한 발전계획의 호기별 전망</p></div><button class="text-button" onclick="exportDashboardUnits()" aria-label="호기별 계획 CSV 내보내기"><svg class="icon"><use href="#i-download"/></svg>CSV</button></div><div class="table-wrap"><table><thead><tr><th scope="col">호기</th><th scope="col">설비용량</th><th scope="col">기간 발전량</th><th scope="col" id="dashboard-unit-fuel-heading">석탄 사용량</th><th scope="col">이용률</th><th scope="col">계획정지</th><th scope="col">계획 상태</th></tr></thead><tbody id="dashboard-unit-table"></tbody></table></div></article>
+  <div class="dashboard-bottom"><article class="card"><div class="panel-heading"><div><h2>정지 일정 상세</h2><p>선택한 범위의 계획정지</p></div></div><div id="outage-list"></div></article><article class="card"><div class="panel-heading"><div><h2>계산 기준 · 데이터 상태</h2><p>사용량의 출처와 환산 기준</p></div></div><div id="dashboard-sources"></div><details id="dashboard-warnings"><summary>발전계획 검토사항</summary><div id="dashboard-warning-text"></div></details></article></div>
+  <article class="card hidden" id="fuel-day-detail"><div class="panel-heading"><h2 id="fuel-day-title"></h2><button class="btn small" onclick="hide('fuel-day-detail')">닫기</button></div><div id="fuel-day-units" class="unit-details"></div><button class="btn small" id="fuel-hourly-button">시간별 발전 분석 보기 →</button></article>
+</section>
+<section id="tab-input" class="hidden">
+  <div class="page-heading"><div><h1>DB · 계획 관리</h1><p>가정·정비계획은 내부 DB에 저장하고 실행 시 불러옵니다.</p></div><button class="btn primary" onclick="saveDatabase()" id="btn-save">DB에 저장</button></div>
+  <div id="db-message" role="status"></div>
+  <div class="card"><h2>연료 환산 기준</h2><div class="grid"><label>기준 발열량(kcal/kg)<input id="f-calorific" type="number" min="1000" max="10000" step="1"></label><label>값의 구분<select id="f-fuel-assumption"><option value="true">임시 가정</option><option value="false">확정 기준</option></select></label><label>출처<input id="f-fuel-source" placeholder="사용자 입력 또는 연계 시스템"></label></div><p class="muted">석탄 톤 = 열량(Gcal) × 1,000 ÷ 발열량(kcal/kg). 발열량 변경은 기존 발전계획의 톤 환산에 즉시 반영됩니다.</p><details><summary>외부 시스템 연계</summary><p class="muted">발열량: GET / PUT /api/fuel-settings · 계획·정비: GET / PUT /api/settings · 실측 연료량: DB의 fuel_actual_daily 테이블. 현재 서버는 로컬 PC에서만 접근할 수 있습니다.</p><pre>{"calorific_kcal_kg": 5500, "is_assumption": true, "source": "연계 시스템"}</pre></details></div>
+  <div class="card">
+    <h2>기간·가정 <small id="model-info"></small></h2>
+    <div class="grid">
+      <label>시나리오 이름<input id="f-name"></label>
+      <label>시작일<input id="f-start" type="date"></label>
+      <label>종료일<input id="f-end" type="date"></label>
+      <label>기상<select id="f-weather"></select></label>
+      <label>총수요 증가율(%/년)<input id="f-dg" type="number" step="0.1"></label>
+      <label>태양광 증가율(%/년)<input id="f-sg" type="number" step="0.5"></label>
+      <label>운전예비율(석탄목표 대비)<input id="f-reserve" type="number" step="0.01" min="0" max="0.3"></label>
+      <label>풀이 품질<select id="f-quality">
+        <option value="fast">빠름 (창당 12초·간격 2%)</option>
+        <option value="normal">보통 (창당 30초·간격 0.5%)</option>
+        <option value="precise">정밀 (창당 90초·간격 0.1%)</option></select></label>
+    </div>
+    <div style="margin-top:12px">
+      <div class="muted" style="margin-bottom:4px">월별 석탄목표 보정(%) — 석탄곡선 모델은 2026-01~09 실적으로만 학습되어 10~12월은 과대예측 경향이 있습니다</div>
+      <div class="months" id="f-adjust"></div>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h2>원전 OH 계획 <small id="nuc-count"></small></h2>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn small" onclick="addRow('nuclear')">+ 행 추가</button>
+        <label class="btn small" style="flex-direction:row">파일 불러오기<input type="file" accept=".csv,.xlsx" class="hidden" onchange="upload('nuclear', this)"></label>
+        <a class="btn small" href="/api/template/nuclear">양식</a>
+        <button class="btn small" onclick="resetDefault('nuclear')">KPX 기본값</button>
+        <span class="spacer"></span><span class="muted">시작·종료일 포함</span>
+      </div>
+      <div class="scroll" style="max-height:300px"><table class="oh"><thead><tr><th class="l">호기</th><th class="l">시작</th><th class="l">종료</th><th class="l">비고</th><th></th></tr></thead><tbody id="oh-nuclear"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>석탄 OH 계획 <small id="coal-count"></small></h2>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn small" onclick="addRow('coal')">+ 행 추가</button>
+        <label class="btn small" style="flex-direction:row">파일 불러오기<input type="file" accept=".csv,.xlsx" class="hidden" onchange="upload('coal', this)"></label>
+        <a class="btn small" href="/api/template/coal">양식</a>
+        <button class="btn small" onclick="state.coal_oh=[];renderOH()">비우기</button>
+        <span class="spacer"></span><span class="muted">당진 외 호기도 넣으면 배분에 반영</span>
+      </div>
+      <div class="scroll" style="max-height:300px"><table class="oh"><thead><tr><th class="l">호기</th><th class="l">시작</th><th class="l">종료</th><th class="l">비고</th><th></th></tr></thead><tbody id="oh-coal"></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>정비 일정표 <small>입력한 OH 를 기간 위에 그린 것</small></h2>
+    <div class="chart" id="gantt"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <button class="btn" id="btn-preview" onclick="preview()">미리보기 (순수요·원전·석탄목표)</button>
+      <button class="btn primary" id="btn-run" onclick="runJob()">DB 저장 후 MILP 실행</button>
+      <span class="spacer"></span>
+      <span class="muted" id="run-hint">보통 품질·9코어 기준 약 15~25분</span>
+    </div>
+    <div id="job" class="hidden">
+      <div class="progress"><div id="job-bar"></div></div>
+      <div class="muted" id="job-text"></div>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card hidden" id="preview-card">
+    <h2>미리보기 <small>MILP 전 입력 — 월평균 MW</small></h2>
+    <div class="chart" id="preview-chart"></div>
+    <div class="legend"><span><i style="background:#94a3b8"></i>순수요</span><span><i style="background:var(--nuc)"></i>원전</span><span><i style="background:var(--accent)"></i>석탄곡선 모델</span><span><i style="background:var(--coal)"></i>MILP 석탄목표</span><span><i style="background:#cbd5e1"></i>가용 석탄설비</span></div>
+    <div class="scroll" style="margin-top:10px"><table id="preview-table"></table></div>
+  </div>
+</section>
+
+<section id="tab-result" class="hidden">
+  <div class="row" style="margin-bottom:12px">
+    <h2 style="margin:0;color:var(--brand);font-size:16px" id="res-title">결과 없음</h2>
+    <span class="spacer"></span>
+    <a class="btn primary hidden" id="res-excel">엑셀 받기</a>
+  </div>
+  <div id="res-warn"></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="card">
+    <h2>월별 당진 평균출력 <small>막대 = 당진 평균 MW · 숫자 = 월 발전량 GWh</small></h2>
+    <div class="chart" id="monthly-chart"></div>
+  </div>
+  <div class="card">
+    <h2>일별 당진 평균출력 <small>점을 누르면 그날 시간별 호기 출력</small></h2>
+    <div class="chart" id="daily-chart"></div>
+    <div class="legend"><span><i style="background:var(--bar)"></i>당진 일평균 MW</span><span><i style="background:var(--accent)"></i>평균 운전대수(우축)</span></div>
+    <div id="day-detail" class="hidden" style="margin-top:12px">
+      <div class="row"><b id="day-title"></b><span class="spacer"></span><button class="btn small" onclick="hide('day-detail')">닫기</button></div>
+      <div class="chart" id="day-chart"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>월별 표 <small>MW = 시간평균</small></h2>
+    <div class="scroll"><table id="monthly-table"></table></div>
+  </div>
+  <div class="card">
+    <h2>가정·풀이 정보</h2>
+    <div id="assumptions" class="muted"></div>
+  </div>
+</section>
+
+<section id="tab-history" class="hidden">
+  <div class="card">
+    <h2>실행 이력 <small>행을 누르면 결과 탭에 엽니다</small></h2>
+    <div class="scroll" style="max-height:640px"><table class="hist" id="history-table"></table></div>
+  </div>
+</section>
+</main>
+<dialog id="fuel-dialog" aria-labelledby="fuel-dialog-title"><div class="dialog-head"><h2 id="fuel-dialog-title"></h2><button class="icon-button" onclick="$('fuel-dialog').close()" aria-label="닫기"><svg class="icon"><use href="#i-close"/></svg></button></div><div id="fuel-dialog-content"></div></dialog>
+
+<script>
+const state = { meta: null, nuclear_oh: [], coal_oh: [], result: null, dashboard: null, fuelMode: 'plan' };
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 0) => v == null || isNaN(v) ? "-" : Number(v).toLocaleString("ko-KR", { maximumFractionDigits: d, minimumFractionDigits: d });
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function hide(id) { $(id).classList.add("hidden"); }
+function show(id) { $(id).classList.remove("hidden"); }
+
+document.querySelectorAll("nav button[data-tab]").forEach(b => b.onclick = () => tab(b.dataset.tab, b.dataset.target));
+function closeSidebar() { $('sidebar').classList.remove('open'); $('menu-button').setAttribute('aria-expanded','false'); }
+function toggleSidebar() { $('menu-button').setAttribute('aria-expanded',String($('sidebar').classList.toggle('open'))); }
+document.addEventListener('click', e => { if (!$('sidebar').contains(e.target) && !$('menu-button').contains(e.target)) closeSidebar(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+function tab(name, target) {
+  document.querySelectorAll("nav button[data-tab]").forEach(b => {
+    const active = b.dataset.tab === name && (b.dataset.target || '') === (target || '');
+    b.classList.toggle('on', active);
+    if (active) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+  });
+  $('breadcrumb-current').textContent = {dashboard:target ? '정비 일정' : '연료 대시보드', input:'DB · 계획 관리', result:'발전 분석', history:'실행 이력'}[name];
+  ["dashboard", "input", "result", "history"].forEach(t => $("tab-" + t).classList.toggle("hidden", t !== name));
+  if (name === "dashboard") renderDashboard();
+  if (name === "history") loadHistory();
+  if (name === "result" && state.result) renderResult();   // 숨은 탭에서 그린 그래프는 폭이 0 이라 다시 그린다
+  if (name === "input") renderGantt();
+  closeSidebar();
+  if (target) $(target).scrollIntoView({behavior:'smooth', block:'start'});
+  else window.scrollTo({top:0, behavior:'smooth'});
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch (e) {} throw new Error(m); }
+  return r.json();
+}
+
+// ---------------------------------------------------------------- 입력
+async function init() {
+  const dashboardReady = refreshDashboard();
+  state.meta = await api("/api/meta");
+  const m = state.meta.models;
+  $("model-info").textContent = `순수요 모델 ${m.net_demand.trained} · 석탄곡선 모델 ${m.coal_curve.trained}`;
+  const w = $("f-weather");
+  w.innerHTML = `<option value="normal">평년 기온·태양광 형상</option>` +
+    m.net_demand.weather_years.map(y => `<option value="${y}">${y}년 실측 기상 재생</option>`).join("");
+  $("f-dg").placeholder = `자동 ${m.net_demand.demand_growth_pct}`;
+  $("f-sg").placeholder = `자동 ${m.net_demand.solar_growth_pct}`;
+  $("f-adjust").innerHTML = Array.from({ length: 12 }, (_, i) =>
+    `<label>${i + 1}월<input type="number" step="1" id="adj-${i}"></label>`).join("");
+  loadScenario(state.meta.scenario);
+  await dashboardReady;
+  renderDashboard();
+  ["f-start", "f-end"].forEach(id => $(id).addEventListener("change", renderGantt));
+  const job = await api("/api/job");
+  if (job.state === "running") pollJob();
+  const runs = await api("/api/runs");
+  if (runs.length) await openRun(runs[0].id, false);
+}
+
+function loadScenario(s) {
+  $("f-name").value = s.name; $("f-start").value = s.start; $("f-end").value = s.end;
+  $("f-weather").value = String(s.weather);
+  $("f-dg").value = s.demand_growth_pct ?? ""; $("f-sg").value = s.solar_growth_pct ?? "";
+  $("f-reserve").value = s.reserve_ratio; $("f-quality").value = s.quality;
+  s.coal_adjust_pct.forEach((v, i) => $("adj-" + i).value = v);
+  state.nuclear_oh = s.nuclear_oh.map(r => ({ ...r })); state.coal_oh = s.coal_oh.map(r => ({ ...r }));
+  renderOH();
+}
+
+function scenario() {
+  const num = id => $(id).value === "" ? null : Number($(id).value);
+  const clean = rows => rows.filter(r => r.unit && r.start && r.end);
+  return {
+    name: $("f-name").value || "기본", start: $("f-start").value, end: $("f-end").value,
+    weather: $("f-weather").value === "normal" ? "normal" : Number($("f-weather").value),
+    demand_growth_pct: num("f-dg"), solar_growth_pct: num("f-sg"),
+    coal_adjust_pct: Array.from({ length: 12 }, (_, i) => Number($("adj-" + i).value || 0)),
+    reserve_ratio: Number($("f-reserve").value || 0), quality: $("f-quality").value,
+    nuclear_oh: clean(state.nuclear_oh), coal_oh: clean(state.coal_oh),
+  };
+}
+
+function unitOptions(kind, selected) {
+  const units = kind === "nuclear" ? state.meta.nuclear_units.map(u => u.unit)
+    : state.meta.coal_units.map(u => u.unit).sort((a, b) => (b.startsWith("당진") - a.startsWith("당진")) || a.localeCompare(b, "ko", { numeric: true }));
+  const fold = s => String(s).replace(/#|\s|호기/g, "");
+  const known = units.some(u => fold(u) === fold(selected));
+  return (known ? "" : `<option selected>${esc(selected)}</option>`) +
+    units.map(u => `<option ${fold(u) === fold(selected) ? "selected" : ""}>${esc(u)}</option>`).join("");
+}
+
+function renderOH() {
+  for (const kind of ["nuclear", "coal"]) {
+    const rows = state[kind + "_oh"];
+    $("oh-" + kind).innerHTML = rows.map((r, i) => `<tr>
+      <td><select onchange="setOH('${kind}',${i},'unit',this.value)">${unitOptions(kind, r.unit)}</select></td>
+      <td><input type="${r.start.length > 10 ? 'datetime-local' : 'date'}" value="${esc(r.start.replace(' ', 'T'))}" onchange="setOH('${kind}',${i},'start',this.value)"></td>
+      <td><input type="${r.end.length > 10 ? 'datetime-local' : 'date'}" value="${esc(r.end.replace(' ', 'T'))}" onchange="setOH('${kind}',${i},'end',this.value)"></td>
+      <td><input value="${esc(r.note)}" onchange="setOH('${kind}',${i},'note',this.value)"></td>
+      <td><button class="btn small" onclick="delOH('${kind}',${i})">삭제</button></td></tr>`).join("") ||
+      `<tr><td colspan="5" class="l muted">정비 없음 — 행 추가 또는 파일 불러오기</td></tr>`;
+  }
+  $("nuc-count").textContent = `${state.nuclear_oh.length}건`;
+  $("coal-count").textContent = `${state.coal_oh.length}건`;
+  renderGantt();
+}
+function setOH(kind, i, key, value) { state[kind + "_oh"][i][key] = value; renderGantt(); }
+function delOH(kind, i) { state[kind + "_oh"].splice(i, 1); renderOH(); }
+function addRow(kind) {
+  const unit = kind === "nuclear" ? state.meta.nuclear_units[0].unit : "당진1";
+  state[kind + "_oh"].push({ unit, start: $("f-start").value, end: $("f-start").value, note: "" });
+  renderOH();
+}
+function resetDefault(kind) {
+  state[kind + "_oh"] = state.meta.default_scenario[kind + "_oh"].map(r => ({ ...r })); renderOH();
+}
+async function upload(kind, input) {
+  const file = input.files[0]; if (!file) return;
+  const body = new FormData(); body.append("file", file);
+  try {
+    const r = await api(`/api/outages/parse?kind=${kind}`, { method: "POST", body });
+    state[kind + "_oh"] = r.rows; renderOH();
+    message(r.unknown_units.length ? `마스터에 없는 호기 이름: ${r.unknown_units.join(", ")} — 표에서 고쳐 주세요` : `${file.name}: ${r.rows.length}건 불러옴`, !!r.unknown_units.length);
+  } catch (e) { message(e.message, true); }
+  input.value = "";
+}
+function message(text, bad) { const content = text ? `<div class="${bad ? "err" : "warn"}">${esc(text)}</div>` : ""; $("msg").innerHTML = content; $("db-message").innerHTML = content; }
+
+function renderGantt() {
+  const start = new Date($("f-start").value), end = new Date($("f-end").value);
+  if (isNaN(start) || isNaN(end) || end < start) { $("gantt").innerHTML = ""; return; }
+  const rows = [...state.nuclear_oh.map(r => ({ ...r, kind: "nuclear" })), ...state.coal_oh.map(r => ({ ...r, kind: "coal" }))]
+    .filter(r => r.start && r.end && new Date(r.end) >= start && new Date(r.start) <= end);
+  const units = [...new Set(rows.map(r => r.kind + "|" + r.unit))];
+  const W = Math.max(760, $("gantt").clientWidth || 760), left = 90, top = 22, rowH = 18;
+  const H = top + Math.max(1, units.length) * rowH + 8;
+  const span = (end - start) / 864e5 + 1, x = d => left + (W - left - 10) * Math.max(0, Math.min(span, (d - start) / 864e5)) / span;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  for (let m = new Date(start.getFullYear(), start.getMonth(), 1); m <= end; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+    const xm = x(m < start ? start : m);
+    svg += `<line x1="${xm}" x2="${xm}" y1="${top - 4}" y2="${H}" stroke="var(--grid)"/><text x="${xm + 3}" y="13" font-size="11" fill="var(--muted)">${m.getMonth() + 1}월</text>`;
+  }
+  units.forEach((key, i) => {
+    const [kind, unit] = key.split("|"), y = top + i * rowH;
+    svg += `<text x="${left - 6}" y="${y + 12}" font-size="11.5" text-anchor="end" fill="${unit.startsWith("당진") ? "var(--brand)" : "var(--ink)"}" font-weight="${unit.startsWith("당진") ? 700 : 400}">${esc(unit)}</text>`;
+    rows.filter(r => r.kind + "|" + r.unit === key).forEach(r => {
+      const a = x(new Date(r.start)), b = x(new Date(new Date(r.end).getTime() + (r.end.length === 10 ? 864e5 : 0)));
+      if (b > a) svg += `<rect x="${a}" y="${y + 3}" width="${Math.max(2, b - a)}" height="${rowH - 6}" rx="3" fill="${kind === "nuclear" ? "var(--nuc)" : "var(--accent)"}"><title>${esc(r.unit)} ${r.start} ~ ${r.end} ${esc(r.note)}</title></rect>`;
+    });
+  });
+  if (!units.length) svg += `<text x="${left}" y="${top + 12}" font-size="12" fill="var(--muted)">입력된 정비가 없습니다</text>`;
+  $("gantt").innerHTML = svg + "</svg>";
+}
+
+// ---------------------------------------------------------------- 미리보기·실행
+async function preview() {
+  $("btn-preview").disabled = true; message("미리보기 계산 중 (5~15초)");
+  try {
+    const r = await api("/api/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scenario()) });
+    message(""); show("preview-card");
+    r.warnings.forEach(w => $("msg").innerHTML += `<div class="warn">${esc(w)}</div>`);
+    lineChart("preview-chart", r.monthly.map(m => m.period.slice(2)), [
+      { values: r.monthly.map(m => m.net), color: "#94a3b8" }, { values: r.monthly.map(m => m.nuclear), color: "var(--nuc)" },
+      { values: r.monthly.map(m => m.coal_model), color: "var(--accent)", dash: "4 3" }, { values: r.monthly.map(m => m.coal_target), color: "var(--coal)" },
+      { values: r.monthly.map(m => m.coal_available), color: "#cbd5e1" }]);
+    $("preview-table").innerHTML = `<tr><th class="l">월</th><th>총수요</th><th>태양광</th><th>순수요</th><th>원전</th><th>석탄곡선</th><th>석탄목표</th><th>가용석탄</th></tr>` +
+      r.monthly.map(m => `<tr><td class="l">${m.period}</td><td>${fmt(m.demand)}</td><td>${fmt(m.solar)}</td><td>${fmt(m.net)}</td><td>${fmt(m.nuclear)}</td><td>${fmt(m.coal_model)}</td><td>${fmt(m.coal_target)}</td><td>${fmt(m.coal_available)}</td></tr>`).join("");
+  } catch (e) { message(e.message, true); }
+  $("btn-preview").disabled = false;
+}
+
+async function runJob() {
+  try {
+    if (!await saveDatabase()) return;
+    await api("/api/run", { method: "POST" });
+    message(""); pollJob();
+  } catch (e) { message(e.message, true); }
+}
+async function pollJob() {
+  show("job"); $("btn-run").disabled = true;
+  const j = await api("/api/job");
+  const total = j.windows_total, done = j.windows_done || 0;
+  $("job-bar").style.width = total ? `${(done / total * 100).toFixed(1)}%` : "3%";
+  const eta = j.eta_seconds ? ` · 남은 시간 약 ${Math.ceil(j.eta_seconds / 60)}분` : "";
+  $("job-text").textContent = j.state === "running"
+    ? `${j.message || "실행 중"} — MILP 창 ${done}/${total ?? "?"} · 경과 ${Math.round(j.elapsed || 0)}초${eta}`
+    : j.state === "done" ? `완료 (${Math.round(j.elapsed)}초)` : j.state === "error" ? "오류" : "";
+  if (j.state === "running") { setTimeout(pollJob, 2000); return; }
+  $("btn-run").disabled = false;
+  if (j.state === "error") message(j.error + "\n" + (j.trace || ""), true);
+  if (j.state === "done") { await refreshDashboard(j.run_id); await openRun(j.run_id, false); tab('dashboard'); }
+}
+
+// ---------------------------------------------------------------- 결과
+async function openRun(id, jump) {
+  const s = await api(`/api/runs/${encodeURIComponent(id)}`);
+  state.result = { id, ...s };
+  renderResult();
+  if (jump) { await refreshDashboard(id); tab("result"); }
+}
+
+function renderResult() {
+  const s = state.result, a = s.annual, sc = s.scenario;
+  $("res-title").textContent = `${sc.name} · ${sc.start} ~ ${sc.end}`;
+  const ex = $("res-excel"); ex.href = `/api/runs/${encodeURIComponent(state.result.id)}/excel`; ex.classList.remove("hidden");
+  $("res-warn").innerHTML = s.warnings.map(w => `<div class="warn">${esc(w)}</div>`).join("");
+  $("kpis").innerHTML = [
+    ["당진 발전량", `${fmt(a.dangjin_mwh / 1000)} GWh`],
+    ["당진 평균출력", `${fmt(a.dangjin_avg_mw)} MW`],
+    ["설비이용률", `${fmt(a.dangjin_cf_pct, 1)} %`],
+    ["기동 횟수", `${fmt(a.starts)} 회`],
+    ["전국 석탄(해/목표)", `${fmt(a.coal_solved_twh, 1)} / ${fmt(a.coal_target_twh, 1)} TWh`],
+    ["목표 불일치", `${fmt(a.mismatch_gwh, 1)} GWh`],
+  ].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join("");
+  barChart("monthly-chart", s.monthly.map(m => m.month.slice(2)), s.monthly.map(m => m.dangjin_avg_mw),
+    s.monthly.map(m => `${fmt(m.dangjin_mwh / 1000)}`), s.installed_mw);
+  dailyChart(s.daily);
+  const units = s.units;
+  $("monthly-table").innerHTML = `<tr><th class="l">월</th><th>발전량(MWh)</th><th>평균(MW)</th><th>이용률</th><th>일 최소/최대(MWh)</th><th>운전대수</th><th>기동</th><th>전국석탄 중</th><th>순수요</th><th>원전</th><th>석탄목표</th>` +
+    units.map(u => `<th>${u}</th>`).join("") + "</tr>" +
+    s.monthly.map(m => `<tr><td class="l">${m.month}</td><td>${fmt(m.dangjin_mwh)}</td><td><b>${fmt(m.dangjin_avg_mw)}</b></td><td>${fmt(m.dangjin_cf_pct, 1)}%</td><td>${fmt(m.daily_mwh_min)} / ${fmt(m.daily_mwh_max)}</td><td>${fmt(m.units_online_avg, 1)}</td><td>${m.starts}</td><td>${fmt(m.dangjin_share_pct, 1)}%</td><td>${fmt(m.net_demand_avg_mw)}</td><td>${fmt(m.nuclear_avg_mw)}</td><td>${fmt(m.coal_target_avg_mw)}</td>` +
+      units.map(u => `<td>${fmt(m.unit_avg_mw[u])}</td>`).join("") + "</tr>").join("") +
+    `<tr><td class="l"><b>연간</b></td><td><b>${fmt(a.dangjin_mwh)}</b></td><td><b>${fmt(a.dangjin_avg_mw)}</b></td><td><b>${fmt(a.dangjin_cf_pct, 1)}%</b></td><td></td><td></td><td><b>${a.starts}</b></td><td></td><td>${fmt(a.net_demand_avg_mw)}</td><td>${fmt(a.nuclear_avg_mw)}</td><td></td>${units.map(() => "<td></td>").join("")}</tr>`;
+  const mi = s.model_info;
+  $("assumptions").innerHTML = [
+    `기상: ${sc.weather === "normal" ? "평년" : sc.weather + "년 실측 재생"} · 총수요 증가율 ${fmt(mi.net_demand.demand_growth_pct, 2)}%/년 · 태양광 증가율 ${fmt(mi.net_demand.solar_growth_pct, 1)}%/년`,
+    `월별 석탄목표 보정: ${sc.coal_adjust_pct.map((v, i) => `${i + 1}월 ${v}%`).join(", ")}`,
+    `원전 OH ${s.outages.nuclear.length}건 · 석탄 OH ${s.outages.coal.length}건 · 운전예비율 ${sc.reserve_ratio}`,
+    `순수요 모델 ${mi.net_demand.trained} · 석탄곡선 모델 ${mi.coal_curve.trained} (${mi.coal_curve.kind})`,
+    `MILP: ${mi.milp.window_h}시간 창/${mi.milp.step_h}시간 확정, ${mi.milp.segments}개 구간 병렬(예열 ${mi.milp.warmup_days}일), 창당 ${mi.milp.time_limit_s}초·간격 ${mi.milp.mip_rel_gap}, 비용 = ${mi.milp.cost}`,
+    `풀이 ${fmt(s.solve.elapsed_seconds)}초 · 창 상태 ${Object.entries(s.solve.window_status).map(([k, v]) => `${k} ${v}`).join(", ")} (approximate = 일부 시간 목표 불일치, 불일치량은 표에 표시)`,
+  ].map(t => `<div>• ${esc(t)}</div>`).join("");
+}
+
+// ---------------------------------------------------------------- 그래프 (SVG)
+function axisTicks(max) {
+  const step = Math.pow(10, Math.floor(Math.log10(max || 1))); const unit = [1, 2, 2.5, 5, 10].map(f => f * step).find(u => max / u <= 6) || step * 10;
+  return Array.from({ length: Math.ceil(max / unit) + 1 }, (_, i) => i * unit);
+}
+function barChart(id, labels, values, notes, capacity) {
+  const W = Math.max(640, $(id).clientWidth || 640), H = 260, l = 54, r = 12, t = 16, b = 26;
+  const max = Math.max(...values, 1) * 1.15, ticks = axisTicks(max), top = ticks[ticks.length - 1];
+  const y = v => t + (H - t - b) * (1 - v / top), bw = (W - l - r) / labels.length;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  ticks.forEach(v => svg += `<line x1="${l}" x2="${W - r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${l - 6}" y="${y(v) + 4}" font-size="11" text-anchor="end" fill="var(--muted)">${fmt(v)}</text>`);
+  values.forEach((v, i) => {
+    const x = l + i * bw + bw * .18, w = bw * .64;
+    svg += `<rect x="${x}" y="${y(v)}" width="${w}" height="${y(0) - y(v)}" rx="3" fill="var(--bar)"><title>${labels[i]}: ${fmt(v)} MW (${notes[i]} GWh)</title></rect>`;
+    svg += `<text x="${x + w / 2}" y="${y(v) - 4}" font-size="11" text-anchor="middle" fill="var(--ink)">${fmt(v)}</text>`;
+    svg += `<text x="${x + w / 2}" y="${H - 8}" font-size="11" text-anchor="middle" fill="var(--muted)">${labels[i]}</text>`;
+    svg += `<text x="${x + w / 2}" y="${y(0) - 6}" font-size="10" text-anchor="middle" fill="#fff">${notes[i]}</text>`;
+  });
+  $(id).innerHTML = svg + "</svg>";
+}
+function lineChart(id, labels, series) {
+  const W = Math.max(640, $(id).clientWidth || 640), H = 260, l = 58, r = 12, t = 12, b = 26;
+  const max = Math.max(...series.flatMap(s => s.values)) * 1.08, ticks = axisTicks(max), top = ticks[ticks.length - 1];
+  const x = i => l + (W - l - r) * (labels.length === 1 ? .5 : i / (labels.length - 1)), y = v => t + (H - t - b) * (1 - v / top);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  ticks.forEach(v => svg += `<line x1="${l}" x2="${W - r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${l - 6}" y="${y(v) + 4}" font-size="11" text-anchor="end" fill="var(--muted)">${fmt(v)}</text>`);
+  labels.forEach((lab, i) => svg += `<text x="${x(i)}" y="${H - 8}" font-size="11" text-anchor="middle" fill="var(--muted)">${lab}</text>`);
+  series.forEach(s => svg += `<polyline fill="none" stroke="${s.color}" stroke-width="2.2" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""} points="${s.values.map((v, i) => `${x(i)},${y(v)}`).join(" ")}"/>` +
+    s.values.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${s.color}"><title>${labels[i]}: ${fmt(v)} MW</title></circle>`).join(""));
+  $(id).innerHTML = svg + "</svg>";
+}
+function dailyChart(daily) {
+  const id = "daily-chart", W = Math.max(760, $(id).clientWidth || 760), H = 260, l = 54, r = 40, t = 12, b = 26;
+  const vals = daily.map(d => d.dangjin_avg_mw), units = daily.map(d => d.units_online_avg);
+  const top = axisTicks(Math.max(...vals, 1) * 1.1).slice(-1)[0], utop = 10;
+  const x = i => l + (W - l - r) * i / Math.max(1, daily.length - 1), y = v => t + (H - t - b) * (1 - v / top), yu = v => t + (H - t - b) * (1 - v / utop);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  axisTicks(top).forEach(v => svg += `<line x1="${l}" x2="${W - r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${l - 6}" y="${y(v) + 4}" font-size="11" text-anchor="end" fill="var(--muted)">${fmt(v)}</text>`);
+  [0, 2, 4, 6, 8, 10].forEach(v => svg += `<text x="${W - r + 6}" y="${yu(v) + 4}" font-size="10" fill="var(--accent)">${v}</text>`);
+  let lastMonth = "";
+  daily.forEach((d, i) => { const m = d.date.slice(5, 7); if (m !== lastMonth) { lastMonth = m; svg += `<line x1="${x(i)}" x2="${x(i)}" y1="${t}" y2="${H - b}" stroke="var(--grid)"/><text x="${x(i) + 3}" y="${H - 8}" font-size="11" fill="var(--muted)">${Number(m)}월</text>`; } });
+  svg += `<polyline fill="none" stroke="var(--accent)" stroke-width="1.2" opacity=".8" points="${units.map((v, i) => `${x(i)},${yu(v)}`).join(" ")}"/>`;
+  svg += `<polyline fill="none" stroke="var(--bar)" stroke-width="1.6" points="${vals.map((v, i) => `${x(i)},${y(v)}`).join(" ")}"/>`;
+  daily.forEach((d, i) => svg += `<circle cx="${x(i)}" cy="${y(d.dangjin_avg_mw)}" r="4" fill="transparent" style="cursor:pointer" onclick="dayDetail('${d.date}')"><title>${d.date}: ${fmt(d.dangjin_avg_mw)} MW · ${fmt(d.dangjin_mwh)} MWh · 운전 ${d.units_online_avg}기 · 기동 ${d.starts}</title></circle>`);
+  $(id).innerHTML = svg + "</svg>";
+}
+const UNIT_COLORS = ["#1f4e79", "#2f6fa8", "#4a8bc4", "#77a9d6", "#a6c8e8", "#3d7a5e", "#5c9c7d", "#8bbfa3", "#d9822b", "#b4531a"];
+async function dayDetail(day) {
+  const d = await api(`/api/runs/${encodeURIComponent(state.result.id)}/hourly?day=${day}`);
+  show("day-detail"); $("day-title").textContent = `${day} 시간별 당진 호기 출력 (MW, 누적)`;
+  const W = Math.max(640, $("day-chart").clientWidth || 640), H = 240, l = 54, r = 12, t = 10, b = 24;
+  const totals = d.output.map(row => row.reduce((s, v) => s + v, 0)), top = axisTicks(Math.max(...totals, 1) * 1.1).slice(-1)[0];
+  const bw = (W - l - r) / 24, y = v => t + (H - t - b) * (1 - v / top);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  axisTicks(top).forEach(v => svg += `<line x1="${l}" x2="${W - r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${l - 6}" y="${y(v) + 4}" font-size="11" text-anchor="end" fill="var(--muted)">${fmt(v)}</text>`);
+  d.output.forEach((row, h) => {
+    let acc = 0;
+    row.forEach((v, k) => { if (v > 0.5) { svg += `<rect x="${l + h * bw + 1}" y="${y(acc + v)}" width="${bw - 2}" height="${y(acc) - y(acc + v)}" fill="${UNIT_COLORS[k % 10]}"><title>${h}시 ${d.units[k]} ${fmt(v)} MW</title></rect>`; acc += v; } });
+    svg += `<text x="${l + h * bw + bw / 2}" y="${H - 8}" font-size="10" text-anchor="middle" fill="var(--muted)">${h}</text>`;
+  });
+  $("day-chart").innerHTML = svg + "</svg>" + `<div class="legend">${d.units.map((u, k) => `<span><i style="background:${UNIT_COLORS[k % 10]}"></i>${u}</span>`).join("")}</div>`;
+}
+
+// ---------------------------------------------------------------- 이력
+async function loadHistory() {
+  const runs = await api("/api/runs");
+  $("history-table").innerHTML = `<tr><th class="l">실행</th><th class="l">이름</th><th class="l">기간</th><th>당진 GWh</th><th>평균 MW</th><th>이용률</th><th>기동</th><th>불일치 GWh</th><th>풀이(초)</th></tr>` +
+    runs.map(r => `<tr onclick="openRun('${esc(r.id)}', true)"><td class="l">${esc(r.id)}</td><td class="l">${esc(r.name)}</td><td class="l">${r.period}</td><td>${fmt(r.annual.dangjin_mwh / 1000)}</td><td>${fmt(r.annual.dangjin_avg_mw)}</td><td>${fmt(r.annual.dangjin_cf_pct, 1)}%</td><td>${r.annual.starts}</td><td>${fmt(r.annual.mismatch_gwh, 1)}</td><td>${fmt(r.elapsed)}</td></tr>`).join("");
+}
+
+</script>
+<script src="/assets/dashboard.js"></script>
+<script>init().catch(e => { message(e.message, true); $('dashboard-error').innerHTML = `<div class="err">${esc(e.message)}</div>`; $('dashboard-status').textContent = '불러오기 실패'; });</script>
+</body>
+</html>

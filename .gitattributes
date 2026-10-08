@@ -12,3 +12,5 @@
 *.png binary
 *.jpg binary
 *.woff2 binary
+# LightGBM의 tree_sizes는 바이트 기준. CRLF로 변환하지 않는다.
+backend/models/*.txt text eol=lf
