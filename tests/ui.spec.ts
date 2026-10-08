@@ -31,17 +31,47 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
   await expect(
     page.getByRole("heading", { name: "월별 석탄 사용 예정량" }),
   ).toBeVisible();
-  await expect(page.locator(".midterm-kpis")).toContainText("미등록");
-  await expect(page.locator(".midterm-kpis")).toContainText("미확정");
+  await expect(page.locator(".fuel-supply-kpis")).toContainText("미등록");
+  await expect(page.locator(".fuel-supply-kpis")).toContainText("미확정");
   await expect(
     page.getByText("동작 확인용 MILP", { exact: true }),
   ).toBeVisible();
   await expect(page.locator(".midterm-outage-bar")).toHaveCount(1);
+  await expect(
+    page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
+  ).toContainText("288,000");
+  await expect(
+    page.locator('[data-fuel-metric="일평균 사용 예정량"]'),
+  ).toContainText("9,600");
+  await expect(page.getByText("실적 미연계", { exact: true })).toBeVisible();
+  await page
+    .getByText("월별 예정량·계획 확보일수 보기", { exact: true })
+    .click();
+  await expect(page.locator(".fuel-monthly tbody tr")).toHaveCount(12);
+  await expect(page.locator(".fuel-monthly tbody tr").first()).toContainText(
+    "297,600",
+  );
+  await page.getByRole("button", { name: "7일", exact: true }).click();
+  await expect(
+    page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
+  ).toContainText("67,200");
+  await expect(page.locator(".fuel-monthly tbody tr").first()).toContainText(
+    "297,600",
+  );
   await page.getByRole("button", { name: "90일", exact: true }).click();
   await expect(page.locator(".midterm-source")).toContainText("2027-03-31");
+  await expect(
+    page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
+  ).toContainText("864,000");
+  await expect(page.locator(".fuel-monthly .fuel-selected-month")).toHaveCount(
+    3,
+  );
   await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
   await expect(page.locator(".midterm-source")).toContainText("2027-05-01");
   await expect(page.locator(".midterm-outage-bar")).toHaveCount(0);
+  await expect(page.locator(".fuel-monthly .fuel-selected-month")).toHaveCount(
+    4,
+  );
   await page
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "저탄장 현황", exact: true })
@@ -76,6 +106,89 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
     ),
   ).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test("incomplete fuel plans remain unknown and DB inventory forecasts render separately", async ({
+  page,
+}) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/runs") {
+      await route.fulfill({
+        json: [
+          {
+            id: "연료 검증",
+            name: "연료 검증",
+            period: "2027-01-01 ~ 2027-12-31",
+          },
+        ],
+      });
+      return;
+    }
+    const snapshot = planningFixture(
+      "연료 검증",
+      url.searchParams.get("start")!,
+      Number(url.searchParams.get("horizon")),
+    );
+    snapshot.daily[2].fuel_tonnes = null;
+    snapshot.units[0].fuel_tonnes = null;
+    snapshot.monthly.forEach((month) => {
+      month.fuel_tonnes = null;
+    });
+    snapshot.inventory.kpis = {
+      stock: 100000,
+      min_days: 8.5,
+      risk: "caution",
+      arrivals: 40000,
+      arrival_count: 1,
+      unloading_remaining: 6000,
+      active_vessels: 1,
+      incoming_cv: 5800,
+    };
+    snapshot.inventory.thresholds = { danger_days: 7, normal_days: 15 };
+    Object.assign(snapshot.inventory.groups[0], {
+      stock: 100000,
+      days: 12,
+      min_days: 8.5,
+      expected_receipts: 25000,
+      risk: "caution",
+    });
+    snapshot.inventory.daily.forEach((day, i) => {
+      day.groups.g14.stock = 100000 - 960 * (i + 1);
+    });
+    await route.fulfill({ json: snapshot });
+  });
+  await page.goto("/");
+  await expect(
+    page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
+  ).toContainText("미확정");
+  await expect(
+    page.locator('[data-fuel-metric="일평균 사용 예정량"]'),
+  ).toContainText("미확정");
+  await expect(
+    page.locator('[data-fuel-metric="최대 일 사용 예정량"]'),
+  ).toContainText("미확정");
+  await expect(page.locator('[data-fuel-metric="총 재고"]')).toContainText(
+    "100,000",
+  );
+  await expect(
+    page.locator('[data-fuel-metric="입항 예정 (30일)"]'),
+  ).toContainText("40,000");
+  await expect(page.locator(".fuel-flow")).toContainText("25,000");
+  await expect(
+    page.getByText("온전한 월별 연료계획이 없습니다."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "처별 일말 예상 석탄 재고 톤" }),
+  ).toBeVisible();
+  await expect(page.locator('[data-unit-id="dj-1"]')).toContainText("미확정");
+  await page.getByText("일별 계획 수치 보기", { exact: true }).click();
+  await expect(page.locator(".fuel-daily tbody tr").nth(2)).toContainText(
+    "미확정",
+  );
+  await expect(
+    page.getByRole("heading", { name: "예측·최적화 핵심 지표" }),
+  ).toBeVisible();
 });
 
 test("failed backend stays an error and synthetic demo requires explicit selection", async ({

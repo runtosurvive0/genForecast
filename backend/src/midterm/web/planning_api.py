@@ -88,5 +88,6 @@ def snapshot(run_id: str, start: date | None = None, horizon: int = Query(defaul
         "units": units, "daily": daily, "monthly": monthly, "outages": periods,
         "models": data["models"], "model_info": source["model_info"],
         "inventory": {"groups": data["groups"], "daily": data["forecast"],
-                      "kpis": data["kpis"], "plan_stale": data["plan_stale"]},
+                      "kpis": data["kpis"], "plan_stale": data["plan_stale"],
+                      "thresholds": {key: data["config"][key] for key in ("danger_days", "normal_days")}},
         "vessels": data["vessels"], "issues": issues}

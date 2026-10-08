@@ -116,6 +116,7 @@ def test_snapshot_serves_ten_units_and_full_months_without_inventing_inventory(c
     assert unit['capacity_factor_pct'] == pytest.approx(88 * 100 / (90 * 500) * 100)
     assert body['inventory']['kpis']['stock'] is None
     assert body['inventory']['kpis']['risk'] == 'unknown'
+    assert body['inventory']['thresholds'] == {'danger_days': 7.0, 'normal_days': 15.0}
     assert body['models'][0]['coal_available_mw'] == 50000
     assert body['models'][0]['coal_target_mw'] == 19000
     assert body['outages'][0]['end_at'] == '2027-01-03T00:00:00+09:00'

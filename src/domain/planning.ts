@@ -57,6 +57,8 @@ export interface PlanningSnapshot {
     coal_target_mw: number | null;
     coal_available_mw: number | null;
     coal_mip_mw: number | null;
+    solar_mw?: number | null;
+    solar_mwh?: number | null;
   }[];
   model_info: Record<string, unknown>;
   inventory: {
@@ -69,7 +71,9 @@ export interface PlanningSnapshot {
       min_days: number | null;
       risk: string;
       stale: boolean;
-      baseline: unknown;
+      baseline: { tonnes: number; at: string } | null;
+      delta?: number | null;
+      today_burn?: number | null;
       expected_receipts: number;
     }[];
     daily: {
@@ -79,7 +83,18 @@ export interface PlanningSnapshot {
         { stock: number | null; days: number | null; burn: number | null }
       >;
     }[];
-    kpis: { stock: number | null; min_days: number | null; risk: string };
+    kpis: {
+      stock: number | null;
+      min_days: number | null;
+      risk: string;
+      days?: number | null;
+      unloading_remaining?: number;
+      active_vessels?: number;
+      arrivals?: number;
+      arrival_count?: number;
+      incoming_cv?: number | null;
+    };
+    thresholds?: { danger_days: number; normal_days: number };
     plan_stale: boolean;
   };
   vessels: {
