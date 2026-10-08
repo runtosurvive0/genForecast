@@ -1,0 +1,19 @@
+node_modules/
+.npm-cache/
+.tooling-tmp/
+test-results/
+playwright-report/
+dist/
+*.log
+
+.env
+.env.*
+!.env.example
+
+# Reproducible build and visual-test outputs (keep source and lockfile in Git)
+/발전운영_대시보드.html
+/artifacts/
+coverage/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db

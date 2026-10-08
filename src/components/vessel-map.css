@@ -1,0 +1,367 @@
+.vessel-map {
+  --map-ocean: #f8f8f7;
+  --map-dot: #bdbdc3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 6px;
+  overflow: hidden;
+  scroll-margin-top: 76px;
+}
+.vessel-map[data-map-theme="dark"] {
+  --map-ocean: #19191c;
+  --map-dot: #48484f;
+}
+.vessel-map-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.vessel-map-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--foreground);
+}
+.vessel-map-header p {
+  margin: 6px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.vessel-map-sample {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.vessel-map-canvas {
+  position: relative;
+  min-height: 430px;
+  overflow: hidden;
+  background: var(--map-ocean);
+}
+.vessel-map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+}
+.vessel-map-svg:active {
+  cursor: grabbing;
+}
+.vessel-map-dots {
+  fill: var(--map-dot);
+  pointer-events: none;
+}
+.vessel-map-route {
+  stroke-width: 1;
+  opacity: 0.22;
+  pointer-events: none;
+}
+.vessel-map-route.is-selected {
+  opacity: 1;
+  stroke-width: 1.7;
+}
+.vessel-map-origin {
+  fill: var(--map-ocean);
+  stroke: var(--primary);
+  stroke-width: 1;
+}
+.vessel-map-destination {
+  fill: var(--primary);
+  stroke: var(--map-ocean);
+  stroke-width: 0.7;
+}
+.vessel-map-marker {
+  cursor: pointer;
+  outline: none;
+}
+.vessel-map-marker-halo {
+  fill: var(--primary);
+  opacity: 0;
+}
+.vessel-map-marker.is-selected .vessel-map-marker-halo {
+  opacity: 0.1;
+}
+.vessel-map-marker-body {
+  fill: var(--map-ocean);
+  stroke: var(--muted-foreground);
+  stroke-width: 1.2;
+}
+.vessel-map-ship {
+  fill: var(--muted-foreground);
+}
+.vessel-map-marker.is-selected .vessel-map-marker-body {
+  fill: var(--primary);
+  stroke: var(--primary);
+}
+.vessel-map-marker.is-selected .vessel-map-ship {
+  fill: var(--primary-foreground);
+}
+.vessel-map-marker:focus-visible .vessel-map-marker-halo {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  opacity: 1;
+}
+.vessel-map-marker-label {
+  fill: var(--foreground);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  paint-order: stroke;
+  stroke: var(--map-ocean);
+  stroke-width: 5;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.vessel-map-controls {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  display: flex;
+  gap: 4px;
+}
+.vessel-map-controls button {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: none;
+  width: 28px;
+  height: 28px;
+}
+.vessel-map-controls svg {
+  width: 14px;
+  height: 14px;
+}
+.vessel-map-pan-hint {
+  position: absolute;
+  left: 18px;
+  bottom: 22px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.vessel-map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  pointer-events: none;
+}
+.vessel-map-bottom {
+  border-left: 1px solid var(--border);
+  padding: 20px 16px 15px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vessel-map-list-heading {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin: 0 7px 12px;
+}
+.vessel-map-vessels {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  order: 0;
+}
+.vessel-map-vessels button {
+  font-size: 11px;
+  height: 33px;
+  justify-content: flex-start;
+  padding: 0 8px;
+  font-weight: 400;
+  gap: 8px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+}
+.vessel-map-vessels button svg {
+  height: 13px;
+  width: 13px;
+}
+.vessel-map-vessels button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--foreground);
+  font-weight: 500;
+}
+.vessel-map-vessels button[aria-pressed="true"] svg {
+  color: var(--primary);
+}
+.vessel-map-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 10px;
+  margin: 20px 6px 0;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  order: 1;
+}
+.vessel-map-detail > div {
+  min-width: 0;
+}
+.vessel-map-detail-name {
+  grid-column: 1 / -1;
+}
+.vessel-map-detail span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  margin-bottom: 5px;
+}
+.vessel-map-detail b {
+  display: block;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.vessel-map-detail-name strong {
+  display: block;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 550;
+  margin-bottom: 7px;
+}
+.vessel-map-detail-name span {
+  color: var(--muted-foreground);
+  margin: 0;
+}
+.vessel-map-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px 12px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  order: 2;
+  margin: 22px 6px 0;
+}
+.vessel-map-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.vessel-map-legend i {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: var(--muted-foreground);
+}
+.vessel-map-legend .legend-vessel {
+  border-radius: 50%;
+}
+.vessel-map-legend .legend-origin {
+  border-radius: 50%;
+  border: 1px solid var(--muted-foreground);
+  background: transparent;
+}
+.vessel-map-legend .legend-route {
+  width: 12px;
+  height: 0;
+  border-top: 1px solid var(--primary);
+  background: transparent;
+}
+.vessel-map-credit {
+  margin: 12px 6px 0;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 1.7;
+  order: 3;
+}
+@media (max-width: 1200px) {
+  .vessel-map {
+    grid-template-columns: minmax(0, 1fr) 230px;
+  }
+  .vessel-map-bottom {
+    padding-inline: 12px;
+  }
+}
+@media (max-width: 1050px) {
+  .vessel-map {
+    grid-template-columns: 1fr;
+  }
+  .vessel-map-canvas {
+    min-height: 340px;
+  }
+  .vessel-map-bottom {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding: 18px;
+  }
+  .vessel-map-vessels {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .vessel-map-detail {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .vessel-map-list-heading {
+    margin-inline: 0;
+  }
+}
+@media (max-width: 760px) {
+  .vessel-map-header {
+    padding: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .vessel-map-header h3 {
+    font-size: 12px;
+  }
+  .vessel-map-header p {
+    font-size: 10px;
+    line-height: 1.6;
+  }
+  .vessel-map-sample {
+    font-size: 9px;
+  }
+  .vessel-map-canvas {
+    min-height: 250px;
+  }
+  .vessel-map-pan-hint {
+    font-size: 9px;
+    bottom: 19px;
+    left: 12px;
+  }
+  .vessel-map-controls {
+    bottom: 10px;
+    right: 10px;
+    gap: 3px;
+  }
+  .vessel-map-controls button {
+    width: 25px;
+    height: 25px;
+  }
+  .vessel-map-bottom {
+    padding: 16px 12px;
+  }
+  .vessel-map-vessels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .vessel-map-vessels button {
+    font-size: 9px;
+    padding: 0 4px;
+    gap: 5px;
+  }
+  .vessel-map-vessels button svg {
+    width: 11px;
+  }
+  .vessel-map-detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 14px;
+  }
+}
