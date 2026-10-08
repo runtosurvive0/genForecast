@@ -1,6 +1,209 @@
 import { test, expect } from "@playwright/test";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { planningFixture } from "./planning-fixture";
+
+test("MILP backend shows ten units, date-bound plans and missing inventory explicitly", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    const body =
+      url.pathname === "/api/runs"
+        ? [
+            {
+              id: "검증 계산",
+              name: "검증 계산",
+              period: "2027-01-01 ~ 2027-12-31",
+            },
+          ]
+        : planningFixture(
+            "검증 계산",
+            url.searchParams.get("start")!,
+            Number(url.searchParams.get("horizon")),
+          );
+    await route.fulfill({ json: body });
+  });
+  await page.goto("/");
+  await expect(page.locator("[data-unit-id]")).toHaveCount(10);
+  await expect(
+    page.getByRole("heading", { name: "월별 석탄 사용 예정량" }),
+  ).toBeVisible();
+  await expect(page.locator(".fuel-supply-kpis")).toContainText("미등록");
+  await expect(page.locator(".fuel-supply-kpis")).toContainText("미확정");
+  await expect(
+    page.getByText("동작 확인용 MILP", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".midterm-outage-bar")).toHaveCount(1);
+  await expect(
+    page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
+  ).toContainText("288,000");
+  await expect(
+    page.locator('[data-fuel-metric="일평균 사용 예정량"]'),
+  ).toContainText("9,600");
+  await expect(page.getByText("실적 미연계", { exact: true })).toBeVisible();
+  await page
+    .getByText("월별 예정량·계획 확보일수 보기", { exact: true })
+    .click();
+  await expect(page.locator(".fuel-monthly tbody tr")).toHaveCount(12);
+  await expect(page.locator(".fuel-monthly tbody tr").first()).toContainText(
+    "297,600",
+  );
+  await page.getByRole("button", { name: "7일", exact: true }).click();
+  await expect(
+    page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
+  ).toContainText("67,200");
+  await expect(page.locator(".fuel-monthly tbody tr").first()).toContainText(
+    "297,600",
+  );
+  await page.getByRole("button", { name: "90일", exact: true }).click();
+  await expect(page.locator(".midterm-source")).toContainText("2027-03-31");
+  await expect(
+    page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
+  ).toContainText("864,000");
+  await expect(page.locator(".fuel-monthly .fuel-selected-month")).toHaveCount(
+    3,
+  );
+  await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
+  await expect(page.locator(".midterm-source")).toContainText("2027-05-01");
+  await expect(page.locator(".midterm-outage-bar")).toHaveCount(0);
+  await expect(page.locator(".fuel-monthly .fuel-selected-month")).toHaveCount(
+    4,
+  );
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "저탄장 현황", exact: true })
+    .click();
+  await expect(page.locator(".yard-pile")).toHaveCount(16);
+  await expect(page.locator(".midterm-page")).toHaveCount(0);
+  await expect(
+    page.getByRole("group", { name: "발전소 종합 데이터 모드" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "선박 추적", exact: true })
+    .click();
+  await expect(page.locator(".vessel-map-dots").first()).toBeVisible();
+  await expect(page.locator(".shipment-card")).toHaveCount(4);
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "예측/모델 상세", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "재학습 · 전망에 적용" }),
+  ).toHaveCount(1);
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "발전소 종합", exact: true })
+    .click();
+  await expect(page.locator("[data-unit-id]")).toHaveCount(10);
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("incomplete fuel plans remain unknown and DB inventory forecasts render separately", async ({
+  page,
+}) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/runs") {
+      await route.fulfill({
+        json: [
+          {
+            id: "연료 검증",
+            name: "연료 검증",
+            period: "2027-01-01 ~ 2027-12-31",
+          },
+        ],
+      });
+      return;
+    }
+    const snapshot = planningFixture(
+      "연료 검증",
+      url.searchParams.get("start")!,
+      Number(url.searchParams.get("horizon")),
+    );
+    snapshot.daily[2].fuel_tonnes = null;
+    snapshot.units[0].fuel_tonnes = null;
+    snapshot.monthly.forEach((month) => {
+      month.fuel_tonnes = null;
+    });
+    snapshot.inventory.kpis = {
+      stock: 100000,
+      min_days: 8.5,
+      risk: "caution",
+      arrivals: 40000,
+      arrival_count: 1,
+      unloading_remaining: 6000,
+      active_vessels: 1,
+      incoming_cv: 5800,
+    };
+    snapshot.inventory.thresholds = { danger_days: 7, normal_days: 15 };
+    Object.assign(snapshot.inventory.groups[0], {
+      stock: 100000,
+      days: 12,
+      min_days: 8.5,
+      expected_receipts: 25000,
+      risk: "caution",
+    });
+    snapshot.inventory.daily.forEach((day, i) => {
+      day.groups.g14.stock = 100000 - 960 * (i + 1);
+    });
+    await route.fulfill({ json: snapshot });
+  });
+  await page.goto("/");
+  await expect(
+    page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
+  ).toContainText("미확정");
+  await expect(
+    page.locator('[data-fuel-metric="일평균 사용 예정량"]'),
+  ).toContainText("미확정");
+  await expect(
+    page.locator('[data-fuel-metric="최대 일 사용 예정량"]'),
+  ).toContainText("미확정");
+  await expect(page.locator('[data-fuel-metric="총 재고"]')).toContainText(
+    "100,000",
+  );
+  await expect(
+    page.locator('[data-fuel-metric="입항 예정 (30일)"]'),
+  ).toContainText("40,000");
+  await expect(page.locator(".fuel-flow")).toContainText("25,000");
+  await expect(
+    page.getByText("온전한 월별 연료계획이 없습니다."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "처별 일말 예상 석탄 재고 톤" }),
+  ).toBeVisible();
+  await expect(page.locator('[data-unit-id="dj-1"]')).toContainText("미확정");
+  await page.getByText("일별 계획 수치 보기", { exact: true }).click();
+  await expect(page.locator(".fuel-daily tbody tr").nth(2)).toContainText(
+    "미확정",
+  );
+  await expect(
+    page.getByRole("heading", { name: "예측·최적화 핵심 지표" }),
+  ).toBeVisible();
+});
+
+test("failed backend stays an error and synthetic demo requires explicit selection", async ({
+  page,
+}) => {
+  await page.route("**/api/runs", (route) =>
+    route.fulfill({ status: 503, json: { detail: "서버 연결 확인" } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("alert")).toContainText("서버 연결 확인");
+  await expect(page.locator(".tower-kpis")).toHaveCount(0);
+  await page.getByRole("button", { name: "합성 데모", exact: true }).click();
+  await expect(page.locator(".tower-metric").first()).toContainText("538,000");
+  await expect(page.getByText("샘플 데이터", { exact: true })).toBeVisible();
+});
 
 test("world map accepts 200 normalized vessel positions without hard-coded shipment IDs", async ({
   page,
@@ -16,7 +219,7 @@ test("world map accepts 200 normalized vessel positions without hard-coded shipm
 test("pile drilldown, stale AIS and model training update the operational forecast", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   const before = await page.locator(".tower-metric").nth(7).innerText();
   await page
     .getByRole("navigation", { name: "주 메뉴" })
@@ -67,7 +270,7 @@ test("theme persists, scope recalculates, and planned stop details remain explic
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await expect(
     page.getByRole("heading", { name: "발전소 종합", exact: true }),
   ).toBeVisible();
@@ -95,7 +298,7 @@ test("theme persists, scope recalculates, and planned stop details remain explic
 test("scenario is applied explicitly, shows actual orb canvas and updates forecast", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await page
     .getByRole("button", { name: "시나리오 분석", exact: true })
     .click();
@@ -132,7 +335,7 @@ test("mobile navigation, all views, and dark mode stay within the viewport", asy
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await page.getByRole("button", { name: "60일", exact: true }).click();
   await expect(page.locator('.processing-strip [role="status"]')).toBeVisible();
   await expect(page.locator(".processing-strip canvas")).toBeVisible();
@@ -196,7 +399,7 @@ test("offline single HTML supports calculation without network", async ({
 test("world map selection, zoom and scoped shipment details stay synchronized", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "선박 추적", exact: true })
@@ -224,7 +427,7 @@ test("world map selection, zoom and scoped shipment details stay synchronized", 
 test("inventory chart exposes interval boundary and scopes cargo", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await expect(page.getByText(/가로축: 다음날 09:00 KST/)).toBeVisible();
   await page.getByRole("combobox", { name: "발전본부 선택" }).click();
   await page.getByRole("option", { name: "보령", exact: true }).click();
@@ -239,7 +442,7 @@ test("tablet and narrow phone retain all navigation views without page overflow"
 }) => {
   for (const width of [768, 320]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
+    await page.goto("/?source=synthetic");
     for (const name of [
       "저탄장 현황",
       "선박 추적",
@@ -274,7 +477,7 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "선박 추적", exact: true })

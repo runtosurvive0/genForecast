@@ -77,6 +77,7 @@ import { VesselTracking } from "@/features/vessels/VesselTracking";
 import { ModelsPage } from "@/features/models/ModelsPage";
 import { DataPage } from "@/features/data/DataPage";
 import { forecastTask } from "@/lib/forecast-task";
+import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
 import { number as n, date as fmtDate, shiftDate } from "@/lib/format";
 
 type Page =
@@ -182,7 +183,15 @@ function Status({
   );
 }
 function App() {
+  const [overviewSource, setOverviewSource] = useState<"milp" | "synthetic">(
+    () =>
+      new URLSearchParams(location.search).get("source") === "synthetic" ||
+      location.protocol === "file:"
+        ? "synthetic"
+        : "milp",
+  );
   const [page, setPage] = useState<Page>("overview");
+  const isMilpOverview = page === "overview" && overviewSource === "milp";
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
   );
@@ -388,10 +397,18 @@ function App() {
         <div className="sidebar-note">
           <div>
             <span className="online-dot" />
-            오프라인 데모
+            {isMilpOverview ? "Python MILP 조회" : "오프라인 데모"}
           </div>
-          <p>운영·정비계획 샘플 데이터</p>
-          <span>기준 2026.10.06 09:00 KST</span>
+          <p>
+            {isMilpOverview
+              ? "당진 1~10호기 · 저장된 계획"
+              : "운영·정비계획 샘플 데이터"}
+          </p>
+          <span>
+            {isMilpOverview
+              ? "계산별 기간 · KST 일 단위"
+              : "기준 2026.10.06 09:00 KST"}
+          </span>
         </div>
         <button
           className="nav-item help-nav"
@@ -594,7 +611,7 @@ function App() {
           <div className="top-actions">
             <span className="demo-label">
               <span />
-              샘플 데이터
+              {isMilpOverview ? "MILP 계획 조회" : "샘플 데이터"}
             </span>
             <Button
               variant="ghost"
@@ -612,6 +629,7 @@ function App() {
               size="icon"
               className="notification-button"
               aria-label="운영 알림 보기"
+              disabled={isMilpOverview}
               onClick={() => setAlertsOpen(true)}
             >
               <Bell />
@@ -638,14 +656,18 @@ function App() {
           <div className="page-heading">
             <div>
               <h1>{currentPage.label}</h1>
-              <p>{currentPage.sub}</p>
+              <p>
+                {isMilpOverview
+                  ? "저장된 Python MILP 결과와 DB 수급 원장을 확인합니다."
+                  : currentPage.sub}
+              </p>
             </div>
             <div className="heading-actions">
               <Button
                 variant="outline"
                 className="export-button"
                 onClick={exportCsv}
-                disabled={busy}
+                disabled={busy || isMilpOverview}
               >
                 <ArrowDownToLine />
                 CSV 내보내기
@@ -653,67 +675,104 @@ function App() {
               <Button
                 onClick={() => navigate("scenario")}
                 className="scenario-shortcut"
+                disabled={isMilpOverview}
               >
                 <Settings2 />
                 시나리오 분석
               </Button>
             </div>
           </div>
-          <div className="context-bar">
-            <div className="context-left">
-              <span className="context-caption">조회 범위</span>
-              <Select
-                value={scope}
-                onValueChange={(v) => calculate(applied, v, horizon)}
-                disabled={busy}
-              >
-                <SelectTrigger
-                  className="plant-select"
-                  aria-label="발전본부 선택"
+          {page === "overview" && (
+            <div
+              className="context-bar"
+              role="group"
+              aria-label="발전소 종합 데이터 모드"
+            >
+              <div className="horizon-control">
+                <button
+                  aria-pressed={overviewSource === "milp"}
+                  className={overviewSource === "milp" ? "selected" : ""}
+                  onClick={() => {
+                    setOverviewSource("milp");
+                    setAlertsOpen(false);
+                    setDetail(null);
+                    setHelpOpen(false);
+                  }}
                 >
-                  <Factory size={15} />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체 발전본부</SelectItem>
-                  {plants.map((p) => (
-                    <SelectItem value={p.id} key={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div
-                className="horizon-control"
-                role="group"
-                aria-label="전망 기간"
-              >
-                {[30, 60, 90].map((d) => (
-                  <button
-                    disabled={busy}
-                    key={d}
-                    aria-pressed={horizon === d}
-                    className={horizon === d ? "selected" : ""}
-                    onClick={() => calculate(applied, scope, d)}
-                  >
-                    {d}일
-                  </button>
-                ))}
+                  MILP 백엔드
+                </button>
+                <button
+                  aria-pressed={overviewSource === "synthetic"}
+                  className={overviewSource === "synthetic" ? "selected" : ""}
+                  onClick={() => setOverviewSource("synthetic")}
+                >
+                  합성 데모
+                </button>
               </div>
-            </div>
-            <div className="context-right">
-              {!scenarioIsDefault(applied) && (
-                <Badge variant="outline" className="scenario-applied">
-                  사용자 시나리오 적용
-                </Badge>
-              )}
-              <Clock3 size={13} />
-              <span>
-                2026.10.06 09:00 <b>KST</b>
+              <span className="context-caption">
+                {isMilpOverview
+                  ? "당진 저장계획 · 실적과 구분"
+                  : "기존 합성 데이터 시뮬레이션"}
               </span>
             </div>
-          </div>
-          {busy && (
+          )}
+          {!isMilpOverview && (
+            <div className="context-bar">
+              <div className="context-left">
+                <span className="context-caption">조회 범위</span>
+                <Select
+                  value={scope}
+                  onValueChange={(v) => calculate(applied, v, horizon)}
+                  disabled={busy}
+                >
+                  <SelectTrigger
+                    className="plant-select"
+                    aria-label="발전본부 선택"
+                  >
+                    <Factory size={15} />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체 발전본부</SelectItem>
+                    {plants.map((p) => (
+                      <SelectItem value={p.id} key={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div
+                  className="horizon-control"
+                  role="group"
+                  aria-label="전망 기간"
+                >
+                  {[30, 60, 90].map((d) => (
+                    <button
+                      disabled={busy}
+                      key={d}
+                      aria-pressed={horizon === d}
+                      className={horizon === d ? "selected" : ""}
+                      onClick={() => calculate(applied, scope, d)}
+                    >
+                      {d}일
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="context-right">
+                {!scenarioIsDefault(applied) && (
+                  <Badge variant="outline" className="scenario-applied">
+                    사용자 시나리오 적용
+                  </Badge>
+                )}
+                <Clock3 size={13} />
+                <span>
+                  2026.10.06 09:00 <b>KST</b>
+                </span>
+              </div>
+            </div>
+          )}
+          {!isMilpOverview && busy && (
             <div className="processing-strip">
               <ProcessingOrb
                 theme={theme}
@@ -725,7 +784,7 @@ function App() {
               </span>
             </div>
           )}
-          {error && (
+          {!isMilpOverview && error && (
             <div className="error-banner" role="alert">
               <TriangleAlert size={18} />
               {error}
@@ -734,17 +793,20 @@ function App() {
               </Button>
             </div>
           )}
-          {page === "overview" && (
-            <PlantOverview
-              summary={tower}
-              plants={selectedPlants}
-              models={models}
-              theme={theme}
-              onSchedule={() => navigate("schedule")}
-              onScenario={() => navigate("scenario")}
-              onPlant={(plantId) => setDetail({ plantId })}
-            />
-          )}
+          {page === "overview" &&
+            (overviewSource === "milp" ? (
+              <MidtermDashboard theme={theme} />
+            ) : (
+              <PlantOverview
+                summary={tower}
+                plants={selectedPlants}
+                models={models}
+                theme={theme}
+                onSchedule={() => navigate("schedule")}
+                onScenario={() => navigate("scenario")}
+                onPlant={(plantId) => setDetail({ plantId })}
+              />
+            ))}
 
           {page === "schedule" && (
             <>
@@ -1103,19 +1165,21 @@ function App() {
               </Panel>
             </>
           )}
-          <footer className="page-footer">
-            <span>
-              <Layers3 size={13} />
-              샘플 데이터 기반 운영 시뮬레이션
-            </span>
-            <span>
-              기준시각 고정 · 실제 운전 및 정지계획과 다를 수 있습니다.
-            </span>
-            <button onClick={() => setHelpOpen(true)}>
-              산정 기준
-              <ArrowUpRight size={13} />
-            </button>
-          </footer>
+          {!isMilpOverview && (
+            <footer className="page-footer">
+              <span>
+                <Layers3 size={13} />
+                샘플 데이터 기반 운영 시뮬레이션
+              </span>
+              <span>
+                기준시각 고정 · 실제 운전 및 정지계획과 다를 수 있습니다.
+              </span>
+              <button onClick={() => setHelpOpen(true)}>
+                산정 기준
+                <ArrowUpRight size={13} />
+              </button>
+            </footer>
+          )}
         </main>
         <Dialog
           open={!!detail}
@@ -1250,43 +1314,68 @@ function App() {
             <DialogHeader>
               <DialogTitle>데이터와 계산 기준</DialogTitle>
               <DialogDescription>
-                모든 시간은 KST, 기준시각은 2026.10.06 09:00입니다.
+                {isMilpOverview
+                  ? "선택한 저장 계산의 기간 · KST 00시~24시입니다."
+                  : "모든 시간은 KST, 기준시각은 2026.10.06 09:00입니다."}
               </DialogDescription>
             </DialogHeader>
-            <div className="help-copy">
-              <h3>운영·정비계획은 샘플입니다</h3>
-              <p>
-                실제 발전사 자료와 연동하지 않았습니다. 발전소·호기·입항량·정지
-                일정은 기능 검증을 위한 예시이며 실제 운영 현황을 의미하지
-                않습니다.
-              </p>
-              <h3>발전 가능량과 현재 출력을 구분합니다</h3>
-              <p>
-                GWh는 연료로 생산할 수 있는 전력량, MW는 현재 가동 출력입니다.
-                발전가능량 = 재고(t) × 발열량(kcal/kg) × 0.001163 × 효율 ÷
-                1,000.
-              </p>
-              <h3>재고는 시간별로 계산합니다</h3>
-              <p>
-                하역 완료 이후 도착 본부에 연료를 더하고, 계획정지 중에는 해당
-                호기의 소비를 제외합니다. 부족하면 가용 연료만큼 발전하며 재고는
-                음수가 되지 않습니다. 시간 단위 추정이므로 정지 시각은 운영
-                확정값이 아닙니다.
-              </p>
-              <h3>재고일수와 연료부족 예상일</h3>
-              <p>
-                종합 화면의 현재 재고일수는 재고 ÷ 첫날 예상 사용량입니다. 미래
-                재고일수는 해당 일 기말 재고 ÷ 이후 7일 평균 계획 사용량입니다.
-                30일 이상 안정, 20일 이상 주의, 20일 미만 위험으로 표시합니다.
-                연료부족 예상일은 입하·정비·모델 전망과 부하 시나리오를
-                반영합니다.
-              </p>
-              <h3>참고 안전재고선</h3>
-              <p>
-                현재 소비량에 본부별 참고 재고일수를 곱한 합계입니다. 전체
-                합계가 충분해도 개별 본부에서 부족이 발생할 수 있습니다.
-              </p>
-            </div>
+            {isMilpOverview ? (
+              <div className="help-copy">
+                <h3>저장된 MILP 계획</h3>
+                <p>
+                  선택한 계산의 당진 10개 호기 발전계획을 표시합니다. 현재 운전
+                  실적과 구분하며, 이용률은 설비용량 × 조회기간 전체 시간을
+                  분모로 계산합니다.
+                </p>
+                <h3>연료계획과 수급전망</h3>
+                <p>
+                  일별·월별 연료계획은 DB의 고정 기준 발열량을 사용합니다. 5,500
+                  kcal/kg는 임시 가정입니다. 재고전망은 처별 혼합 발열량을
+                  반영하며, 미등록 자료는 미확정으로 표시합니다.
+                </p>
+                <h3>계획정지와 부족량</h3>
+                <p>
+                  선택한 계산에 등록된 계획정지를 표시합니다. 재고 부족은 계획상
+                  부족량이며 발전계획을 자동으로 축소하지 않습니다.
+                  저탄장·선박추적·모델 상세 메뉴는 기존 화면을 유지합니다.
+                </p>
+              </div>
+            ) : (
+              <div className="help-copy">
+                <h3>운영·정비계획은 샘플입니다</h3>
+                <p>
+                  실제 발전사 자료와 연동하지 않았습니다.
+                  발전소·호기·입항량·정지 일정은 기능 검증을 위한 예시이며 실제
+                  운영 현황을 의미하지 않습니다.
+                </p>
+                <h3>발전 가능량과 현재 출력을 구분합니다</h3>
+                <p>
+                  GWh는 연료로 생산할 수 있는 전력량, MW는 현재 가동 출력입니다.
+                  발전가능량 = 재고(t) × 발열량(kcal/kg) × 0.001163 × 효율 ÷
+                  1,000.
+                </p>
+                <h3>재고는 시간별로 계산합니다</h3>
+                <p>
+                  하역 완료 이후 도착 본부에 연료를 더하고, 계획정지 중에는 해당
+                  호기의 소비를 제외합니다. 부족하면 가용 연료만큼 발전하며
+                  재고는 음수가 되지 않습니다. 시간 단위 추정이므로 정지 시각은
+                  운영 확정값이 아닙니다.
+                </p>
+                <h3>재고일수와 연료부족 예상일</h3>
+                <p>
+                  종합 화면의 현재 재고일수는 재고 ÷ 첫날 예상 사용량입니다.
+                  미래 재고일수는 해당 일 기말 재고 ÷ 이후 7일 평균 계획
+                  사용량입니다. 30일 이상 안정, 20일 이상 주의, 20일 미만
+                  위험으로 표시합니다. 연료부족 예상일은 입하·정비·모델 전망과
+                  부하 시나리오를 반영합니다.
+                </p>
+                <h3>참고 안전재고선</h3>
+                <p>
+                  현재 소비량에 본부별 참고 재고일수를 곱한 합계입니다. 전체
+                  합계가 충분해도 개별 본부에서 부족이 발생할 수 있습니다.
+                </p>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
         {message && (
