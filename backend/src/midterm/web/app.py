@@ -35,6 +35,8 @@ app = FastAPI(title="중기 석탄 MILP · 당진본부")
 app.mount("/assets", StaticFiles(directory=HERE / "static"), name="assets")
 from midterm.web.supply_api import router as supply_router
 app.include_router(supply_router)
+from midterm.web.planning_api import router as planning_router
+app.include_router(planning_router)
 _job_lock = threading.Lock()
 _job: dict = {"state": "idle"}
 

@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from types import SimpleNamespace
 
 import pytest
+import numpy as np
 import uvicorn
 
 from midterm.database import connect, load_settings
@@ -16,6 +17,34 @@ from midterm.supply import read_supply, timestamp, now
 from midterm.supply_plans import latest_forecast
 from midterm.web import supply_api
 from midterm.web.app import app
+from midterm.web import planning_api
+
+
+@pytest.fixture
+def saved_snapshot_run(tmp_path, monkeypatch):
+    from midterm import supply_plans
+    from midterm.supply import UNITS
+    root = tmp_path / 'backend'
+    folder = root / 'runs' / 'snapshot-test'
+    folder.mkdir(parents=True)
+    days = 97
+    summary = {'scenario': {'name': '합성 API 검증', 'start': '2027-01-01', 'end': '2027-04-07'},
+        'warnings': [], 'model_info': {'source': 'synthetic test'},
+        'classification': 'functional_demo', 'classification_note': '합성 검증 자료',
+        'outages': {'coal': [{'unit':'당진1', 'start':'2027-01-01', 'end':'2027-01-02', 'note':'검증 정비'}]},
+        'unit_capacity_mw': {u: 500 if int(u.removeprefix('당진')) < 9 else 1000 for u in UNITS},
+        'daily': [{'date': (timestamp('2027-01-01') + timedelta(days=i)).date().isoformat(),
+                   'coal_solved_avg_mw': 1000, 'starts': 0, 'units_online_avg': 10} for i in range(days)]}
+    (folder / 'summary.json').write_text(jsonlib.dumps(summary), encoding='utf-8')
+    out = np.full((days * 24, 10), 100., dtype=np.float32)
+    out[:48, 0] = 0
+    np.savez_compressed(folder / 'hourly.npz', names=np.array(list(UNITS)), output=out, online=out > 0,
+        demand=np.full(days*24, 80000.), solar=np.full(days*24, 10000.),
+        coal_model=np.full(days*24, 20000.), coal_target=np.full(days*24, 19000.),
+        coal_available=np.full(days*24, 50000.))
+    monkeypatch.setattr(supply_plans, 'ROOT', root)
+    monkeypatch.setattr(supply_api, 'ROOT', root)
+    return folder
 
 
 @pytest.fixture
@@ -73,6 +102,48 @@ def test_browser_query_accepts_integer_horizon_and_uses_unknown_without_inputs(c
     assert result.status_code == 200
     assert result.json()['kpis']['risk'] == 'unknown'
     assert client.get('/api/supply/dashboard?horizon=10').status_code == 400
+
+
+def test_snapshot_serves_ten_units_and_full_months_without_inventing_inventory(client, saved_snapshot_run):
+    result = client.get('/api/planning/runs/snapshot-test/snapshot?start=2027-01-01&horizon=90')
+    assert result.status_code == 200
+    body = result.json()
+    assert body['plant_id'] == 'dangjin' and body['horizon_days'] == 90
+    assert len(body['units']) == 10 and len(body['daily']) == 90
+    assert body['daily'][0]['date'] == '2027-01-01' and body['daily'][-1]['date'] == '2027-03-31'
+    unit = body['units'][0]
+    assert unit['generation_mwh'] == 88 * 24 * 100
+    assert unit['capacity_factor_pct'] == pytest.approx(88 * 100 / (90 * 500) * 100)
+    assert body['inventory']['kpis']['stock'] is None
+    assert body['inventory']['kpis']['risk'] == 'unknown'
+    assert body['models'][0]['coal_available_mw'] == 50000
+    assert body['models'][0]['coal_target_mw'] == 19000
+    assert body['outages'][0]['end_at'] == '2027-01-03T00:00:00+09:00'
+    assert body['monthly'][0]['complete_days'] == 31
+    assert body['monthly'][-1]['fuel_tonnes'] is None
+    assert body['monthly'][-1]['complete_days'] == 7
+    assert sum(u['fuel_tonnes'] for u in body['units']) == pytest.approx(sum(d['fuel_tonnes'] for d in body['daily']))
+
+
+def test_snapshot_rejects_out_of_period_and_keeps_missing_hours_unknown(client, saved_snapshot_run):
+    assert client.get('/api/planning/runs/missing/snapshot').status_code == 404
+    assert client.get('/api/planning/runs/snapshot-test/snapshot?horizon=10').status_code == 400
+    assert client.get('/api/planning/runs/snapshot-test/snapshot?start=2027-04-01&horizon=30').status_code == 400
+    assert client.get('/api/planning/runs/snapshot-test/snapshot?start=2026-12-31&horizon=7').status_code == 400
+    path = saved_snapshot_run / 'hourly.npz'
+    with np.load(path) as stored:
+        fields = {k: stored[k] for k in stored.files}
+    del fields['coal_available']
+    # Missing last day invalidates that day, its unit aggregate and its full month.
+    fields['output'] = fields['output'][:-1]
+    fields['online'] = fields['online'][:-1]
+    np.savez_compressed(path, **fields)
+    body = client.get('/api/planning/runs/snapshot-test/snapshot?start=2027-04-01&horizon=7').json()
+    assert body['daily'][-1]['generation_mwh'] is None
+    assert body['daily'][-1]['fuel_tonnes'] is None
+    assert body['units'][0]['capacity_factor_pct'] is None
+    assert body['models'][0]['coal_available_mw'] is None
+    assert any('가용용량' in issue for issue in body['issues'])
 
 
 def test_vessel_correction_persists_version_and_rejects_backward_time(client):

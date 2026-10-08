@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from midterm.annual import AnnualResult
-from midterm.fleet import DANGJIN
+from midterm.fleet import DANGJIN, load_coal_units
 from midterm.units import plant_of
 
 
@@ -24,8 +24,7 @@ def summarize(result: AnnualResult) -> dict:
     """화면·엑셀이 같이 쓰는 표. MW 는 시간평균, MWh 는 합계."""
     dj = _dangjin_index(result)
     names = [result.names[j] for j in dj]
-    capacity = {"당진1": 500, "당진2": 500, "당진3": 500, "당진4": 500, "당진5": 500,
-                "당진6": 500, "당진7": 500, "당진8": 500, "당진9": 1020, "당진10": 1020}
+    capacity = {u.name: u.installed_mw for u in load_coal_units()}
     installed = sum(capacity.get(n, 0) for n in names)
     out = result.output[:, dj]
     on = result.online[:, dj]
@@ -90,6 +89,7 @@ def summarize(result: AnnualResult) -> dict:
     return {
         "scenario": result.scenario.to_json(),
         "units": names, "installed_mw": installed,
+        "unit_capacity_mw": {n: capacity[n] for n in result.names},
         "annual": {
             "dangjin_mwh": round(total_mwh, 0),
             "dangjin_avg_mw": round(total_mwh / hours_total, 1),
@@ -202,7 +202,8 @@ def save_run(result: AnnualResult, directory: Path) -> dict:
                         output=result.output.astype(np.float32), online=result.online,
                         starts=result.starts, demand=result.demand, solar=result.solar,
                         nuclear=result.nuclear, coal_target=result.coal_target,
-                        coal_model=result.coal_model, shortage=result.shortage, excess=result.excess)
+                        coal_model=result.coal_model, coal_available=result.coal_available,
+                        shortage=result.shortage, excess=result.excess)
     return summary
 
 

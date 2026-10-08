@@ -1,6 +1,96 @@
 import { test, expect } from "@playwright/test";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { planningFixture } from "./planning-fixture";
+
+test("MILP backend shows ten units, date-bound plans and missing inventory explicitly", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    const body =
+      url.pathname === "/api/runs"
+        ? [
+            {
+              id: "검증 계산",
+              name: "검증 계산",
+              period: "2027-01-01 ~ 2027-12-31",
+            },
+          ]
+        : planningFixture(
+            "검증 계산",
+            url.searchParams.get("start")!,
+            Number(url.searchParams.get("horizon")),
+          );
+    await route.fulfill({ json: body });
+  });
+  await page.goto("/");
+  await expect(page.locator("[data-unit-id]")).toHaveCount(10);
+  await expect(
+    page.getByRole("heading", { name: "월별 석탄 사용 예정량" }),
+  ).toBeVisible();
+  await expect(page.locator(".midterm-kpis")).toContainText("미등록");
+  await expect(page.locator(".midterm-kpis")).toContainText("미확정");
+  await expect(
+    page.getByText("동작 확인용 MILP", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".midterm-outage-bar")).toHaveCount(1);
+  await page.getByRole("button", { name: "90일", exact: true }).click();
+  await expect(page.locator(".midterm-source")).toContainText("2027-03-31");
+  await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
+  await expect(page.locator(".midterm-source")).toContainText("2027-05-01");
+  await expect(page.locator(".midterm-outage-bar")).toHaveCount(0);
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "저탄장 현황", exact: true })
+    .click();
+  await expect(page.locator(".yard-pile")).toHaveCount(16);
+  await expect(page.locator(".midterm-page")).toHaveCount(0);
+  await expect(
+    page.getByRole("group", { name: "발전소 종합 데이터 모드" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "선박 추적", exact: true })
+    .click();
+  await expect(page.locator(".vessel-map-dots").first()).toBeVisible();
+  await expect(page.locator(".shipment-card")).toHaveCount(4);
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "예측/모델 상세", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "재학습 · 전망에 적용" }),
+  ).toHaveCount(1);
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "발전소 종합", exact: true })
+    .click();
+  await expect(page.locator("[data-unit-id]")).toHaveCount(10);
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("failed backend stays an error and synthetic demo requires explicit selection", async ({
+  page,
+}) => {
+  await page.route("**/api/runs", (route) =>
+    route.fulfill({ status: 503, json: { detail: "서버 연결 확인" } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("alert")).toContainText("서버 연결 확인");
+  await expect(page.locator(".tower-kpis")).toHaveCount(0);
+  await page.getByRole("button", { name: "합성 데모", exact: true }).click();
+  await expect(page.locator(".tower-metric").first()).toContainText("538,000");
+  await expect(page.getByText("샘플 데이터", { exact: true })).toBeVisible();
+});
 
 test("world map accepts 200 normalized vessel positions without hard-coded shipment IDs", async ({
   page,
@@ -16,7 +106,7 @@ test("world map accepts 200 normalized vessel positions without hard-coded shipm
 test("pile drilldown, stale AIS and model training update the operational forecast", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   const before = await page.locator(".tower-metric").nth(7).innerText();
   await page
     .getByRole("navigation", { name: "주 메뉴" })
@@ -67,7 +157,7 @@ test("theme persists, scope recalculates, and planned stop details remain explic
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await expect(
     page.getByRole("heading", { name: "발전소 종합", exact: true }),
   ).toBeVisible();
@@ -95,7 +185,7 @@ test("theme persists, scope recalculates, and planned stop details remain explic
 test("scenario is applied explicitly, shows actual orb canvas and updates forecast", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await page
     .getByRole("button", { name: "시나리오 분석", exact: true })
     .click();
@@ -132,7 +222,7 @@ test("mobile navigation, all views, and dark mode stay within the viewport", asy
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await page.getByRole("button", { name: "60일", exact: true }).click();
   await expect(page.locator('.processing-strip [role="status"]')).toBeVisible();
   await expect(page.locator(".processing-strip canvas")).toBeVisible();
@@ -196,7 +286,7 @@ test("offline single HTML supports calculation without network", async ({
 test("world map selection, zoom and scoped shipment details stay synchronized", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "선박 추적", exact: true })
@@ -224,7 +314,7 @@ test("world map selection, zoom and scoped shipment details stay synchronized", 
 test("inventory chart exposes interval boundary and scopes cargo", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await expect(page.getByText(/가로축: 다음날 09:00 KST/)).toBeVisible();
   await page.getByRole("combobox", { name: "발전본부 선택" }).click();
   await page.getByRole("option", { name: "보령", exact: true }).click();
@@ -239,7 +329,7 @@ test("tablet and narrow phone retain all navigation views without page overflow"
 }) => {
   for (const width of [768, 320]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
+    await page.goto("/?source=synthetic");
     for (const name of [
       "저탄장 현황",
       "선박 추적",
@@ -274,7 +364,7 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/?source=synthetic");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "선박 추적", exact: true })
