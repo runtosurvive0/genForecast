@@ -2,7 +2,7 @@
 
 연료 기반 발전량 전망 시스템. 저장소 이름은 `genForecast`, npm 패키지 이름은 소문자 `genforecast`를 사용합니다.
 
-팀 개발은 [3인 협업 안내](CONTRIBUTING.md)를 먼저 확인하세요. 생성된 대시보드 HTML은 Git에서 제외하며 `npm run build`로 만듭니다.
+팀 개발은 [3인 협업 안내](CONTRIBUTING.md) → [Git 실습 가이드](docs/GIT_WORKFLOW.md) 순서로 확인하세요. AI에게는 [작업 지시 예시](docs/AI_PROMPTS.md)와 [AGENTS.md](AGENTS.md)를 전달하세요. 생성된 대시보드 HTML은 Git에서 제외하며 `npm run build`로 만듭니다.
 
 ## 중장기 개발 브랜치
 
@@ -15,14 +15,14 @@
 
 ## 바로 열기
 
-`발전운영_대시보드.html`을 브라우저에서 열면 됩니다. 스크립트, 스타일, 세계지도 데이터가 포함되어 네트워크 연결 없이 동작합니다. 원본 `연료수급_종합시스템_오프라인_대시보드.html`은 그대로 보존했습니다.
+처음 clone했다면 `npm ci` 후 `npm run build`로 생성한 `발전운영_대시보드.html`을 브라우저에서 엽니다. 스크립트, 스타일, 세계지도 데이터가 포함되어 네트워크 연결 없이 동작합니다. 원본 `연료수급_종합시스템_오프라인_대시보드.html`은 그대로 보존했습니다.
 
 ## 개발
 
 Node.js 24 이상을 권장합니다.
 
 ```sh
-npm install
+npm ci
 npm run dev
 npm test
 npm run build

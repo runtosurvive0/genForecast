@@ -55,7 +55,7 @@ import { Slider } from "@/components/ui/slider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { InventoryChart, OutageTimeline } from "@/components/OperationsCharts";
-import { VesselMap } from "@/components/VesselMap";
+import { VesselMap } from "@/features/vessels/VesselMap";
 import {
   BASE_TIME,
   shipments,
@@ -71,13 +71,11 @@ import {
   towerSummary,
   defaultModels,
 } from "@/domain/control-tower";
-import {
-  PlantOverview,
-  Stockyard,
-  VesselTracking,
-  ModelsPage,
-  DataPage,
-} from "@/components/ControlTower";
+import { PlantOverview } from "@/features/plant/PlantOverview";
+import { Stockyard } from "@/features/stockyard/Stockyard";
+import { VesselTracking } from "@/features/vessels/VesselTracking";
+import { ModelsPage } from "@/features/models/ModelsPage";
+import { DataPage } from "@/features/data/DataPage";
 import { forecastTask } from "@/lib/forecast-task";
 import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
 import { number as n, date as fmtDate, shiftDate } from "@/lib/format";

@@ -1,11 +1,11 @@
-import { voyages } from "../data/control-tower";
-import { freshness } from "../domain/control-tower";
+import { voyages } from "@/data/control-tower";
+import { freshness } from "@/domain/control-tower";
 import { useId, useState } from "react";
 import { ComposableMap, Marker, ZoomableGroup } from "react-simple-maps";
 import { Minus, Plus, RotateCcw, Ship } from "lucide-react";
-import type { Plant, Shipment } from "../domain/operations";
-import { Button } from "./ui/button";
-import { WorldMap } from "./ui/world-map";
+import type { Plant, Shipment } from "@/domain/operations";
+import { Button } from "@/components/ui/button";
+import { WorldMap } from "@/components/ui/world-map";
 import "./vessel-map.css";
 
 type Coordinate = [number, number];

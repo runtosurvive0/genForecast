@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { VesselMap } from "../src/components/VesselMap";
+import { VesselMap } from "../src/features/vessels/VesselMap";
 import { plants, shipments } from "../src/domain/operations";
 import "../src/index.css";
 import "../src/refinement.css";

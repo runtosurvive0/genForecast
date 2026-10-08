@@ -67,27 +67,6 @@
   color: var(--muted-foreground);
   margin: 2px 0 0;
 }
-.tower-signal {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1.25fr;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--border);
-  gap: 20px;
-}
-.tower-signal span {
-  display: block;
-  font-size: 11px;
-  color: var(--muted-foreground);
-  margin-bottom: 7px;
-}
-.tower-signal strong {
-  font-size: 15px;
-  font-weight: 500;
-}
-.tower-signal small {
-  font-weight: 400;
-  color: var(--muted-foreground);
-}
 .tower-section {
   min-width: 0;
   padding: 20px;
@@ -197,113 +176,6 @@
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
-.yard-flow {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 0 20px;
-  margin-bottom: 20px;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  overflow: auto;
-}
-.yard-flow span {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  white-space: nowrap;
-}
-.yard-map {
-  display: grid;
-  gap: 15px;
-}
-.yard-plant {
-  display: grid;
-  grid-template-columns: 65px 1fr;
-  align-items: center;
-  gap: 15px;
-}
-.yard-plant > span {
-  font-size: 11px;
-  color: var(--muted-foreground);
-}
-.yard-piles {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-}
-.yard-pile {
-  min-width: 0;
-  height: 104px;
-  border: 1px solid #74847c40;
-  background: #74847c0c;
-  border-radius: 5px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  cursor: pointer;
-}
-.yard-pile strong {
-  font-size: 12px;
-  font-weight: 500;
-}
-.yard-pile span,
-.yard-pile small {
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
-.yard-pile.risk-medium {
-  background: #b3935e13;
-  border-color: #b3935e55;
-}
-.yard-pile.risk-high {
-  background: #be796313;
-  border-color: #be796355;
-}
-.yard-pile[aria-pressed="true"] {
-  outline: 2px solid #7984c4;
-  outline-offset: 2px;
-}
-.vessel-cargo-list {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-.vessel-cargo-list .shipment-card {
-  display: flex;
-  flex-direction: column;
-  text-align: left;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--card);
-  min-width: 0;
-  cursor: pointer;
-}
-.vessel-cargo-list .shipment-card.selected {
-  border-color: #7b85b0;
-}
-.vessel-cargo-list strong {
-  font-size: 12px;
-}
-.vessel-cargo-list span {
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
-.vessel-cargo-list b {
-  font-size: 12px;
-  font-weight: 500;
-}
-.vessel-cargo-list small {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--muted-foreground);
-}
 .model-metrics {
   display: flex;
   gap: 18px;
@@ -322,30 +194,6 @@
   font-weight: 500;
   color: var(--foreground);
 }
-.model-controls {
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  flex-wrap: wrap;
-  font-size: 12px;
-}
-.model-controls label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.model-controls select {
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 8px 14px;
-}
-.tower-prose {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  line-height: 1.9;
-  max-width: 850px;
-}
 .tower-page button:focus-visible {
   outline: 2px solid #7984c4;
   outline-offset: 3px;
@@ -354,35 +202,16 @@
   .tower-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .tower-kpis-six {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-  .tower-kpis-six .tower-metric {
-    border-bottom: 0;
-    border-right: 1px solid var(--border);
-  }
-  .tower-kpis-six .tower-metric:last-child {
-    border-right: 0;
-  }
 }
 @media (max-width: 1100px) {
   .tower-two {
     grid-template-columns: 1fr;
-  }
-  .vessel-cargo-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .tower-metric {
     padding: 17px 14px;
   }
   .tower-metric strong {
     font-size: 25px;
-  }
-  .tower-signal {
-    grid-template-columns: 1fr 1fr;
-  }
-  .tower-signal > div:last-child {
-    grid-column: 1/-1;
   }
 }
 @media (max-width: 650px) {
@@ -427,58 +256,7 @@
   .tower-details {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .tower-signal {
-    gap: 16px;
-  }
-  .tower-signal strong {
-    font-size: 12px;
-  }
-  .yard-plant {
-    display: block;
-  }
-  .yard-plant > span {
-    display: block;
-    margin-bottom: 10px;
-  }
-  .yard-piles {
-    gap: 4px;
-  }
-  .yard-pile {
-    height: 110px;
-  }
-  .yard-pile span {
-    font-size: 8px;
-  }
-  .yard-pile small {
-    font-size: 8px;
-  }
-  .vessel-cargo-list {
-    grid-template-columns: 1fr 1fr;
-  }
-  .vessel-cargo-list .shipment-card {
-    padding: 12px;
-  }
-  .vessel-cargo-list b small {
-    display: block;
-  }
   .tower-context > span {
     font-size: 10px;
   }
-  .tower-kpis-six .tower-metric:nth-last-child(-n + 2) {
-    border-bottom: 0;
-  }
-}
-
-.tower-api {
-  font-size: 11px;
-  margin-top: 16px;
-}
-.tower-api summary {
-  cursor: pointer;
-}
-.tower-api code {
-  display: block;
-  margin-top: 10px;
-  overflow-wrap: anywhere;
-  font-size: 10px;
 }
