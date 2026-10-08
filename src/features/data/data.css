@@ -1,0 +1,20 @@
+.tower-prose {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.9;
+  max-width: 850px;
+}
+
+.tower-api {
+  font-size: 11px;
+  margin-top: 16px;
+}
+.tower-api summary {
+  cursor: pointer;
+}
+.tower-api code {
+  display: block;
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}

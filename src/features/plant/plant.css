@@ -1,0 +1,37 @@
+.tower-signal {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.25fr;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 20px;
+}
+.tower-signal span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-bottom: 7px;
+}
+.tower-signal strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.tower-signal small {
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+@media (max-width: 1100px) {
+  .tower-signal {
+    grid-template-columns: 1fr 1fr;
+  }
+  .tower-signal > div:last-child {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 650px) {
+  .tower-signal {
+    gap: 16px;
+  }
+  .tower-signal strong {
+    font-size: 12px;
+  }
+}
