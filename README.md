@@ -6,10 +6,16 @@
 
 ## 중장기 개발 브랜치
 
-`feat/midlongterm-dangjin`에서 기존 중장기 Python 수요예측·석탄 MIP·SQLite 수급 API를
-`backend/`로 이관했다. React 합성데이터 화면은 유지하고 Python 당진 화면은 로컬 8093에서
-별도로 실행한다. 실행·복원 방법은 [backend 안내](backend/README.md), 계산/계약 차이는
-[이관 기록](docs/MIDTERM_INTEGRATION.md)에 있다. 실제 자료·DB·학습 모델·저장 결과는 Git 제외다.
+발전소 종합 화면은 `backend/`의 중장기 수요예측·석탄 MILP·SQLite API를 연결해 일별 석탄
+사용량, 월별 연료계획, 호기별 이용률·계획정지와 연료수급 전망을 표시한다. 승인된 실제 자료·
+학습 모델·DB·저장 결과 17개를 [공유 스냅샷 목록](backend/shared-assets.json)과 함께 제공하며,
+환경변수·개발환경·캐시·빌드 결과는 제외한다. 새 클론에서 실행하는 방법은
+[backend 안내](backend/README.md), 계산/계약과 임시 가정은 [이관 기록](docs/MIDTERM_INTEGRATION.md)에 있다.
+
+기본 개발 포트는 프론트엔드 5173 / API 8093이다. 별도 개선 워크트리는 `.env.local`에서
+`MIDTERM_DEV_PORT=5174`, `MIDTERM_API_TARGET=http://127.0.0.1:8094`를 지정하고 API도 8094로
+실행한다. 각 워크트리의 Python 환경과 DB는 따로 관리한다. 포함된 2027 결과는 계획정지
+자료가 미완성인 기능 확인용 결과이며, 현재 재고가 없는 수급 항목은 미등록으로 표시한다.
 
 상단 바와 좌측 사이드바 구조를 유지하면서 발전운영 중심으로 개편한 오프라인 데모입니다.
 

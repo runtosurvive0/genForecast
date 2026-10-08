@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/runtosurvive0/genForecast",
+  "publication_approved_on": "2026-10-08",
+  "publication_scope": "User explicitly authorized public sharing of these 17 existing actual data, model, SQLite and saved-run files.",
+  "limitations": [
+    "The saved 2027 run is a functional_demo; its planned-outage inputs are incomplete.",
+    "Coal conversion uses a provisional 5500 kcal/kg setting; settings can be updated through the planning DB/API.",
+    "The net-demand metadata includes observed temperature and solar arrays; solar uses historical weather patterns, not a separate trained solar model.",
+    "This is a fixed publication snapshot. Local DB updates and new results require review before a later publication."
+  ],
+  "total_bytes": 14228522,
+  "files": [
+    {
+      "path": "data/coal_units.csv.json",
+      "bytes": 22354,
+      "sha256": "1cb99baef3501e8fe6bb6ca0882b9826b3ca1573fa7a2a66e351127c26890ab8"
+    },
+    {
+      "path": "data/dangjin_actual_hourly.csv.json",
+      "bytes": 3583866,
+      "sha256": "b4a8cb02e11fd60540a64590bb15bfd9fad88ff71fba71f0da6e7566baf23650"
+    },
+    {
+      "path": "data/heat_price.csv.json",
+      "bytes": 14804,
+      "sha256": "8e7afdb688e2d201b7d5de2ce01c5476b2ff7c97eea9f44e6548f5fb822c1634"
+    },
+    {
+      "path": "data/heat_price_history_2026.csv.json",
+      "bytes": 14177,
+      "sha256": "abeee8014e3ab12c0fdf04792a5a967562932b9f612be05ffb1be3cfd3d3469b"
+    },
+    {
+      "path": "data/history_hourly.csv.json",
+      "bytes": 5004825,
+      "sha256": "50a6bbf984120c851a466c4b6066fd80834a36dc41aa8f451939ca69dd4d421e"
+    },
+    {
+      "path": "data/nuclear_units.csv.json",
+      "bytes": 4111,
+      "sha256": "8f63f42858dc1aa0125e4a594e57ca04c54e29ee5923d9b878c6f588fdfba43d"
+    },
+    {
+      "path": "data/planning.sqlite3",
+      "bytes": 86016,
+      "sha256": "16825a0a39b80d2b9ae75db54c5972b381e5ea7f079ac26552ba2415f01c0ecf"
+    },
+    {
+      "path": "inputs/coal_oh_2027.csv.json",
+      "bytes": 57,
+      "sha256": "7757c46a93bf8ef5c65482d222b144e9562534525523d1a4c40a899126ee551f"
+    },
+    {
+      "path": "inputs/nuclear_oh_2027.csv.json",
+      "bytes": 972,
+      "sha256": "7bfd2a1a597707027b4a03202ae7b04a546ff457dde392fafc077eaaff271ce5"
+    },
+    {
+      "path": "inputs/ranking_oh.json",
+      "bytes": 491,
+      "sha256": "2769d7cd1442aea58a9919785989ba536908a85a9107306ac3294fd97c6380a2"
+    },
+    {
+      "path": "models/coal-curve.json",
+      "bytes": 2541,
+      "sha256": "bba804bda588a9eccb71db0d8888862aedffc3223b1efccc2a8de841828fad0e"
+    },
+    {
+      "path": "models/coal-curve.txt",
+      "bytes": 828144,
+      "sha256": "3e8a779fa5e9ba9acf56fa5a72b9f0a75bae7e972107e228687a2e72f74dcb8c"
+    },
+    {
+      "path": "models/net-demand.json",
+      "bytes": 632397,
+      "sha256": "eacbe4fbdf8a80c323e4d13dce1f3ec6659c38b5f0cf21e0d551065020ffaece"
+    },
+    {
+      "path": "models/net-demand.txt",
+      "bytes": 3368884,
+      "sha256": "1c60faf5f91a3acef6ea4b8aabac8ece3d2f5ac59776d9b4a3b27733e2619b7e"
+    },
+    {
+      "path": "runs/20261004-111057-2027기본/hourly.npz",
+      "bytes": 393929,
+      "sha256": "9c63d820f013e9a11d8a06f1bb002a64266911c8a2c910dbdc9eb2b2a0043064"
+    },
+    {
+      "path": "runs/20261004-111057-2027기본/scenario.json",
+      "bytes": 1589,
+      "sha256": "5ea29301e2eaf9582c2fcc751603a1befad9a000ef210bd02a5dbf1cff032b23"
+    },
+    {
+      "path": "runs/20261004-111057-2027기본/summary.json",
+      "bytes": 269365,
+      "sha256": "23995137af2274c66558f339cd9609fe9be20a29ee9262df4ccde96771900f8d"
+    }
+  ]
+}

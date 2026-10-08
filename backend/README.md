@@ -11,7 +11,8 @@ Python 3.12 이상이 필요하다. 이 폴더에서 실행한다.
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.venv\Scripts\python.exe -m pip install -r requirements.lock -e ".[dev]"
+.venv\Scripts\python.exe scripts/verify_shared_assets.py
 .\serve-poc.ps1
 ```
 
@@ -23,8 +24,10 @@ PYTHONPATH는 항상 이 폴더의 `src`로 지정하므로 기존 설치가 다
 .\serve-poc.ps1 -PythonPath 'D:\mid term milp\.venv\Scripts\python.exe'
 ```
 
-다른 PC의 clone에는 실행 자료가 없다. 승인된 로컬 자료를 다음 경로에 복원한 뒤 실행한다.
-실제 데이터를 Git에 추가하지 않는다. `.env`는 자동으로 읽지 않으며 환경변수로 지정한다.
+clone에는 2026-10-08 공개 승인을 받은 기준자료·실적·두 모델·입력·SQLite DB·저장 결과
+17개가 포함된다. 파일별 크기와 SHA-256은 `shared-assets.json`에 기록했다. 저장 결과 조회와
+모델 예측에는 원천 DB 연결정보가 필요 없다. Python의 연결정보는 프로세스 환경변수로 지정하며
+`.env`를 자동으로 읽지 않는다. 실제 `.env`와 추가 로컬 자료·가상환경·출력은 계속 제외한다.
 
 | 경로 | 내용 |
 |---|---|
@@ -39,7 +42,10 @@ PYTHONPATH는 항상 이 폴더의 `src`로 지정하므로 기존 설치가 다
 | `inputs/ranking_oh.json` | 배분 백테스트용 월별 과거 정비 가정(`월: 호기명 배열`) |
 | `runs/` | 저장된 MIP 실행의 summary/NPZ/재현 시나리오 |
 
-현재 PC에는 이전 프로젝트의 DB·모델·기준자료·저장 결과를 독립 복사했다. 원본들은 보존했다.
+공유한 DB는 해당 시점의 원장 스냅샷이다. 사용자 입력이나 모델·자료를 갱신하면 명세의 체크섬과
+달라질 수 있으므로 다음 공유 전에 변경 파일과 명세를 함께 검토한다. 새 실행 결과는 자동으로
+Git에 포함하지 않으며 현재 승인된 저장 결과 한 건만 추적한다. CSV는 포함된 JSON 사본에서
+자동 복원되며 복원한 CSV는 Git에서 제외된다. 현재 PC의 기존 폴더와 개선 워크트리는 독립 DB를 사용한다.
 LightGBM `.txt` 파일은 LF 줄바꿈을 유지해야 한다. 임의 CRLF 변환은 모델을 손상시킨다.
 실적 DB를 다시 수집할 때만 `MIDTERM_SOURCE_DSN` 환경변수 또는 `snapshot --dsn`을 사용한다.
 기본 서버는 localhost에 바인딩된다.
@@ -73,7 +79,7 @@ React의 이번 연결은 저장 결과 조회이고 계산 요청·DB 입력 �
 `MIDTERM_API_TARGET=http://127.0.0.1:8094`로 개발 서버를 분리할 수 있다. Python은
 `backend` 폴더에서 `.\serve-poc.ps1 -Port 8094`로 실행한다. Vite는 포트가 이미 사용 중이면
 종료하므로 기존 서버와 주소가 섞이지 않는다. UI 테스트도 같은 화면 포트 설정을 사용한다.
-`.env.local`과 실행 자료는 Git에서 제외된다.
+`.env.local`과 추가 로컬 실행 자료는 Git에서 제외된다.
 
 태양광은 실적 패턴/기상연도 재생 전망이며 독립 ML 모델이 아니다. KPI의 MAPE와 DSS 구분은
 검증자료가 연결되지 않은 상태다. 실제 KPX 자동 연결도 미구현이다. 로컬 2027년 저장 결과는
@@ -87,6 +93,6 @@ React의 이번 연결은 저장 결과 조회이고 계산 요청·DB 입력 �
 ```
 
 테스트는 합성 운전특성과 임시 SQLite를 사용한다. 실적·모델 없이도 실행할 수 있다.
-보존된 로컬 MIP 결과를 확인하는 한 테스트는 해당 파일이 없으면 skip한다. 새 브랜치 CI에서
+보존된 MIP 결과를 확인하는 테스트는 공유한 결과를 검증하며 해당 파일이 없으면 skip한다. CI에서
 기존 React 검증과 Python 검증을 각각 수행한다. 통합 방법과 계약 차이는
 [이관 기록](../docs/MIDTERM_INTEGRATION.md)을 참고한다.

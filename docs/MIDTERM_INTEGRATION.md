@@ -14,10 +14,10 @@ package/lockfile은 유지한다. 기존 브랜치의 모델·수급 계산과 �
 
 ## 실행 자료
 
-`backend/data`, `backend/models`, `backend/inputs`, `backend/runs`는 모두 Git 제외한다.
+초기 이관에서는 `backend/data`, `backend/models`, `backend/inputs`, `backend/runs`를 모두 Git 제외했다.
 현재 PC에는 기존 자료를 복사했고 DB는 SQLite backup으로 일관되게 복제했다. 실제 재고/선박을
 추가하거나 실행 결과를 임의 생성하지 않았다. 모델은 재학습하지 않았으며 가중치·줄바꿈을 보존한다.
-실행 자료와 학습 산출물을 다른 PC에서 사용하려면 Git 이외의 승인된 방법으로 전달해야 한다.
+당시 다른 PC에 실행 자료와 학습 산출물을 전달하는 경로는 Git 이외의 승인된 방법이었다.
 과거 예제 저장소의 실적·모델을 포함한 커밋을 이 저장소의 부모로 연결하지 않는다.
 백테스트 스크립트에 들어 있던 과거 정비 목록도 로컬 `inputs/ranking_oh.json`으로 분리했다.
 파일이 없으면 백테스트가 정비를 임의로 생략하지 않고 복원 필요를 알린다.
@@ -52,7 +52,20 @@ POC이고 `/api/supply`의 내부 원장을 사용한다. React의 더미 수치
 새 `planning.ts` 조회 계약과 `features/plant` 화면을 추가했으며 기존 합성 계산은 보존했다.
 현재 조회 서버는 `GET /api/planning/runs/{run_id}/snapshot`, 개발 프록시는 Python 8093이다.
 호기·시간·이용률·모델 의미·연료/재고 기준은 [데이터 사전](DATA_DICTIONARY.md)의 MILP 모드에 기록했다.
-반응형 UI와 기존 오프라인 합성 HTML을 유지하며, 운영 자료와 모델은 Git에 포함하지 않는다.
+반응형 UI와 기존 오프라인 합성 HTML을 유지했으며, 초기 연결 당시 운영 자료와 모델은 Git에 포함하지 않았다.
+
+## 공개 승인된 실행 스냅샷 · feature/plant-fuel-dashboard
+
+사용자가 2026-10-08 현재 실제 자료·모델·DB·저장 결과의 공개와 push/PR을 명시적으로 승인했다.
+해당 스냅샷 17개만 Git 허용 목록에 추가하고 크기·SHA-256을 `backend/shared-assets.json`에 기록한다.
+실제 환경변수·가상환경·Node 의존성·캐시·빌드·추가 결과는 제외한다. 모델과 실측 배열은 재학습하거나
+변경하지 않고 포함하며 SQLite는 공유 시점의 원장이다. 2027 결과는 정비 입력이 불완전한 동작 확인용이다.
+새 clone에서도 모델·기준자료·저장 결과를 읽을 수 있으며 `backend/scripts/verify_shared_assets.py`로
+체크섬을 확인한다. 실행 의존성은 `backend/requirements.lock`으로 고정한다.
+
+원격 main의 화면 모듈 분리와 협업 문서를 개선 워크트리에 반영했다. 저탄장·선박·모델 상세·관리자
+기능은 main의 모듈을 사용한다. 발전소 종합만 저장된 MILP 연료수급 대시보드를 표시하며 PR 대상은 main이다.
+5173의 `baseline/plant-midterm-5173`은 기존 `a2ce734`로 보존하고 개선 브랜치는 5174/8094에서 실행한다.
 
 ## 검증
 

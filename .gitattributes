@@ -14,3 +14,9 @@
 *.woff2 binary
 # LightGBM의 tree_sizes는 바이트 기준. CRLF로 변환하지 않는다.
 backend/models/*.txt text eol=lf
+*.sqlite3 binary
+*.npz binary
+# 승인 스냅샷의 원래 CRLF 바이트와 체크섬을 보존한다.
+backend/inputs/ranking_oh.json -text whitespace=cr-at-eol
+backend/models/coal-curve.json -text whitespace=cr-at-eol
+backend/runs/*/*.json -text whitespace=cr-at-eol
