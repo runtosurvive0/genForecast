@@ -28,7 +28,7 @@ Thinking Orbs is [MIT licensed, copyright 2026 Jakub Antalik](https://github.com
 
 ## World map and vessel status
 
-`src/components/VesselMap.tsx` uses the actual [React Simple Maps](https://github.com/zcreativelabs/react-simple-maps) kit (`ComposableMap`, `Geographies`, `Geography`, `Marker`, `Line`, and `ZoomableGroup`) alongside shadcn buttons and the dashboard's shared theme variables. Version 5.0.5 explicitly supports React 19 and is MIT licensed. Its D3 Equal Earth projection is centered on the Pacific; dragging and zoom controls allow a complete world view.
+`src/features/vessels/VesselMap.tsx` uses the actual [React Simple Maps](https://github.com/zcreativelabs/react-simple-maps) kit (`ComposableMap`, `Geographies`, `Geography`, `Marker`, `Line`, and `ZoomableGroup`) alongside shadcn buttons and the dashboard's shared theme variables. Version 5.0.5 explicitly supports React 19 and is MIT licensed. Its D3 Equal Earth projection is centered on the Pacific; dragging and zoom controls allow a complete world view.
 
 The map imports `world-atlas/countries-110m.json` locally, so geography is bundled in the offline HTML rather than fetched from a URL. [World Atlas](https://github.com/topojson/world-atlas) redistributes Natural Earth's public-domain geographic data as TopoJSON under ISC; its archived dataset is intended here for geographic context. It is not current navigational data.
 
