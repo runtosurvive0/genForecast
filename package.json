@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build && node scripts/export.mjs",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --experimental-strip-types --test tests/operations.test.ts tests/control-tower.test.ts",
+    "test": "node --experimental-strip-types --test tests/operations.test.ts tests/control-tower.test.ts tests/planning.test.ts",
     "test:ui": "node scripts/test-ui.mjs"
   },
   "dependencies": {

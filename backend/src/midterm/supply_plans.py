@@ -35,6 +35,8 @@ def _read_run(folder: str, modified: tuple):
                 "demand_peak_mw": float(demand[sl].max()), "solar_mw": float(solar[sl].mean()),
                 "solar_mwh": float(solar[sl].sum()), "solar_peak_mw": float(solar[i + 12]),
                 "coal_ml_mw": float(coal[sl].mean()) if coal is not None else None, "coal_mip_mw": d["coal_solved_avg_mw"],
+                "coal_target_mw": float(data["coal_target"][sl].mean()) if "coal_target" in data else None,
+                "coal_available_mw": float(data["coal_available"][sl].mean()) if "coal_available" in data else None,
                 "starts": d["starts"], "units_off": 10 - d["units_online_avg"]})
     return plan, forecasts, summary
 
@@ -51,6 +53,7 @@ def run_plan(run_id):
         "warnings": summary["warnings"], "model_info": summary["model_info"],
         "outages": summary["outages"], "name": summary["scenario"]["name"],
         "classification": summary.get("classification", "scenario_forecast"),
+        "unit_capacity_mw": summary.get("unit_capacity_mw"),
         "classification_note": summary.get("classification_note", "")}
 
 

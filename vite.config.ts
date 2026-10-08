@@ -8,8 +8,14 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), viteSingleFile()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
+    proxy: { "/api": { target: "http://127.0.0.1:8093", changeOrigin: true } },
     watch: {
-      ignored: ["**/.tooling-tmp/**", "**/.npm-cache/**", "**/test-results/**", "**/artifacts/**"],
+      ignored: [
+        "**/.tooling-tmp/**",
+        "**/.npm-cache/**",
+        "**/test-results/**",
+        "**/artifacts/**",
+      ],
     },
   },
   build: { target: "es2022", chunkSizeWarningLimit: 1500 },

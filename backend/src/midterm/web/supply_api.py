@@ -247,8 +247,8 @@ def forecast(start: str, days: int = Query(default=67, ge=14, le=90)):
 
 @router.get("/dashboard")
 def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key: str | None = None):
-    if horizon not in (7, 30, 60):
-        raise HTTPException(400, "전망 기간은 7일, 30일, 60일 중 선택하세요")
+    if horizon not in (7, 30, 60, 90):
+        raise HTTPException(400, "전망 기간은 7일, 30일, 60일, 90일 중 선택하세요")
     as_of = parse_at(at) if at else now()
     data = read_supply()
     plans = []
