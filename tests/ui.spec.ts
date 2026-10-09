@@ -234,6 +234,26 @@ test("pile drilldown, stale AIS and model training update the operational foreca
     page.getByRole("heading", { name: "DA-04 · 인니 저열량탄" }),
   ).toBeVisible();
   await expect(page.locator(".tower-details")).toContainText("미연결");
+  await expect(page.locator(".tower-details")).toContainText("당진 9호기");
+  await expect(page.locator(".tower-details")).not.toContainText("당진 1호기");
+  await expect(
+    page.getByRole("heading", { name: "주간 소진 · 혼탄 시뮬레이션" }),
+  ).toBeVisible();
+  await page
+    .getByRole("group", { name: "발전소 선택" })
+    .getByRole("button", { name: "당진", exact: true })
+    .click();
+  await expect(page.locator(".yard-pile")).toHaveCount(4);
+  await expect(page.locator(".tower-metric").first()).toContainText("180,000");
+  await expect(
+    page.getByRole("heading", { name: "재고 전망", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".stockyard-incoming tbody tr")).toHaveCount(1);
+  await page
+    .getByRole("group", { name: "발전소 선택" })
+    .getByRole("button", { name: "전체", exact: true })
+    .click();
+  await expect(page.locator(".yard-pile")).toHaveCount(16);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "선박 추적", exact: true })
