@@ -62,7 +62,13 @@ export const stockpiles: Stockpile[] = plants.flatMap((p, pi) =>
     ).toISOString(),
     temperature_c: null,
     co_ppm: null,
-    eligible_unit_ids: p.units.map((u) => u.id),
+    // Single-fuel boilers cannot take the low-calorific blending pile.
+    eligible_unit_ids:
+      i === 3
+        ? p.units
+            .filter((u) => u.capacityMw >= 1000)
+            .map((u) => u.id)
+        : p.units.map((u) => u.id),
   })),
 );
 const positions = [

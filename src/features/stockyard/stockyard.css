@@ -104,3 +104,68 @@
     border-bottom: 0;
   }
 }
+
+.stockyard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.stockyard-plants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.stockyard-plants button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.stockyard-plants button[aria-pressed="true"] {
+  color: var(--foreground);
+  border-color: #7984c4;
+  background: #7984c41a;
+}
+.stockyard-controls {
+  display: flex;
+  gap: 12px;
+}
+.stockyard-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-controls select {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+.stockyard-blend-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding-bottom: 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.stockyard-blend-summary strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+@media (max-width: 650px) {
+  .stockyard-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

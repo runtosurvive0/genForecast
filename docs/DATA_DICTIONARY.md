@@ -51,6 +51,7 @@
 
 - 발전소 내부 `Plant.id`는 API의 `plant_id`와 동일 값이다. 당진 `dangjin`, 보령 `boryeong`, 하동 `hadong`, 동해·삼척 `donghae`.
 - `src/data/control-tower.ts`의 `Stockpile.stockpile_id`, `plant_id`, `on_hand_t`, `calorific_value_kcal_kg`, `moisture_pct`, `ash_pct`, `sulfur_pct`, `stacked_at`, `temperature_c`, `co_ppm`, `eligible_unit_ids`가 Pile 원장이다. 센서 두 필드는 null이며 위험도는 `pileRisk()`가 적치기간과 탄종만으로 계산한다.
+  `인니 저열량탄`(4번째) Pile은 혼탄 전용이라 `eligible_unit_ids`가 1,000MW 호기만 포함한다. 저탄장 화면은 이를 ‘혼탄’으로 표시하고 주간 소진 시뮬레이션에서 해당 호기 수요만 배분한다.
 - `Voyage.voyage_id`, `destination_plant_id`로 화물을 발전소에 연결한다. 로컬 페이지 표본은 한 항차에 한 화물이며 `cargo_t`가 API `cargo.quantity_t`에 해당한다. API DTO는 `src/domain/contracts.ts`의 CargoContract와 구분된다. 데이터 내보내기는 현재 로컬 표본 형식이다.
 - MMSI `999000001` 등의 번호와 `DEMO-*` IMO는 시연용 식별자다. 지도와 상세정보는 동일한 좌표를 사용한다. 새 위치는 VesselMap의 positions 입력으로 전달하며, 알 수 없는 항차에 예시 항로를 생성하지 않는다.
 - API/MILP 경계는 `src/domain/contracts.ts`, AIS Provider/decoder 경계는 `src/domain/ais.ts`. 네트워크 서비스는 실행하지 않는다.
