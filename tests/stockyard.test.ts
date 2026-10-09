@@ -5,11 +5,14 @@ import { stockpiles } from "../src/data/control-tower.ts";
 import { plantInputs, weightedCalorific } from "../src/domain/control-tower.ts";
 import {
   allocateBurn,
+  arrivalWaiting,
   attributeByCoalType,
   berthMap,
   contrastLine,
   gaugeValue,
   historyForPile,
+  markerLayout,
+  recommendBerth,
   incomingTimeline,
   orderPiles,
   pileBlend,
@@ -37,7 +40,8 @@ test("weekly burn shares respect planned outages and only cover eligible units",
 
 test("low-calorific piles are not eligible for single-fuel units", () => {
   const blendPiles = stockpiles.filter((p) => p.coal_type === "인니 저열량탄");
-  assert.equal(blendPiles.length, 4);
+  // Scope growth: DA-04 + 14 new zone-3 Dangjin piles + 3 other plants.
+  assert.equal(blendPiles.length, 18);
   for (const pile of blendPiles) {
     const plant = plantInputs.find((p) => p.id === pile.plant_id)!;
     assert.ok(pile.eligible_unit_ids.length < plant.units.length);
@@ -112,8 +116,8 @@ test("pile blend conserves mass and reports weighted calorific before/after", ()
 test("yard scope filters piles and incoming cargo by plant", () => {
   const all = yardScope(null);
   const dangjin = yardScope("dangjin");
-  assert.equal(all.piles.length, 16);
-  assert.equal(dangjin.piles.length, 4);
+  assert.equal(all.piles.length, 72);
+  assert.equal(dangjin.piles.length, 60);
   assert.ok(
     dangjin.incoming.every((v) => v.destination_plant_id === "dangjin"),
   );
@@ -154,21 +158,43 @@ test("incoming timeline is sorted, in-window and excludes cancelled voyages", ()
 });
 test("dangjin piles carry berth, plant yard and indoor flags", () => {
   const dangjin = stockpiles.filter((p) => p.plant_id === "dangjin");
+  assert.equal(dangjin.length, 60);
+  // DA-01~04 keep their attribution; new piles extend each yard to 20.
   assert.deepEqual(
-    dangjin.map((p) => p.plant_yard),
+    dangjin.slice(0, 4).map((p) => p.plant_yard),
     ["P1", "P2", "P1", "P3"],
   );
   assert.deepEqual(
-    dangjin.map((p) => p.berth_id),
+    dangjin.slice(0, 4).map((p) => p.berth_id),
     ["BD-1", "BD-2", "BD-1", "BD-3"],
   );
   assert.deepEqual(
-    dangjin.map((p) => p.indoor),
+    dangjin.slice(0, 4).map((p) => p.indoor),
     [false, true, false, true],
   );
+  for (const yard of ["P1", "P2", "P3"] as const) {
+    const piles = dangjin.filter((p) => p.plant_yard === yard);
+    assert.equal(piles.length, 20);
+    assert.ok(
+      piles.every((p) => {
+        const wantBerth = { P1: "BD-1", P2: "BD-2", P3: "BD-3" } as const;
+        return (
+          p.berth_id === wantBerth[yard] &&
+          p.indoor === (yard !== "P1") &&
+          p.zone !== null &&
+          p.zone >= 0 &&
+          p.zone <= 3
+        );
+      }),
+    );
+  }
   assert.deepEqual(berthMap, { "BD-1": "P1", "BD-2": "P2", "BD-3": "P3" });
   const others = stockpiles.filter((p) => p.plant_id !== "dangjin");
-  assert.ok(others.every((p) => p.berth_id === null && p.plant_yard === null));
+  assert.ok(
+    others.every(
+      (p) => p.berth_id === null && p.plant_yard === null && p.zone === null,
+    ),
+  );
 });
 
 test("waiting vessels are wait-only, sorted by wait, with timing", () => {
@@ -198,11 +224,16 @@ test("attribution matches coal type with oldest-first tiebreak", () => {
     assert.equal(a.pile.plant_id, a.voyage.destination_plant_id);
     assert.equal(a.pile.coal_type, a.voyage.coal_type);
   }
-  // Pacific Horizon carries 호주 역청탄 → DA-01·DA-03 split, oldest first.
+  // Pacific Horizon carries 호주 역청탄 → DA-01·DA-03 + 28 new piles.
+  // Oldest-first: DA-03 (35d) leads; the rest follow by stacked age.
   const pacific = attributed.filter((a) => a.voyage.vessel_name === "Pacific Horizon");
-  assert.equal(pacific.length, 2);
+  assert.equal(pacific.length, 30);
   assert.equal(pacific[0].pile.stockpile_id, "DA-03");
-  assert.equal(pacific[1].pile.stockpile_id, "DA-01");
+  for (let i = 1; i < pacific.length; i++)
+    assert.ok(
+      Date.parse(pacific[i].pile.stacked_at) >=
+        Date.parse(pacific[i - 1].pile.stacked_at),
+    );
   const total = pacific.reduce((s, a) => s + a.tons, 0);
   assert.ok(Math.abs(total - pacific[0].voyage.cargo_t) < 1e-6);
 });
@@ -246,4 +277,69 @@ test("manual transfer warns without blocking over-capacity input", () => {
   assert.equal(over.overCapacity, true);
   const bad = transferTons(NaN, -3);
   assert.deepEqual([bad.tons, bad.capacity, bad.overCapacity], [0, 0, false]);
+});
+test("arrival sync covers Dangjin voyages past AIS ETA in real now", () => {
+  const now = Date.parse(BASE_TIME) + 30 * 86400000;
+  const arrived = arrivalWaiting(yardScope(null).incoming, now);
+  assert.ok(arrived.length > 0);
+  assert.ok(
+    arrived.every(
+      (v) =>
+        v.destination_plant_id === "dangjin" &&
+        Date.parse(v.ais_eta) <= now,
+    ),
+  );
+  const early = arrivalWaiting(
+    yardScope(null).incoming,
+    Date.parse(BASE_TIME) - 4 * 3600000,
+  );
+  assert.equal(early.length, 0);
+  const cancelled = {
+    ...arrived[0],
+    voyage_id: "cancelled-x",
+    voyage_status: "cancelled" as const,
+  };
+  assert.ok(!arrivalWaiting([cancelled], now).includes(cancelled));
+});
+
+test("berth recommendation follows ETA order without occupancy data", () => {
+  const scope = yardScope("dangjin");
+  const waiting = waitingVessels(scope.incoming).map((r) => r.voyage);
+  const first = recommendBerth(waiting[0], waiting);
+  assert.equal(first.berth_id, "BD-1");
+  assert.ok(first.reason.length > 0);
+  for (const voyage of waiting) {
+    const rec = recommendBerth(voyage, waiting);
+    assert.ok(["BD-1", "BD-2", "BD-3"].includes(rec.berth_id));
+  }
+});
+
+test("harbor markers fix berths and lay ships out by ETA", () => {
+  const scope = yardScope("dangjin");
+  const waiting = waitingVessels(scope.incoming).map((r) => r.voyage);
+  const markers = markerLayout(waiting, []);
+  const berths = markers.filter((m) => m.kind === "berth");
+  assert.deepEqual(
+    berths.map((m) => m.id),
+    ["BD-1", "BD-2", "BD-3"],
+  );
+  const ships = markers.filter((m) => m.kind === "waiting");
+  assert.equal(ships.length, waiting.length);
+  assert.ok(
+    markers.every((m) => m.x >= 0 && m.x <= 100 && m.y >= 0 && m.y <= 100),
+  );
+});
+
+test("zone sections hold five piles each with matching coal type", () => {
+  const dangjin = stockpiles.filter((p) => p.plant_id === "dangjin");
+  for (const yard of ["P1", "P2", "P3"] as const) {
+    const piles = dangjin.filter((p) => p.plant_yard === yard);
+    const zones = [...new Set(piles.map((p) => p.zone))].sort();
+    assert.deepEqual(zones, [0, 1, 2, 3]);
+    for (const zone of zones) {
+      const group = piles.filter((p) => p.zone === zone);
+      assert.equal(group.length, 5);
+      assert.ok(group.every((p) => p.coal_type === group[0].coal_type));
+    }
+  }
 });

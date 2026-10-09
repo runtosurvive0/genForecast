@@ -242,3 +242,101 @@
   display: grid;
   gap: 2px;
 }
+.harbor-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.harbor-map {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.harbor-sea {
+  fill: #7984c40d;
+}
+.harbor-label {
+  font-size: 4.5px;
+  fill: var(--muted-foreground);
+  text-anchor: middle;
+}
+.harbor-berth {
+  fill: #7984c433;
+  stroke: #7984c4;
+  stroke-width: 0.4;
+}
+.harbor-ship {
+  cursor: pointer;
+}
+.harbor-ship circle {
+  fill: #7984c4;
+}
+.harbor-ship.is-unloading circle {
+  fill: #5e8f6a;
+}
+.harbor-ship.is-selected circle {
+  stroke: #be7963;
+  stroke-width: 1.2;
+}
+.harbor-tables {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.harbor-assign {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.harbor-assign select {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 4px;
+  font-size: 11px;
+  max-width: 110px;
+}
+.harbor-assign button {
+  border: 1px solid #7984c4;
+  background: #7984c41a;
+  color: var(--foreground);
+  border-radius: 5px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.stockyard-waiting tr.is-selected,
+.stockyard-berths tr.is-selected {
+  outline: 2px solid #7984c4;
+  outline-offset: -2px;
+}
+.zone-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.zone-group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.zone-group > span {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+@media (max-width: 900px) {
+  .harbor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 650px) {
+  .zone-grid {
+    grid-template-columns: 1fr;
+  }
+}

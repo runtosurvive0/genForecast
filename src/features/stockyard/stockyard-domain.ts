@@ -361,3 +361,86 @@ export function transferTons(inputTons: number, capacityTons: number) {
   };
   return result;
 }
+export interface BerthRecommendation {
+  berth_id: string;
+  reason: string;
+}
+
+/**
+ * ETA순 부두 추천 (점유 데이터 없이 SIMULATED).
+ * 대기선박을 ETA 빠른 순으로 BD-1부터 채운다고 가정하고
+ * 지정 항차보다 먼저 끝나는 하역이 있는 부두 중 가장 빠른 곳을 추천.
+ */
+export function recommendBerth(
+  voyage: Voyage,
+  waiting: Voyage[],
+  berths = ["BD-1", "BD-2", "BD-3"],
+): BerthRecommendation {
+  const ordered = [...waiting].sort(
+    (a, b) => Date.parse(a.ais_eta) - Date.parse(b.ais_eta),
+  );
+  const rank = ordered.findIndex((v) => v.voyage_id === voyage.voyage_id);
+  const berth_id = berths[rank >= 0 ? rank % berths.length : 0];
+  return {
+    berth_id,
+    reason:
+      rank <= 0
+        ? "ETA가 가장 빨라 첫 번째 빈 부두에 접안"
+        : `앞선 대기 ${rank}척 이후 ${berth_id} 접안 가능`,
+  };
+}
+
+/** AIS ETA 도달(실제 현시각 기준) 당진행 항차를 대기 상태로. */
+export function arrivalWaiting(voyages: Voyage[], now = Date.now()) {
+  return voyages.filter(
+    (v) =>
+      v.voyage_status !== "cancelled" &&
+      v.destination_plant_id === "dangjin" &&
+      Date.parse(v.ais_eta) <= now,
+  );
+}
+
+export interface HarborMarker {
+  kind: "berth" | "waiting" | "unloading";
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * 당진 앞바다 확대 그림용 마커 배치 (SIMULATED 좌표).
+ * 부두 고정, 선박은 ETA 순으로 접근로에 배치.
+ */
+export function markerLayout(
+  waiting: Voyage[],
+  unloading: Voyage[],
+): HarborMarker[] {
+  const berths: HarborMarker[] = ["BD-1", "BD-2", "BD-3"].map((id, i) => ({
+    kind: "berth",
+    id,
+    label: id,
+    x: 20 + i * 30,
+    y: 78,
+  }));
+  const byEta = [...waiting].sort(
+    (a, b) => Date.parse(a.ais_eta) - Date.parse(b.ais_eta),
+  );
+  const ships: HarborMarker[] = [
+    ...unloading.map((v, i) => ({
+      kind: "unloading" as const,
+      id: v.voyage_id,
+      label: v.vessel_name,
+      x: 20 + (i % 3) * 30,
+      y: 64,
+    })),
+    ...byEta.map((v, i) => ({
+      kind: "waiting" as const,
+      id: v.voyage_id,
+      label: v.vessel_name,
+      x: 12 + (i % 5) * 16,
+      y: 18 + Math.floor(i / 5) * 14,
+    })),
+  ];
+  return [...berths, ...ships];
+}

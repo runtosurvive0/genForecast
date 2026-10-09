@@ -12,14 +12,17 @@ import { BASE_TIME, type Plant } from "@/domain/operations";
 import { number as n, date as fmtDate } from "@/lib/format";
 import {
   allocateBurn,
+  arrivalWaiting,
   attributeByCoalType,
   berthMap,
   contrastLine,
   gaugeValue,
   historyForPile,
   incomingTimeline,
+  markerLayout,
   orderPiles,
   pileBlend,
+  recommendBerth,
   transferTons,
   waitingVessels,
   weeklyBurnShares,
@@ -48,6 +51,10 @@ export function Stockyard({
     "all" | "낮음" | "관찰" | "높음"
   >("all");
   const [sort, setSort] = useState<"tons" | "age" | "risk">("tons");
+  const [selectedShip, setSelectedShip] = useState<string | null>(null);
+  const [assignedBerths, setAssignedBerths] = useState<Record<string, string>>(
+    {},
+  );
   const [selected, setSelected] = useState<string | null>(null);
   const [draftTransfer, setDraftTransfer] = useState({
     tons: 5000,
@@ -118,10 +125,35 @@ export function Stockyard({
     () => incomingTimeline(scope.incoming),
     [scope],
   );
-  const waiting = useMemo(
-    () => waitingVessels(scope.incoming),
-    [scope],
+  const arrived = useMemo(() => arrivalWaiting(scope.incoming), [scope]);
+  const waiting = useMemo(() => waitingVessels(arrived), [arrived]);
+  const unloading = useMemo(
+    () =>
+      arrived.filter(
+        (v) => Date.parse(v.forecast_unload_end) >= Date.parse(BASE_TIME),
+      ),
+    [arrived],
   );
+  const unloadingIds = new Set(
+    unloading.map((v) => v.voyage_id),
+  );
+  const markers = useMemo(
+    () =>
+      markerLayout(
+        waiting
+          .map((r) => r.voyage)
+          .filter((v) => !unloadingIds.has(v.voyage_id)),
+        unloading,
+      ),
+    [waiting, unloading],
+  );
+  const recommendFor = (voyageId: string) => {
+    const voyage = arrived.find((v) => v.voyage_id === voyageId)!;
+    return recommendBerth(
+      voyage,
+      waiting.map((r) => r.voyage),
+    );
+  };
   const attributions = useMemo(
     () => attributeByCoalType(scope.piles, scope.incoming),
     [scope],
@@ -276,8 +308,8 @@ export function Stockyard({
       </div>
 
       <Section
-        title="부두 → 체선 → 저탄 흐름"
-        note="접안 대기 발생 선박만 대기시간 순으로 표시 · 하역-발전처 매핑은 1:1 고정"
+        title="당진 앞바다 · 접안 현황"
+        note="바다·대기선·하역선·부두 그림 + 옆 테이블(대기목록·부두점유) · 그림과 테이블 선택 동기화"
         action={<span className="tower-tag">SIMULATED</span>}
       >
         <div className="yard-flow">
@@ -295,47 +327,192 @@ export function Stockyard({
             </span>
           ))}
         </div>
-        <div className="tower-table-wrap">
-          <table className="tower-table stockyard-waiting">
-            <thead>
-              <tr>
-                {[
-                  "선박",
-                  "부두",
-                  "대기 · h",
-                  "접안 예정",
-                  "체선료 · $",
-                  "Freshness",
-                ].map((x) => (
-                  <th key={x}>{x}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {waiting.map(({ voyage, waitH, berthAt, demurrageUsd, freshnessLabel }) => (
-                <tr key={voyage.voyage_id}>
-                  <td>
-                    {voyage.vessel_name} · {n(voyage.cargo_t)} t
-                  </td>
-                  <td>{voyage.berth_id ?? "-"} → {voyage.berth_id ? YARD_NAMES[berthMap[voyage.berth_id]] ?? berthMap[voyage.berth_id] : "-"}</td>
-                  <td>{waitH}</td>
-                  <td>{fmtDate(berthAt, true)}</td>
-                  <td>{n(demurrageUsd)}</td>
-                  <td>
-                    <span className="tower-tag">{freshnessLabel}</span>
-                  </td>
-                </tr>
-              ))}
-              {!waiting.length && (
-                <tr>
-                  <td colSpan={6}>접안 대기 선박이 없습니다</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="harbor-grid">
+          <svg
+            className="harbor-map"
+            viewBox="0 0 100 100"
+            role="img"
+            aria-label="당진 앞바다 접안 현황도"
+          >
+            <rect x="0" y="0" width="100" height="100" className="harbor-sea" />
+            <text x="4" y="8" className="harbor-label">
+              당진 앞바다 (SIMULATED)
+            </text>
+            {markers.map((m) =>
+              m.kind === "berth" ? (
+                <g key={m.id}>
+                  <rect
+                    x={m.x - 6}
+                    y={m.y - 4}
+                    width="12"
+                    height="8"
+                    className="harbor-berth"
+                  />
+                  <text x={m.x} y={m.y + 9} className="harbor-label">
+                    {m.label}
+                  </text>
+                </g>
+              ) : (
+                <g
+                  key={m.id}
+                  onClick={() => setSelectedShip(m.id)}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedShip === m.id}
+                  aria-label={`${m.label} 선택`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setSelectedShip(m.id);
+                  }}
+                  className={`harbor-ship is-${m.kind}${
+                    selectedShip === m.id ? " is-selected" : ""
+                  }`}
+                >
+                  <circle cx={m.x} cy={m.y} r="3.4" />
+                  <text x={m.x} y={m.y - 5} className="harbor-label">
+                    {m.label}
+                  </text>
+                </g>
+              ),
+            )}
+          </svg>
+          <div className="harbor-tables">
+            <div className="tower-table-wrap">
+              <table className="tower-table stockyard-waiting">
+                <thead>
+                  <tr>
+                    {[
+                      "선박",
+                      "부두",
+                      "대기 · h",
+                      "접안 예정",
+                      "체선료 · $",
+                      "Freshness",
+                      "접안 지정",
+                    ].map((x) => (
+                      <th key={x}>{x}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {waiting.map(
+                    ({ voyage, waitH, berthAt, demurrageUsd, freshnessLabel }) => {
+                      const rec = recommendFor(voyage.voyage_id);
+                      const assigned =
+                        assignedBerths[voyage.voyage_id] ?? rec.berth_id;
+                      return (
+                        <tr
+                          key={voyage.voyage_id}
+                          aria-selected={selectedShip === voyage.voyage_id}
+                          onClick={() => setSelectedShip(voyage.voyage_id)}
+                          className={
+                            selectedShip === voyage.voyage_id
+                              ? "is-selected"
+                              : undefined
+                          }
+                        >
+                          <td>
+                            {voyage.vessel_name} · {n(voyage.cargo_t)} t
+                          </td>
+                          <td>
+                            {voyage.berth_id ?? "-"} →{" "}
+                            {voyage.berth_id
+                              ? (YARD_NAMES[berthMap[voyage.berth_id]] ??
+                                berthMap[voyage.berth_id])
+                              : "-"}
+                          </td>
+                          <td>{waitH}</td>
+                          <td>{fmtDate(berthAt, true)}</td>
+                          <td>{n(demurrageUsd)}</td>
+                          <td>
+                            <span className="tower-tag">{freshnessLabel}</span>
+                          </td>
+                          <td>
+                            <span className="tower-tag">추천 {rec.berth_id}</span>
+                            <small>{rec.reason}</small>
+                            <div className="harbor-assign">
+                              <select
+                                aria-label={`${voyage.vessel_name} 접안 부두`}
+                                value={assigned}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) =>
+                                  setAssignedBerths((prev) => ({
+                                    ...prev,
+                                    [voyage.voyage_id]: e.target.value,
+                                  }))
+                                }
+                              >
+                                {["BD-1", "BD-2", "BD-3"].map((b) => (
+                                  <option key={b} value={b}>
+                                    {b}
+                                    {b === rec.berth_id ? " (추천)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAssignedBerths((prev) => ({
+                                    ...prev,
+                                    [voyage.voyage_id]: assigned,
+                                  }));
+                                  setSelectedShip(voyage.voyage_id);
+                                }}
+                              >
+                                접안 지정
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    },
+                  )}
+                  {!waiting.length && (
+                    <tr>
+                      <td colSpan={7}>접안 대기 선박이 없습니다</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="tower-table-wrap">
+              <table className="tower-table stockyard-berths">
+                <thead>
+                  <tr>
+                    {["부두", "상태", "선박 · ETA"].map((x) => (
+                      <th key={x}>{x}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {["BD-1", "BD-2", "BD-3"].map((berth) => {
+                    const entry = Object.entries(assignedBerths).find(
+                      ([, b]) => b === berth,
+                    );
+                    const vessel = entry
+                      ? arrived.find((v) => v.voyage_id === entry[0])
+                      : unloading.find((v) => v.berth_id === berth);
+                    return (
+                      <tr key={berth}>
+                        <td>
+                          {berth} → {YARD_NAMES[berthMap[berth]]}
+                        </td>
+                        <td>{vessel ? "접안중" : "빈 부두"}</td>
+                        <td>
+                          {vessel
+                            ? `${vessel.vessel_name} · ${fmtDate(vessel.ais_eta, true)}`
+                            : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
         <p className="tower-footnote">
-          대기·접안·체선료는 voyageTiming 계산이며 SIMULATED입니다.
+          대기·접안·체선료는 voyageTiming 계산이며 SIMULATED입니다. ETA 도달
+          판정은 실제 현시각 기준, 연동 범위는 당진행입니다.
         </p>
       </Section>
 
@@ -422,24 +599,42 @@ export function Stockyard({
       {showYardSections && (
         <Section
           title="발전처별 저탄장"
-          note="1:1 부두 매핑 · 2·3발전처 옥내 · Pile별 30일 하역 이력(역순)"
+          note="1:1 부두 매핑 · 2·3발전처 옥내 · 2x2 탄종 구역×5개 · Pile별 30일 하역 이력(역순)"
           action={<span className="tower-tag">SIMULATED</span>}
         >
           <div className="yard-map">
             {YARDS.map((yard) => {
-              const yardPiles = orderPiles(
-                dangjinPiles.filter((p) => p.plant_yard === yard),
-                sort,
-                riskFilter,
+              const yardPiles = dangjinPiles.filter(
+                (p) => p.plant_yard === yard,
               );
               if (!yardPiles.length) return null;
               return (
                 <div key={yard} className="yard-plant">
                   <span>{YARD_NAMES[yard]}</span>
-                  <div className="yard-piles">
-                    {yardPiles.map((pile) =>
-                      renderPileButton(pile, blendPlants[0]?.units.length ?? 0),
-                    )}
+                  <div className="zone-grid">
+                    {[0, 1, 2, 3].map((zone) => {
+                      const group = orderPiles(
+                        yardPiles.filter((p) => p.zone === zone),
+                        sort,
+                        riskFilter,
+                      );
+                      if (!group.length) return null;
+                      return (
+                        <div key={zone} className="zone-group">
+                          <span>
+                            {zone + 1}구역 · {group[0].coal_type}
+                          </span>
+                          <div className="yard-piles">
+                            {group.map((pile) =>
+                              renderPileButton(
+                                pile,
+                                blendPlants[0]?.units.length ?? 0,
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

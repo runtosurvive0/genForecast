@@ -76,13 +76,13 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "저탄장 현황", exact: true })
     .click();
-  // 진입 시 항상 당진 (fact-default-dangjin): 기본 4개, 전체 선택 시 16개.
-  await expect(page.locator(".yard-pile")).toHaveCount(4);
+  // 진입 시 항상 당진 (fact-default-dangjin): 기본 60개, 전체 선택 시 72개.
+  await expect(page.locator(".yard-pile")).toHaveCount(60);
   await page
     .getByRole("group", { name: "발전소 선택" })
     .getByRole("button", { name: "전체", exact: true })
     .click();
-  await expect(page.locator(".yard-pile")).toHaveCount(16);
+  await expect(page.locator(".yard-pile")).toHaveCount(72);
   await expect(page.locator(".midterm-page")).toHaveCount(0);
   await expect(
     page.getByRole("group", { name: "발전소 종합 데이터 모드" }),
@@ -207,7 +207,7 @@ test("failed backend stays an error and synthetic demo requires explicit selecti
   await expect(page.getByRole("alert")).toContainText("서버 연결 확인");
   await expect(page.locator(".tower-kpis")).toHaveCount(0);
   await page.getByRole("button", { name: "합성 데모", exact: true }).click();
-  await expect(page.locator(".tower-metric").first()).toContainText("538,000");
+  await expect(page.locator(".tower-metric").first()).toContainText("739,600");
   await expect(page.getByText("샘플 데이터", { exact: true })).toBeVisible();
 });
 
@@ -231,11 +231,9 @@ test("pile drilldown, stale AIS and model training update the operational foreca
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "저탄장 현황", exact: true })
     .click();
-  await page.locator(".yard-pile").nth(3).click();
-  await expect(page.locator(".yard-pile").nth(3)).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  const da04 = page.locator(".yard-pile", { hasText: "DA-04" });
+  await da04.click();
+  await expect(da04).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByRole("heading", { name: "DA-04 · 인니 저열량탄" }),
   ).toBeVisible();
@@ -249,8 +247,8 @@ test("pile drilldown, stale AIS and model training update the operational foreca
     .getByRole("group", { name: "발전소 선택" })
     .getByRole("button", { name: "당진", exact: true })
     .click();
-  await expect(page.locator(".yard-pile")).toHaveCount(4);
-  await expect(page.locator(".tower-metric").first()).toContainText("180,000");
+  await expect(page.locator(".yard-pile")).toHaveCount(60);
+  await expect(page.locator(".tower-metric").first()).toContainText("381,600");
   await expect(
     page.getByRole("heading", { name: "재고 전망", exact: true }),
   ).toBeVisible();
@@ -259,7 +257,7 @@ test("pile drilldown, stale AIS and model training update the operational foreca
     .getByRole("group", { name: "발전소 선택" })
     .getByRole("button", { name: "전체", exact: true })
     .click();
-  await expect(page.locator(".yard-pile")).toHaveCount(16);
+  await expect(page.locator(".yard-pile")).toHaveCount(72);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "선박 추적", exact: true })
@@ -300,7 +298,7 @@ test("theme persists, scope recalculates, and planned stop details remain explic
   await expect(
     page.getByRole("heading", { name: "발전소 종합", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".tower-metric").first()).toContainText("538,000");
+  await expect(page.locator(".tower-metric").first()).toContainText("739,600");
   await page.getByRole("button", { name: "다크 모드로 전환" }).click();
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
@@ -555,11 +553,11 @@ test("dangjin yard defaults, wait cards, gauge, history and transfer warn", asyn
     .getByRole("button", { name: "저탄장 현황", exact: true })
     .click();
   // 진입 시 항상 당진 (fact-default-dangjin).
-  await expect(page.locator(".yard-pile")).toHaveCount(4);
-  await expect(page.locator(".tower-metric").first()).toContainText("180,000");
+  await expect(page.locator(".yard-pile")).toHaveCount(60);
+  await expect(page.locator(".tower-metric").first()).toContainText("381,600");
   // 섹션 순서: 흐름 → 상탄/이탄 → 처별.
   const headings = await page.getByRole("heading").allInnerTexts();
-  const flow = headings.findIndex((h) => h.includes("부두"));
+  const flow = headings.findIndex((h) => h.includes("접안 현황"));
   const burn = headings.findIndex((h) => h.includes("상탄"));
   const yards = headings.findIndex((h) => h.includes("발전처별"));
   const forecast = headings.findIndex((h) => h.includes("재고 전망"));
@@ -570,11 +568,13 @@ test("dangjin yard defaults, wait cards, gauge, history and transfer warn", asyn
     "Pacific Horizon",
   );
   await expect(page.locator(".stockyard-waiting tbody")).toContainText("BD-1");
-  await expect(page.locator(".stockyard-waiting .tower-tag")).toHaveCount(1);
+  await expect(page.locator(".stockyard-waiting .tower-tag")).toHaveCount(2);
   // 상탄 게이지 t/h (fact-gauge-output, fact-gauge-th).
   await expect(page.locator(".stockyard-gauge")).toContainText("t/h");
-  // 옥내 뱃지 (fact-indoor-badge).
-  await expect(page.locator(".yard-pile").nth(2)).toContainText("옥내");
+  // 옥내 뱃지 (fact-indoor-badge): P2·P3 40개.
+  await expect(
+    page.locator(".yard-pile", { hasText: "옥내" }),
+  ).toHaveCount(40);
   // 처 섹션 내 하역 이력 (fact-history-list, fact-history-inplant).
   await expect(page.locator(".stockyard-history-pile").first()).toContainText(
     "하역 이력",
@@ -584,6 +584,28 @@ test("dangjin yard defaults, wait cards, gauge, history and transfer warn", asyn
   await page.getByRole("button", { name: "이탄 적용", exact: true }).click();
   await expect(page.locator(".stockyard-transfer-result")).toContainText(
     "가용 초과",
+  );
+  // 항만 그림 렌더 + 그림-테이블 동기화 (fact-map-assert, fact-sync-assert).
+  await expect(page.locator(".harbor-map")).toBeVisible();
+  await expect(page.locator(".harbor-berth")).toHaveCount(3);
+  await expect(page.locator(".harbor-ship")).toHaveCount(1);
+  await page.locator(".harbor-ship").first().click();
+  await expect(
+    page.locator('.stockyard-waiting tbody tr[class*="is-selected"]'),
+  ).toHaveCount(1);
+  // 2x2 구역×5개 (fact-zone-assert, fact-mapping-assert).
+  await expect(page.locator(".zone-group")).toHaveCount(12);
+  await expect(
+    page.locator(".zone-group").first().locator(".yard-pile"),
+  ).toHaveCount(5);
+  // 접안 지정 + 추천 (fact-assign-button, fact-recommend-assert).
+  await expect(page.locator(".stockyard-waiting tbody")).toContainText(
+    "추천 BD-1",
+  );
+  await page.getByLabel("Pacific Horizon 접안 부두").selectOption("BD-2");
+  await page.getByRole("button", { name: "접안 지정", exact: true }).click();
+  await expect(page.locator(".stockyard-berths tbody")).toContainText(
+    "Pacific Horizon",
   );
   function assertOrder(...idx: number[]) {
     for (const i of idx) {
