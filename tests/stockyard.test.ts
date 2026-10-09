@@ -5,9 +5,16 @@ import { stockpiles } from "../src/data/control-tower.ts";
 import { plantInputs, weightedCalorific } from "../src/domain/control-tower.ts";
 import {
   allocateBurn,
+  attributeByCoalType,
+  berthMap,
+  contrastLine,
+  gaugeValue,
+  historyForPile,
   incomingTimeline,
   orderPiles,
   pileBlend,
+  transferTons,
+  waitingVessels,
   weeklyBurnShares,
   yardScope,
   FORECAST_HORIZON,
@@ -144,4 +151,99 @@ test("incoming timeline is sorted, in-window and excludes cancelled voyages", ()
   for (let i = 1; i < timeline.length; i++)
     assert.ok(timeline[i].at >= timeline[i - 1].at);
   assert.ok(timeline.every(({ at }) => at >= Date.parse(BASE_TIME)));
+});
+test("dangjin piles carry berth, plant yard and indoor flags", () => {
+  const dangjin = stockpiles.filter((p) => p.plant_id === "dangjin");
+  assert.deepEqual(
+    dangjin.map((p) => p.plant_yard),
+    ["P1", "P2", "P1", "P3"],
+  );
+  assert.deepEqual(
+    dangjin.map((p) => p.berth_id),
+    ["BD-1", "BD-2", "BD-1", "BD-3"],
+  );
+  assert.deepEqual(
+    dangjin.map((p) => p.indoor),
+    [false, true, false, true],
+  );
+  assert.deepEqual(berthMap, { "BD-1": "P1", "BD-2": "P2", "BD-3": "P3" });
+  const others = stockpiles.filter((p) => p.plant_id !== "dangjin");
+  assert.ok(others.every((p) => p.berth_id === null && p.plant_yard === null));
+});
+
+test("waiting vessels are wait-only, sorted by wait, with timing", () => {
+  const scope = yardScope("dangjin");
+  const rows = waitingVessels(scope.incoming);
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r.waitH > 0));
+  for (let i = 1; i < rows.length; i++)
+    assert.ok(rows[i].waitH <= rows[i - 1].waitH);
+  assert.ok(rows.every((r) => Date.parse(r.berthAt) > 0));
+  assert.ok(rows.every((r) => r.demurrageUsd >= 0));
+  const withCancelled = [
+    ...scope.incoming,
+    { ...scope.incoming[0], voyage_status: "cancelled" as const },
+  ];
+  assert.equal(
+    waitingVessels(withCancelled.filter((v) => v.voyage_status !== "cancelled")).length,
+    rows.length,
+  );
+});
+
+test("attribution matches coal type with oldest-first tiebreak", () => {
+  const scope = yardScope("dangjin");
+  const attributed = attributeByCoalType(scope.piles, scope.incoming);
+  assert.ok(attributed.length > 0);
+  for (const a of attributed) {
+    assert.equal(a.pile.plant_id, a.voyage.destination_plant_id);
+    assert.equal(a.pile.coal_type, a.voyage.coal_type);
+  }
+  // Pacific Horizon carries 호주 역청탄 → DA-01·DA-03 split, oldest first.
+  const pacific = attributed.filter((a) => a.voyage.vessel_name === "Pacific Horizon");
+  assert.equal(pacific.length, 2);
+  assert.equal(pacific[0].pile.stockpile_id, "DA-03");
+  assert.equal(pacific[1].pile.stockpile_id, "DA-01");
+  const total = pacific.reduce((s, a) => s + a.tons, 0);
+  assert.ok(Math.abs(total - pacific[0].voyage.cargo_t) < 1e-6);
+});
+
+test("pile history is 30-day window in reverse chronological order", () => {
+  const scope = yardScope("dangjin");
+  const attributed = attributeByCoalType(scope.piles, scope.incoming);
+  const pile = scope.piles.find((p) => p.stockpile_id === "DA-01")!;
+  const entries = historyForPile(pile, attributed);
+  assert.ok(entries.length > 0);
+  const base = Date.parse(BASE_TIME);
+  assert.ok(
+    entries.every(
+      ({ unloaded_at }) =>
+        Date.parse(unloaded_at) >= base &&
+        Date.parse(unloaded_at) <= base + FORECAST_HORIZON * 86400000,
+    ),
+  );
+  for (let i = 1; i < entries.length; i++)
+    assert.ok(
+      Date.parse(entries[i].unloaded_at) <= Date.parse(entries[i - 1].unloaded_at),
+    );
+  assert.ok(entries.every((e) => e.calorific_value_kcal_kg > 0));
+});
+
+test("gauge is positive t/h and contrast never exceeds request", () => {
+  const dangjin = [plantInputs[0]];
+  const gauge = gaugeValue(dangjin);
+  assert.ok(gauge > 0 && Number.isFinite(gauge));
+  const scope = yardScope("dangjin");
+  const line = contrastLine(scope.forecast);
+  assert.equal(line.length, FORECAST_HORIZON);
+  assert.ok(line.every((c) => c.burned <= c.requested + 1e-6));
+});
+
+test("manual transfer warns without blocking over-capacity input", () => {
+  const ok = transferTons(5000, 20000);
+  assert.deepEqual([ok.tons, ok.capacity, ok.overCapacity], [5000, 20000, false]);
+  const over = transferTons(25000, 20000);
+  assert.equal(over.tons, 25000);
+  assert.equal(over.overCapacity, true);
+  const bad = transferTons(NaN, -3);
+  assert.deepEqual([bad.tons, bad.capacity, bad.overCapacity], [0, 0, false]);
 });

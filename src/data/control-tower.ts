@@ -14,6 +14,12 @@ export interface Stockpile {
   temperature_c: number | null;
   co_ppm: number | null;
   eligible_unit_ids: string[];
+  /** Dangjin-only: 1·2·3부두 중 하나, 타 발전소는 null. */
+  berth_id: "BD-1" | "BD-2" | "BD-3" | null;
+  /** Dangjin-only: 1·2·3발전처 저탄장, 타 발전소는 null. */
+  plant_yard: "P1" | "P2" | "P3" | null;
+  /** 옥내저탄장 여부 (2·3발전처). */
+  indoor: boolean;
 }
 export interface Voyage {
   voyage_id: string;
@@ -43,6 +49,10 @@ export interface Voyage {
   allowed_laytime_h: number;
   demurrage_usd_per_day: number;
   voyage_status: "active" | "cancelled";
+  /** 하역 부두 (Dangjin-only, SIMULATED). */
+  berth_id: string | null;
+  /** 처 간 이탄 가용용량 표본 (t, SIMULATED, 수기 입력 상한 참고용). */
+  transfer_capacity_t: number;
 }
 const day = 86400000;
 export const stockpiles: Stockpile[] = plants.flatMap((p, pi) =>
@@ -69,6 +79,13 @@ export const stockpiles: Stockpile[] = plants.flatMap((p, pi) =>
             .filter((u) => u.capacityMw >= 1000)
             .map((u) => u.id)
         : p.units.map((u) => u.id),
+    // Dangjin plant-yard attribution by coal type (SIMULATED):
+    // DA-01·DA-03 → P1, DA-02 → P2, DA-04 → P3(옥내).
+    plant_yard:
+      p.id === "dangjin" ? (["P1", "P2", "P1", "P3"] as const)[i] : null,
+    berth_id:
+      p.id === "dangjin" ? (["BD-1", "BD-2", "BD-1", "BD-3"] as const)[i] : null,
+    indoor: p.id === "dangjin" && (i === 1 || i === 3),
   })),
 );
 const positions = [
@@ -109,4 +126,6 @@ export const voyages: Voyage[] = shipments.map((s, i) => ({
   allowed_laytime_h: 24,
   demurrage_usd_per_day: 18000,
   voyage_status: "active",
+  berth_id: s.plantId === "dangjin" ? "BD-1" : null,
+  transfer_capacity_t: [20000, 15000, 12000, 10000][i],
 }));

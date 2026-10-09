@@ -76,6 +76,12 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "저탄장 현황", exact: true })
     .click();
+  // 진입 시 항상 당진 (fact-default-dangjin): 기본 4개, 전체 선택 시 16개.
+  await expect(page.locator(".yard-pile")).toHaveCount(4);
+  await page
+    .getByRole("group", { name: "발전소 선택" })
+    .getByRole("button", { name: "전체", exact: true })
+    .click();
   await expect(page.locator(".yard-pile")).toHaveCount(16);
   await expect(page.locator(".midterm-page")).toHaveCount(0);
   await expect(
@@ -539,4 +545,52 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
   );
   await page.getByRole("button", { name: "발전 영향 보기" }).click();
   await expect(page.getByRole("dialog")).toContainText("하동");
+});
+test("dangjin yard defaults, wait cards, gauge, history and transfer warn", async ({
+  page,
+}) => {
+  await page.goto("/?source=synthetic");
+  await page
+    .getByRole("navigation", { name: "주 메뉴" })
+    .getByRole("button", { name: "저탄장 현황", exact: true })
+    .click();
+  // 진입 시 항상 당진 (fact-default-dangjin).
+  await expect(page.locator(".yard-pile")).toHaveCount(4);
+  await expect(page.locator(".tower-metric").first()).toContainText("180,000");
+  // 섹션 순서: 흐름 → 상탄/이탄 → 처별.
+  const headings = await page.getByRole("heading").allInnerTexts();
+  const flow = headings.findIndex((h) => h.includes("부두"));
+  const burn = headings.findIndex((h) => h.includes("상탄"));
+  const yards = headings.findIndex((h) => h.includes("발전처별"));
+  const forecast = headings.findIndex((h) => h.includes("재고 전망"));
+  assertOrder(flow, burn, yards, forecast);
+  // 대기 카드 4종 + Freshness (fact-wait-card).
+  await expect(page.locator(".stockyard-waiting tbody tr")).toHaveCount(1);
+  await expect(page.locator(".stockyard-waiting tbody")).toContainText(
+    "Pacific Horizon",
+  );
+  await expect(page.locator(".stockyard-waiting tbody")).toContainText("BD-1");
+  await expect(page.locator(".stockyard-waiting .tower-tag")).toHaveCount(1);
+  // 상탄 게이지 t/h (fact-gauge-output, fact-gauge-th).
+  await expect(page.locator(".stockyard-gauge")).toContainText("t/h");
+  // 옥내 뱃지 (fact-indoor-badge).
+  await expect(page.locator(".yard-pile").nth(2)).toContainText("옥내");
+  // 처 섹션 내 하역 이력 (fact-history-list, fact-history-inplant).
+  await expect(page.locator(".stockyard-history-pile").first()).toContainText(
+    "하역 이력",
+  );
+  // 수기 이탄 초과 경고 (fact-transfer-warn).
+  await page.getByLabel("이송량 입력").fill("25000");
+  await page.getByRole("button", { name: "이탄 적용", exact: true }).click();
+  await expect(page.locator(".stockyard-transfer-result")).toContainText(
+    "가용 초과",
+  );
+  function assertOrder(...idx: number[]) {
+    for (const i of idx) {
+      if (i < 0) throw new Error("section heading missing");
+    }
+    for (let k = 1; k < idx.length; k++) {
+      if (!(idx[k - 1] < idx[k])) throw new Error("section order wrong");
+    }
+  }
 });

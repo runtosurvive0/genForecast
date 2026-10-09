@@ -169,3 +169,76 @@
     flex-direction: column;
   }
 }
+.stockyard-gauge {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+}
+.stockyard-gauge strong {
+  font-size: 26px;
+  font-weight: 600;
+}
+.stockyard-gauge span {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-transfer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding-bottom: 10px;
+}
+.stockyard-transfer label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-transfer input,
+.stockyard-transfer select {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 12px;
+  max-width: 130px;
+}
+.stockyard-transfer button {
+  border: 1px solid #7984c4;
+  background: #7984c41a;
+  color: var(--foreground);
+  border-radius: 5px;
+  padding: 4px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.stockyard-transfer-result {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.stockyard-transfer-result strong {
+  color: #be7963;
+}
+.stockyard-history {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+.stockyard-history-pile strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.stockyard-history-pile ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  display: grid;
+  gap: 2px;
+}

@@ -6,22 +6,34 @@ import { axis } from "@/components/tower/chart-options";
 import {
   pileRisk,
   weightedCalorific,
-  voyageTiming,
   incomingVoyages,
 } from "@/domain/control-tower";
 import { BASE_TIME, type Plant } from "@/domain/operations";
 import { number as n, date as fmtDate } from "@/lib/format";
 import {
   allocateBurn,
+  attributeByCoalType,
+  berthMap,
+  contrastLine,
+  gaugeValue,
+  historyForPile,
   incomingTimeline,
   orderPiles,
   pileBlend,
+  transferTons,
+  waitingVessels,
   weeklyBurnShares,
   yardScope,
   FORECAST_HORIZON,
 } from "./stockyard-domain";
 import "./stockyard.css";
 
+const YARDS = ["P1", "P2", "P3"] as const;
+const YARD_NAMES: Record<string, string> = {
+  P1: "1발전처",
+  P2: "2발전처 · 옥내",
+  P3: "3발전처 · 옥내",
+};
 
 export function Stockyard({
   plants,
@@ -30,12 +42,23 @@ export function Stockyard({
   plants: Plant[];
   theme: string;
 }) {
-  const [plantFilter, setPlantFilter] = useState<string | null>(null);
+  // 진입 시 항상 당진 (fact-default-dangjin).
+  const [plantFilter, setPlantFilter] = useState<string | null>("dangjin");
   const [riskFilter, setRiskFilter] = useState<
     "all" | "낮음" | "관찰" | "높음"
   >("all");
   const [sort, setSort] = useState<"tons" | "age" | "risk">("tons");
   const [selected, setSelected] = useState<string | null>(null);
+  const [draftTransfer, setDraftTransfer] = useState({
+    tons: 5000,
+    from: "P1",
+    to: "P3",
+  });
+  const [appliedTransfer, setAppliedTransfer] = useState<{
+    tons: number;
+    from: string;
+    to: string;
+  } | null>(null);
 
   const scope = useMemo(() => yardScope(plantFilter), [plantFilter]);
   const ordered = useMemo(
@@ -95,6 +118,27 @@ export function Stockyard({
     () => incomingTimeline(scope.incoming),
     [scope],
   );
+  const waiting = useMemo(
+    () => waitingVessels(scope.incoming),
+    [scope],
+  );
+  const attributions = useMemo(
+    () => attributeByCoalType(scope.piles, scope.incoming),
+    [scope],
+  );
+  const gauge = useMemo(() => gaugeValue(blendPlants), [plantFilter]);
+  const contrast = useMemo(
+    () => contrastLine(scope.forecast),
+    [scope],
+  );
+  const transferCapacity = useMemo(
+    () =>
+      scope.incoming.reduce((max, v) => Math.max(max, v.transfer_capacity_t), 0),
+    [scope],
+  );
+  const transfer = appliedTransfer
+    ? transferTons(appliedTransfer.tons, transferCapacity)
+    : null;
 
   const eligibleNames = (pile: (typeof scope.piles)[number]) =>
     plants
@@ -102,6 +146,43 @@ export function Stockyard({
       .filter((u) => pile.eligible_unit_ids.includes(u.id))
       .map((u) => u.name)
       .join(", ");
+
+  const renderPileButton = (
+    pile: (typeof scope.piles)[number],
+    unitCount: number,
+  ) => {
+    const risk = pileRisk(pile);
+    const isEligibleRestricted = pile.eligible_unit_ids.length < unitCount;
+    return (
+      <button
+        key={pile.stockpile_id}
+        onClick={() => setSelected(pile.stockpile_id)}
+        aria-pressed={active?.stockpile_id === pile.stockpile_id}
+        className={`yard-pile risk-${
+          risk.label === "높음"
+            ? "high"
+            : risk.label === "관찰"
+              ? "medium"
+              : "low"
+        }`}
+        style={{ flexGrow: pile.on_hand_t, flexBasis: 0 }}
+        title={
+          isEligibleRestricted ? "일부 호기 전용 (혼탄 제한)" : undefined
+        }
+      >
+        <strong>{pile.stockpile_id}</strong>
+        <span>{n(pile.on_hand_t)} t</span>
+        <small>
+          {risk.age}일 · {risk.label}
+          {isEligibleRestricted ? " · 혼탄" : ""}
+          {pile.indoor ? " · 옥내" : ""}
+        </small>
+      </button>
+    );
+  };
+
+  const dangjinPiles = scope.piles.filter((p) => p.plant_id === "dangjin");
+  const showYardSections = dangjinPiles.length > 0;
 
   return (
     <div className="tower-page stockyard-page">
@@ -195,17 +276,17 @@ export function Stockyard({
       </div>
 
       <Section
-        title="저탄장 배치"
-        note="면적은 재고량 비례 · Pile을 선택하면 탄질과 투입 가능 호기를 확인할 수 있습니다"
-        action={<span className="tower-tag">SIMULATED RISK</span>}
+        title="부두 → 체선 → 저탄 흐름"
+        note="접안 대기 발생 선박만 대기시간 순으로 표시 · 하역-발전처 매핑은 1:1 고정"
+        action={<span className="tower-tag">SIMULATED</span>}
       >
         <div className="yard-flow">
           {[
             "연료부두",
-            "컨베이어",
-            "스태커",
-            "저탄 Pile",
-            "리클레이머",
+            "접안 대기",
+            "하역",
+            "발전처 저탄장",
+            "처 간 이탄",
             "발전호기",
           ].map((x, i) => (
             <span key={x}>
@@ -214,63 +295,234 @@ export function Stockyard({
             </span>
           ))}
         </div>
-        <div className="yard-map">
-          {blendPlants.map((p) => {
-            const plantPiles = orderPiles(
-              scope.piles.filter((x) => x.plant_id === p.id),
-              sort,
-              riskFilter,
-            );
-            if (!plantPiles.length) return null;
-            return (
-              <div key={p.id} className="yard-plant">
-                <span>{p.name}</span>
-                <div className="yard-piles">
-                  {plantPiles.map((pile) => {
-                    const risk = pileRisk(pile);
-                    const isEligibleRestricted =
-                      pile.eligible_unit_ids.length < p.units.length;
-                    return (
-                      <button
-                        key={pile.stockpile_id}
-                        onClick={() => setSelected(pile.stockpile_id)}
-                        aria-pressed={
-                          active?.stockpile_id === pile.stockpile_id
-                        }
-                        className={`yard-pile risk-${
-                          risk.label === "높음"
-                            ? "high"
-                            : risk.label === "관찰"
-                              ? "medium"
-                              : "low"
-                        }`}
-                        style={{ flexGrow: pile.on_hand_t, flexBasis: 0 }}
-                        title={
-                          isEligibleRestricted
-                            ? "일부 호기 전용 (혼탄 제한)"
-                            : undefined
-                        }
-                      >
-                        <strong>{pile.stockpile_id}</strong>
-                        <span>{n(pile.on_hand_t)} t</span>
-                        <small>
-                          {risk.age}일 · {risk.label}
-                          {isEligibleRestricted ? " · 혼탄" : ""}
-                        </small>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+        <div className="tower-table-wrap">
+          <table className="tower-table stockyard-waiting">
+            <thead>
+              <tr>
+                {[
+                  "선박",
+                  "부두",
+                  "대기 · h",
+                  "접안 예정",
+                  "체선료 · $",
+                  "Freshness",
+                ].map((x) => (
+                  <th key={x}>{x}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {waiting.map(({ voyage, waitH, berthAt, demurrageUsd, freshnessLabel }) => (
+                <tr key={voyage.voyage_id}>
+                  <td>
+                    {voyage.vessel_name} · {n(voyage.cargo_t)} t
+                  </td>
+                  <td>{voyage.berth_id ?? "-"} → {voyage.berth_id ? YARD_NAMES[berthMap[voyage.berth_id]] ?? berthMap[voyage.berth_id] : "-"}</td>
+                  <td>{waitH}</td>
+                  <td>{fmtDate(berthAt, true)}</td>
+                  <td>{n(demurrageUsd)}</td>
+                  <td>
+                    <span className="tower-tag">{freshnessLabel}</span>
+                  </td>
+                </tr>
+              ))}
+              {!waiting.length && (
+                <tr>
+                  <td colSpan={6}>접안 대기 선박이 없습니다</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
         <p className="tower-footnote">
-          위험도는 적치기간과 탄종으로 계산한 모의 점수입니다. 온도·CO 센서
-          데이터는 연결되지 않았습니다. ‘혼탄’ 표시 Pile은 단일연소 호기에
-          투입할 수 없습니다.
+          대기·접안·체선료는 voyageTiming 계산이며 SIMULATED입니다.
         </p>
       </Section>
+
+      <div className="tower-two">
+        <Section
+          title="상탄 현황"
+          note="현재 출력의 t/h 환산치 · 발전운영 탭과 같은 원천"
+          action={<span className="tower-tag">SIMULATED</span>}
+        >
+          <div className="stockyard-gauge">
+            <strong>{n(gauge, 1)} t/h</strong>
+            <span>상탄 중 (모의 게이지, 운영 지시 아님)</span>
+          </div>
+        </Section>
+        <Section
+          title="처 간 이탄"
+          note="가용용량은 표본 임의값 · 이송량은 수기 입력 · 초과 입력은 경고만 표시"
+          action={<span className="tower-tag">SIMULATED</span>}
+        >
+          <div className="stockyard-transfer">
+            <label>
+              이송량 · t
+              <input
+                aria-label="이송량 입력"
+                type="number"
+                min={0}
+                value={draftTransfer.tons}
+                onChange={(e) =>
+                  setDraftTransfer((d) => ({
+                    ...d,
+                    tons: Number(e.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label>
+              출발
+              <select
+                aria-label="출발 발전처"
+                value={draftTransfer.from}
+                onChange={(e) =>
+                  setDraftTransfer((d) => ({ ...d, from: e.target.value }))
+                }
+              >
+                {YARDS.map((y) => (
+                  <option key={y} value={y}>
+                    {YARD_NAMES[y]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              도착
+              <select
+                aria-label="도착 발전처"
+                value={draftTransfer.to}
+                onChange={(e) =>
+                  setDraftTransfer((d) => ({ ...d, to: e.target.value }))
+                }
+              >
+                {YARDS.map((y) => (
+                  <option key={y} value={y}>
+                    {YARD_NAMES[y]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button onClick={() => setAppliedTransfer({ ...draftTransfer })}>
+              이탄 적용
+            </button>
+          </div>
+          {transfer && (
+            <p className="stockyard-transfer-result">
+              적용 이송 {draftTransfer.from} → {draftTransfer.to} ·{" "}
+              {n(transfer.tons)} t (가용 {n(transfer.capacity)} t)
+              {transfer.overCapacity && (
+                <strong> · 가용 초과, 경고 (차단하지 않음)</strong>
+              )}
+            </p>
+          )}
+        </Section>
+      </div>
+
+      {showYardSections && (
+        <Section
+          title="발전처별 저탄장"
+          note="1:1 부두 매핑 · 2·3발전처 옥내 · Pile별 30일 하역 이력(역순)"
+          action={<span className="tower-tag">SIMULATED</span>}
+        >
+          <div className="yard-map">
+            {YARDS.map((yard) => {
+              const yardPiles = orderPiles(
+                dangjinPiles.filter((p) => p.plant_yard === yard),
+                sort,
+                riskFilter,
+              );
+              if (!yardPiles.length) return null;
+              return (
+                <div key={yard} className="yard-plant">
+                  <span>{YARD_NAMES[yard]}</span>
+                  <div className="yard-piles">
+                    {yardPiles.map((pile) =>
+                      renderPileButton(pile, blendPlants[0]?.units.length ?? 0),
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {blendPlants
+            .filter((p) => p.id !== "dangjin")
+            .map((p) => {
+              const plantPiles = orderPiles(
+                scope.piles.filter((x) => x.plant_id === p.id),
+                sort,
+                riskFilter,
+              );
+              if (!plantPiles.length) return null;
+              return (
+                <div key={p.id} className="yard-plant">
+                  <span>{p.name}</span>
+                  <div className="yard-piles">
+                    {plantPiles.map((pile) =>
+                      renderPileButton(pile, p.units.length),
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          <div className="stockyard-history">
+            {orderPiles(dangjinPiles, sort, riskFilter).map((pile) => {
+              const entries = historyForPile(pile, attributions);
+              if (!entries.length) return null;
+              return (
+                <div key={pile.stockpile_id} className="stockyard-history-pile">
+                  <strong>
+                    {pile.stockpile_id} · {pile.plant_yard} 하역 이력
+                  </strong>
+                  <ul>
+                    {entries.map((e) => (
+                      <li key={`${pile.stockpile_id}-${e.voyage_id}`}>
+                        {fmtDate(e.unloaded_at, true)} · {e.vessel_name} ·{" "}
+                        {n(e.tons)} t · {e.coal_type} ·{" "}
+                        {n(e.calorific_value_kcal_kg)} kcal/kg · 수분{" "}
+                        {e.moisture_pct}% · 회분 {e.ash_pct}% · 황분{" "}
+                        {e.sulfur_pct}%
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+      {!showYardSections && (
+        <Section
+          title="저탄장 배치"
+          note="면적은 재고량 비례 · Pile을 선택하면 탄질과 투입 가능 호기를 확인할 수 있습니다"
+          action={<span className="tower-tag">SIMULATED RISK</span>}
+        >
+          <div className="yard-map">
+            {blendPlants.map((p) => {
+              const plantPiles = orderPiles(
+                scope.piles.filter((x) => x.plant_id === p.id),
+                sort,
+                riskFilter,
+              );
+              if (!plantPiles.length) return null;
+              return (
+                <div key={p.id} className="yard-plant">
+                  <span>{p.name}</span>
+                  <div className="yard-piles">
+                    {plantPiles.map((pile) =>
+                      renderPileButton(pile, p.units.length),
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="tower-footnote">
+            위험도는 적치기간과 탄종으로 계산한 모의 점수입니다. 온도·CO
+            센서 데이터는 연결되지 않았습니다.
+          </p>
+        </Section>
+      )}
 
       {active && (
         <Section
@@ -287,6 +539,7 @@ export function Stockyard({
               ["위험도", pileRisk(active).score + "/100 · SIMULATED"],
               ["온도", "미연결"],
               ["CO", "미연결"],
+              ["부두 / 발전처", `${active.berth_id ?? "-"} / ${active.plant_yard ?? "-"}${active.indoor ? " · 옥내" : ""}`],
               ["투입 가능 호기", eligibleNames(active) || "없음"],
             ].map(([k, v]) => (
               <div key={k}>
@@ -301,7 +554,7 @@ export function Stockyard({
       <div className="tower-two">
         <Section
           title="재고 전망"
-          note={`Pile 합계 기준 · 하역 완료 시점에 재고 반영 · ${FORECAST_HORIZON}일`}
+          note={`Pile 합계 기준 · 하역 완료 시점에 재고 반영 · ${FORECAST_HORIZON}일 · 대비선=요청 연료`}
         >
           <TowerChart
             theme={theme}
@@ -336,6 +589,13 @@ export function Stockyard({
                   data: daily.map((d) => Math.round(d.fuelUseTons)),
                   showSymbol: false,
                   lineStyle: { width: 1, type: "dashed" },
+                },
+                {
+                  name: "요청 연료",
+                  type: "line",
+                  data: contrast.map((c) => Math.round(c.requested)),
+                  showSymbol: false,
+                  lineStyle: { width: 1, type: "dotted" },
                 },
               ],
             }}
