@@ -50,8 +50,9 @@ def observed_time(meta, fallback):
 
 
 class AisCatalog:
-    def __init__(self, api_key=None, on_observation=None):
+    def __init__(self, api_key=None, on_observation=None, lookup_observation=None):
         self.on_observation = on_observation
+        self.lookup_observation = lookup_observation
         self._key = os.getenv("AISSTREAM_API_KEY", "").strip() if api_key is None else api_key
         self.status = "idle" if self._key else "not_configured"
         self._rows = OrderedDict()
@@ -112,6 +113,14 @@ class AisCatalog:
             self._prune_candidates(received_at)
         retained = self._korea.get(mmsi)
         old = self._rows.get(mmsi) or (retained["vessel"] if retained else None)
+        if old is None and self.lookup_observation:
+            old = self.lookup_observation(mmsi)
+            if old and old.get("ais"):
+                # Resume only known observation times; updatedAt may describe a position.
+                for field, times in (("staticObservedAt", self._static_at),
+                                     ("destinationObservedAt", self._destination_at)):
+                    if old["ais"].get(field):
+                        times[mmsi] = old["ais"][field]
         static_fresh = mmsi not in self._static_at or epoch(observed_at) >= epoch(self._static_at[mmsi])
         destination_fresh = (kind == "ShipStaticData" and isinstance(report.get("Destination"), str) and
                              (mmsi not in self._destination_at or epoch(observed_at) >= epoch(self._destination_at[mmsi])))
@@ -134,6 +143,7 @@ class AisCatalog:
         else:
             if static_fresh:
                 self._static_at[mmsi] = observed_at
+                ais["staticObservedAt"] = observed_at
                 imo = str(report.get("ImoNumber", ""))
                 if re.fullmatch(r"[1-9]\d{6}", imo):
                     row["imo"] = imo
@@ -142,6 +152,7 @@ class AisCatalog:
                     ais["shipType"] = ship_type
             if destination_fresh:
                 self._destination_at[mmsi] = observed_at
+                ais["destinationObservedAt"] = observed_at
                 destination = clean(report["Destination"])
                 ais["destination"] = destination
                 match = korean_destination(destination)

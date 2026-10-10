@@ -42,7 +42,8 @@ async def persist_loop():
 async def lifespan(app):
     global catalog, digitraffic, tracks
     tracks = TrackStore(os.getenv("AIS_TRACK_DB", str(Path(__file__).resolve().parents[3] / "data" / "vessel-tracks.sqlite3")))
-    catalog = AisCatalog(on_observation=tracks.record)
+    catalog = AisCatalog(on_observation=tracks.record,
+                         lookup_observation=lambda mmsi: tracks.active_observation("aisstream", mmsi))
     digitraffic = DigitrafficCatalog()
     if any(source == "aisstream" for source, _ in tracks.active):
         catalog.start()

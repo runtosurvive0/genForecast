@@ -62,6 +62,47 @@ def test_catalog_retains_registered_positions_outside_discovery_cache(tmp_path):
     store.close()
 
 
+@pytest.mark.parametrize('restart', [False, True])
+def test_position_after_eviction_or_restart_preserves_static_metadata(tmp_path, restart):
+    path = tmp_path / 'metadata.db'
+    store = TrackStore(path)
+    store.sync('a', [{'mmsi': '440123456', 'source': 'aisstream'}])
+    def catalog_for_store():
+        catalog = AisCatalog(api_key='', on_observation=store.record)
+        catalog.lookup_observation = lambda mmsi: store.active_observation('aisstream', mmsi)
+        return catalog
+    def ingest(catalog, kind, report, at):
+        catalog.ingest({'MessageType': kind, 'MetaData': {'MMSI': 440123456},
+                        'Message': {kind: report}}, at)
+    catalog = catalog_for_store()
+    ingest(catalog, 'ShipStaticData', {'ImoNumber': 9459101, 'Type': 70, 'Destination': 'SGSIN'}, '2026-10-09T00:00:00Z')
+    if restart:
+        store.close()
+        store = TrackStore(path)
+        catalog = catalog_for_store()
+    else:
+        catalog._rows.clear()
+        catalog._static_at.clear()
+        catalog._destination_at.clear()
+    ingest(catalog, 'PositionReport', {'Latitude': 35, 'Longitude': 125, 'Sog': 12}, '2026-10-09T00:10:00Z')
+    saved = store.latest('a')[0]
+    assert saved['ais']['destination'] == 'SGSIN'
+    assert saved['imo'] == '9459101'
+    assert saved['ais']['shipType'] == 70
+    # Stale static data cannot overwrite the restored metadata.
+    ingest(catalog, 'ShipStaticData', {'ImoNumber': 1234567, 'Destination': 'KRPUS'}, '2026-10-08T23:59:00Z')
+    assert store.latest('a')[0]['ais']['destination'] == 'SGSIN'
+    # An explicitly received blank destination IS a real update, unlike absent fields.
+    ingest(catalog, 'ShipStaticData', {'Destination': ''}, '2026-10-09T00:11:00Z')
+    saved = store.latest('a')[0]
+    assert saved['ais']['destination'] == ''
+    assert saved['imo'] == '9459101'
+    assert saved['ais']['position']['observedAt'] == '2026-10-09T00:10:00Z'
+    store.sync('a', [])
+    assert store.active_observation('aisstream', '440123456') is None
+    store.close()
+
+
 def test_sea_route_uses_ocean_network_and_caches_without_mutable_aliases():
     router = SeaRouter()
     route = router.route(151.8, -32.9, "dangjin")

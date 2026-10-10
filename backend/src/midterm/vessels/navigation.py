@@ -55,6 +55,12 @@ class TrackStore:
                 self.db.executemany("INSERT INTO members VALUES(?,?,?)", [(owner, *key) for key in keys])
             self.active = others | keys
 
+    def active_observation(self, source, mmsi):
+        """Return a copy for cache restoration without reviving removed subscriptions."""
+        with self.lock:
+            key = (source, mmsi)
+            return deepcopy(self.heads.get(key)) if key in self.active else None
+
     def record(self, vessel):
         key = (vessel["source"], vessel["mmsi"])
         with self.lock:
