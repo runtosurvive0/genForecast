@@ -1,0 +1,95 @@
+.vessel-port-visits {
+  min-width: 0;
+  margin: 16px 0;
+  padding: 18px 20px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.vessel-port-visits-header,
+.vessel-port-visits-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.vessel-port-visits h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.vessel-port-visits p {
+  margin: 5px 0;
+  color: var(--muted-foreground);
+}
+.vessel-port-visits .vessel-port-visits-notice {
+  color: var(--foreground);
+  padding: 8px 0;
+}
+.vessel-port-visits-list {
+  list-style: none;
+  margin: 14px 0;
+  padding: 0;
+}
+.vessel-port-visits-list li {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.3fr) repeat(2, minmax(130px, 1fr)) auto;
+  gap: 12px;
+  padding: 12px 0;
+}
+.vessel-port-visits-list li + li {
+  border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+}
+.vessel-port-visits-list li > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vessel-port-visits-list strong {
+  overflow-wrap: anywhere;
+  font-weight: 550;
+}
+.vessel-port-visits-list span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.vessel-port-visits-list time {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.vessel-port-visits-confidence {
+  align-self: center;
+}
+.vessel-port-visits footer {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.vessel-port-visits footer a {
+  text-underline-offset: 3px;
+  text-decoration: underline;
+}
+.vessel-port-visits summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  margin-top: 7px;
+}
+@media (max-width: 800px) {
+  .vessel-port-visits {
+    padding: 14px;
+  }
+  .vessel-port-visits-list li {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+  }
+  .vessel-port-visits-port {
+    grid-column: 1 / -1;
+  }
+  .vessel-port-visits-confidence {
+    grid-column: 1 / -1;
+  }
+}
