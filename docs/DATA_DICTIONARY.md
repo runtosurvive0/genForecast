@@ -54,6 +54,7 @@
   `인니 저열량탄`(4번째) Pile은 혼탄 전용이라 `eligible_unit_ids`가 1,000MW 호기만 포함한다. 저탄장 화면은 이를 ‘혼탄’으로 표시하고 주간 소진 시뮬레이션에서 해당 호기 수요만 배분한다.
   당진 전용: `berth_id`(BD-1·2·3)→`plant_yard`(P1·P2·P3) 1:1 고정 매핑. 탄종 기준 Pile 귀속(DA-01·DA-03→P1, DA-02→P2, DA-04→P3), P2·P3 `indoor:true` 옥내 뱃지. 하역분은 탄종 일치 Pile에 귀속해 30일 이력을 하역일 역순으로 표시한다. 상탄 게이지는 현재 출력의 t/h 환산치이며 전망 대비선은 요청 연료다. 이탄 가용(`transfer_capacity_t`)은 표본 임의값, 이송량은 수기 입력·초과 경고만. 저탄장 진입 기본값은 당진이다. 모두 SIMULATED 표본이다.
   접안 확장: 당진 60개 Pile(기존 4개 유지 + 56개 추가, 총량 증가, 처별 20개·2x2 탄종 구역×5개·구역 탄질 계승, `zone` 0~3). 최상단은 당진 앞바다 확대 그림(부두 고정·선박 ETA순) + 옆 테이블. 도착 판정은 실제 현시각 ETA·당진행 한정. 접안은 대기카드 버튼 지정, ETA순 추천 뱃지·사유 표시, 점유 데이터 없음. 합계 단언은 scope 변경 사유로 갱신한다.
+  항만 그림: 당진항 클로즈업 해도식 약도(바다·방파제·부두 3개·선박, 바탕·외곽선만, 고정 화면). 부두 고정 위치, 선박 ETA순, 대기선 부두 앞 해상. 선택 동기화 유지, 렌더 단언으로 검증, 섹션 태그 SIMULATED.
 - `Voyage.voyage_id`, `destination_plant_id`로 화물을 발전소에 연결한다. 로컬 페이지 표본은 한 항차에 한 화물이며 `cargo_t`가 API `cargo.quantity_t`에 해당한다. API DTO는 `src/domain/contracts.ts`의 CargoContract와 구분된다. 데이터 내보내기는 현재 로컬 표본 형식이다.
 - MMSI `999000001` 등의 번호와 `DEMO-*` IMO는 시연용 식별자다. 지도와 상세정보는 동일한 좌표를 사용한다. 새 위치는 VesselMap의 positions 입력으로 전달하며, 알 수 없는 항차에 예시 항로를 생성하지 않는다.
 - API/MILP 경계는 `src/domain/contracts.ts`, AIS Provider/decoder 경계는 `src/domain/ais.ts`. 네트워크 서비스는 실행하지 않는다.

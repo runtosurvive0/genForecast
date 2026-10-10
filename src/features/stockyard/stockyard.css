@@ -248,37 +248,85 @@
   gap: 16px;
   align-items: start;
 }
-.harbor-map {
+.harbor-mapwrap {
+  min-width: 0;
+}
+.harbor-chart {
+  display: block;
   width: 100%;
   height: auto;
   border: 1px solid var(--border);
   border-radius: 5px;
+  background: var(--card);
 }
 .harbor-sea {
   fill: #7984c40d;
 }
-.harbor-label {
-  font-size: 4.5px;
+.harbor-breakwater {
+  fill: none;
+  stroke: var(--muted-foreground);
+  stroke-width: 3;
+  opacity: 0.55;
+}
+.harbor-chart-note,
+.harbor-chart-label {
   fill: var(--muted-foreground);
+  font-size: 11px;
   text-anchor: middle;
 }
-.harbor-berth {
+.harbor-chart-note {
+  text-anchor: start;
+}
+.harbor-chart-berth {
   fill: #7984c433;
   stroke: #7984c4;
-  stroke-width: 0.4;
+  stroke-width: 1.2;
 }
-.harbor-ship {
+.harbor-chart-berth.is-occupied {
+  fill: #7984c455;
+}
+.harbor-chart-ship {
   cursor: pointer;
+  outline: none;
 }
-.harbor-ship circle {
-  fill: #7984c4;
+.harbor-chart-halo {
+  fill: var(--primary);
+  opacity: 0;
 }
-.harbor-ship.is-unloading circle {
+.harbor-chart-ship.is-selected .harbor-chart-halo {
+  opacity: 0.12;
+}
+.harbor-chart-body {
+  fill: var(--card);
+  stroke: var(--muted-foreground);
+  stroke-width: 1.2;
+}
+.harbor-chart-vessel {
+  fill: var(--muted-foreground);
+}
+.harbor-chart-ship.is-unloading .harbor-chart-body {
+  stroke: #5e8f6a;
+}
+.harbor-chart-ship.is-unloading .harbor-chart-vessel {
   fill: #5e8f6a;
 }
-.harbor-ship.is-selected circle {
-  stroke: #be7963;
-  stroke-width: 1.2;
+.harbor-chart-ship.is-selected .harbor-chart-body {
+  fill: var(--primary);
+  stroke: var(--primary);
+}
+.harbor-chart-ship.is-selected .harbor-chart-vessel {
+  fill: var(--primary-foreground);
+}
+.harbor-chart-ship:focus-visible .harbor-chart-halo {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  opacity: 1;
+}
+.harbor-map-note {
+  margin: 8px 0 0;
+  font-size: 10px;
+  color: var(--muted-foreground);
 }
 .harbor-tables {
   display: grid;

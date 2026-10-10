@@ -19,7 +19,6 @@ import {
   gaugeValue,
   historyForPile,
   incomingTimeline,
-  markerLayout,
   orderPiles,
   pileBlend,
   recommendBerth,
@@ -29,6 +28,7 @@ import {
   yardScope,
   FORECAST_HORIZON,
 } from "./stockyard-domain";
+import { HarborMap } from "./HarborMap";
 import "./stockyard.css";
 
 const YARDS = ["P1", "P2", "P3"] as const;
@@ -133,19 +133,6 @@ export function Stockyard({
         (v) => Date.parse(v.forecast_unload_end) >= Date.parse(BASE_TIME),
       ),
     [arrived],
-  );
-  const unloadingIds = new Set(
-    unloading.map((v) => v.voyage_id),
-  );
-  const markers = useMemo(
-    () =>
-      markerLayout(
-        waiting
-          .map((r) => r.voyage)
-          .filter((v) => !unloadingIds.has(v.voyage_id)),
-        unloading,
-      ),
-    [waiting, unloading],
   );
   const recommendFor = (voyageId: string) => {
     const voyage = arrived.find((v) => v.voyage_id === voyageId)!;
@@ -328,53 +315,14 @@ export function Stockyard({
           ))}
         </div>
         <div className="harbor-grid">
-          <svg
-            className="harbor-map"
-            viewBox="0 0 100 100"
-            role="img"
-            aria-label="당진 앞바다 접안 현황도"
-          >
-            <rect x="0" y="0" width="100" height="100" className="harbor-sea" />
-            <text x="4" y="8" className="harbor-label">
-              당진 앞바다 (SIMULATED)
-            </text>
-            {markers.map((m) =>
-              m.kind === "berth" ? (
-                <g key={m.id}>
-                  <rect
-                    x={m.x - 6}
-                    y={m.y - 4}
-                    width="12"
-                    height="8"
-                    className="harbor-berth"
-                  />
-                  <text x={m.x} y={m.y + 9} className="harbor-label">
-                    {m.label}
-                  </text>
-                </g>
-              ) : (
-                <g
-                  key={m.id}
-                  onClick={() => setSelectedShip(m.id)}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={selectedShip === m.id}
-                  aria-label={`${m.label} 선택`}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") setSelectedShip(m.id);
-                  }}
-                  className={`harbor-ship is-${m.kind}${
-                    selectedShip === m.id ? " is-selected" : ""
-                  }`}
-                >
-                  <circle cx={m.x} cy={m.y} r="3.4" />
-                  <text x={m.x} y={m.y - 5} className="harbor-label">
-                    {m.label}
-                  </text>
-                </g>
-              ),
-            )}
-          </svg>
+          <HarborMap
+            waiting={waiting.map((r) => r.voyage)}
+            unloading={unloading}
+            assignedBerths={assignedBerths}
+            selectedId={selectedShip}
+            onSelect={setSelectedShip}
+            theme={theme === "dark" ? "dark" : "light"}
+          />
           <div className="harbor-tables">
             <div className="tower-table-wrap">
               <table className="tower-table stockyard-waiting">

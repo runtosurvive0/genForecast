@@ -586,10 +586,10 @@ test("dangjin yard defaults, wait cards, gauge, history and transfer warn", asyn
     "가용 초과",
   );
   // 항만 그림 렌더 + 그림-테이블 동기화 (fact-map-assert, fact-sync-assert).
-  await expect(page.locator(".harbor-map")).toBeVisible();
-  await expect(page.locator(".harbor-berth")).toHaveCount(3);
-  await expect(page.locator(".harbor-ship")).toHaveCount(1);
-  await page.locator(".harbor-ship").first().click();
+  await expect(page.locator(".harbor-chart")).toBeVisible();
+  await expect(page.locator(".harbor-chart-berth")).toHaveCount(3);
+  await expect(page.locator(".harbor-chart-ship")).toHaveCount(1);
+  await page.locator(".harbor-chart-ship").first().click();
   await expect(
     page.locator('.stockyard-waiting tbody tr[class*="is-selected"]'),
   ).toHaveCount(1);
