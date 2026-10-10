@@ -1,20 +1,3 @@
-.yard-flow {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 0 20px;
-  margin-bottom: 20px;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  overflow: auto;
-}
-.yard-flow span {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  white-space: nowrap;
-}
 .yard-map {
   display: grid;
   gap: 15px;
@@ -34,52 +17,6 @@
   gap: 8px;
   min-width: 0;
 }
-.yard-pile {
-  min-width: 0;
-  height: 104px;
-  border: 1px solid #74847c40;
-  background: #74847c0c;
-  border-radius: 5px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  cursor: pointer;
-}
-.yard-pile strong {
-  font-size: 12px;
-  font-weight: 500;
-}
-.yard-pile span,
-.yard-pile small {
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
-.yard-pile.risk-medium {
-  background: #b3935e13;
-  border-color: #b3935e55;
-}
-.yard-pile.risk-high {
-  background: #be796313;
-  border-color: #be796355;
-}
-.yard-pile[aria-pressed="true"] {
-  outline: 2px solid #7984c4;
-  outline-offset: 2px;
-}
-@media (min-width: 1550px) {
-  .tower-kpis-six {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-  .tower-kpis-six .tower-metric {
-    border-bottom: 0;
-    border-right: 1px solid var(--border);
-  }
-  .tower-kpis-six .tower-metric:last-child {
-    border-right: 0;
-  }
-}
 @media (max-width: 650px) {
   .yard-plant {
     display: block;
@@ -88,19 +25,2055 @@
     display: block;
     margin-bottom: 10px;
   }
-  .yard-piles {
-    gap: 4px;
+}
+
+.stockyard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.stockyard-plants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.stockyard-plants button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.stockyard-plants button[aria-pressed="true"] {
+  color: var(--foreground);
+  border-color: #7984c4;
+  background: #7984c41a;
+}
+.stockyard-controls {
+  display: flex;
+  gap: 12px;
+}
+.stockyard-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-controls select {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+.stockyard-blend-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding-bottom: 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.stockyard-blend-summary strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+@media (max-width: 650px) {
+  .stockyard-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
-  .yard-pile {
-    height: 110px;
+}
+.stockyard-transfer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding-bottom: 10px;
+}
+.stockyard-transfer label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-transfer input,
+.stockyard-transfer select {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 12px;
+  max-width: 130px;
+}
+.stockyard-transfer button {
+  border: 1px solid #7984c4;
+  background: #7984c41a;
+  color: var(--foreground);
+  border-radius: 5px;
+  padding: 4px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.stockyard-transfer-result {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.stockyard-transfer-result strong {
+  color: #be7963;
+}
+
+/* ── 당진 항만·저탄장 약도 (SIMULATED 삽화, 측량 좌표 아님) ── */
+.stockyard-page {
+  --site-gap: 12px;
+  --plant-w: 120px;
+  --site-land: #f3f2ee;
+  --site-yard: #ebe8e1;
+  --site-yard-line: #d8d4ca;
+  --site-indoor: #ecebf0;
+  --site-roof: #dfdee6;
+  --site-belt: #8d8d93;
+  --site-belt-light: #d2d2d6;
+  --site-quay: #dcdcd8;
+  --site-quay-edge: #b4b4ae;
+  --site-fender: #5f5f63;
+  --site-sea: #dfe8ed;
+  --site-sea-deep: #cbdae2;
+  --site-wave: #b4c7d2;
+  --site-ok: #5e8f6a;
+  --site-medium: #b3935e;
+  --site-high: #be7963;
+  --coal: #4b555e;
+  --coal-lit: #6e7a84;
+  --coal-shade: #333c44;
+  --coal-grain: #c0c7cb;
+  --pile-ground: #1c242c24;
+  --ship-hull: #3c4751;
+  --ship-deck: #8a5f53;
+  --ship-hatch: #5c6873;
+  --ship-coal: #22292f;
+  --ship-bridge: #f6f6f4;
+  --ship-funnel: #b25d4f;
+  --ship-unloader: #c9a54e;
+  --plant-wall: #d6d7dc;
+  --plant-wall-dark: #b3b5bc;
+  --plant-stack: #e8e8ea;
+  --plant-band: #b9695c;
+}
+.dark .stockyard-page {
+  --site-land: #1d1d20;
+  --site-yard: #242427;
+  --site-yard-line: #36363c;
+  --site-indoor: #232329;
+  --site-roof: #2d2d37;
+  --site-belt: #77777f;
+  --site-belt-light: #3b3b41;
+  --site-quay: #2f2f33;
+  --site-quay-edge: #4a4a50;
+  --site-fender: #0f0f11;
+  --site-sea: #1b252c;
+  --site-sea-deep: #151e24;
+  --site-wave: #2c3b45;
+  --site-ok: #82b48f;
+  --site-medium: #d4b47d;
+  --site-high: #dd9a84;
+  --coal: #5c656e;
+  --coal-lit: #7d8790;
+  --coal-shade: #434b53;
+  --coal-grain: #a3abb0;
+  --pile-ground: #00000066;
+  --ship-hull: #7a8692;
+  --ship-deck: #7c5a50;
+  --ship-hatch: #4a555f;
+  --ship-coal: #16191c;
+  --ship-bridge: #d9dadd;
+  --ship-funnel: #a65a4e;
+  --ship-unloader: #b8994f;
+  --plant-wall: #3b3c42;
+  --plant-wall-dark: #2c2d33;
+  --plant-stack: #4a4b51;
+  --plant-band: #a3645a;
+}
+
+.stockyard-site {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 272px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  overflow: hidden;
+}
+.stockyard-site-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.stockyard-site-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.stockyard-site-header p {
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-site-canvas {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--site-land);
+}
+.site-scene {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--plant-w);
+  grid-template-rows: 36px auto 36px 26px minmax(132px, 1fr);
+  flex: 1;
+  grid-template-areas:
+    "belt belt belt plant"
+    "P1 P2 P3 plant"
+    "c1 c2 c3 plant"
+    "quay quay quay quay"
+    "sea sea sea sea";
+  column-gap: var(--site-gap);
+  padding: 4px 14px 0;
+  min-width: 0;
+}
+
+/* 상탄 컨베이어: 저탄장 → 발전소 */
+.site-belt {
+  grid-area: belt;
+  position: relative;
+  min-width: 0;
+}
+.site-belt-track {
+  position: absolute;
+  left: 6px;
+  right: calc(-1 * (var(--site-gap) + 45px));
+  top: 15px;
+  height: 7px;
+  border-radius: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--site-belt) 0 6px,
+    var(--site-belt-light) 6px 9px
+  );
+  animation: site-belt-right 0.9s linear infinite;
+}
+.site-belt-chip {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 10px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.site-belt-chip strong {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.site-belt-chip small {
+  font-size: 9px;
+}
+
+/* 발전소 */
+.site-plant {
+  grid-area: plant;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.site-plant-drop {
+  flex: 1;
+  min-height: 8px;
+  width: 7px;
+  margin: 22px 0 0 38px;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--site-belt) 0 6px,
+    var(--site-belt-light) 6px 9px
+  );
+  animation: site-belt-down 0.9s linear infinite;
+}
+.plant-glyph {
+  display: block;
+  flex-shrink: 0;
+  width: 100%;
+  height: auto;
+}
+.site-plant strong {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.site-plant span {
+  margin-top: 2px;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+.plant-stack {
+  fill: var(--plant-stack);
+  stroke: var(--plant-wall-dark);
+  stroke-width: 0.8;
+}
+.plant-stack-band {
+  fill: var(--plant-band);
+}
+.plant-esp,
+.plant-bunker {
+  fill: var(--plant-wall-dark);
+}
+.plant-boiler,
+.plant-turbine {
+  fill: var(--plant-wall);
+  stroke: var(--plant-wall-dark);
+  stroke-width: 1;
+}
+.plant-lines {
+  fill: none;
+  stroke: var(--plant-wall-dark);
+  stroke-width: 1;
+}
+.plant-ground {
+  fill: var(--site-quay);
+}
+.plant-gallery {
+  fill: none;
+  stroke: var(--site-belt);
+  stroke-width: 7;
+}
+.plant-gallery-flow {
+  fill: none;
+  stroke: var(--site-belt-light);
+  stroke-width: 3;
+  stroke-dasharray: 3 5;
+  animation: site-flow 0.8s linear infinite;
+}
+
+/* 발전처별 저탄장: 탄종 구역 = 적치열(windrow), 사이 선은 스태커·리클레이머 레일 */
+.yard-block {
+  position: relative;
+  container-type: inline-size;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px 8px;
+  border: 1px solid var(--site-yard-line);
+  border-radius: 4px;
+  background: var(--site-yard);
+}
+.yard-block::before {
+  content: "";
+  position: absolute;
+  right: 26px;
+  top: -15px;
+  width: 5px;
+  height: 14px;
+  background: var(--site-belt);
+}
+.yard-block.is-indoor {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 27px,
+      color-mix(in srgb, var(--site-roof) 70%, transparent) 27px 28px
+    ),
+    var(--site-indoor);
+}
+.yard-block > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.yard-block > header strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.yard-block > header span {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.yard-transfer-tag {
+  padding: 1px 6px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  font-size: 9px;
+  font-style: normal;
+  color: var(--primary);
+}
+.zone-group {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding-top: 6px;
+  background:
+    linear-gradient(var(--site-yard-line), var(--site-yard-line)) 0 0 / 100%
+      1px no-repeat,
+    linear-gradient(var(--site-yard-line), var(--site-yard-line)) 0 3px / 100%
+      1px no-repeat;
+}
+.zone-group > span {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yard-block .yard-piles {
+  gap: 3px;
+  align-items: flex-end;
+}
+
+/* Pile: 재고 비례 둔덕 */
+.yard-pile {
+  position: relative;
+  flex: var(--pile-grow, 1) 1 0;
+  min-width: 26px;
+  height: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.pile-mound {
+  display: block;
+  height: calc(27px * var(--pile-height, 1));
+}
+.pile-mound svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.pile-ground {
+  fill: var(--pile-ground);
+}
+.pile-body {
+  fill: var(--coal);
+}
+.pile-lit {
+  fill: var(--coal-lit);
+}
+.pile-shade {
+  fill: var(--coal-shade);
+}
+.pile-grain {
+  fill: none;
+  stroke: var(--coal-grain);
+  stroke-width: 1;
+  opacity: 0.35;
+  vector-effect: non-scaling-stroke;
+}
+.pile-label {
+  font-size: 9px;
+  line-height: 12px;
+  letter-spacing: -0.2px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+@container (max-width: 250px) {
+  .pile-label-prefix {
+    display: none;
   }
-  .yard-pile span {
-    font-size: 8px;
+}
+.pile-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0 3px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary) 14%, var(--card));
+  color: var(--primary);
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 11px;
+}
+.yard-pile.risk-medium .pile-ground {
+  fill: color-mix(in srgb, var(--site-medium) 60%, transparent);
+}
+.yard-pile.risk-high .pile-ground {
+  fill: color-mix(in srgb, var(--site-high) 70%, transparent);
+}
+.yard-pile.risk-medium .pile-label {
+  color: var(--site-medium);
+}
+.yard-pile.risk-high .pile-label {
+  color: var(--site-high);
+  font-weight: 600;
+}
+.yard-pile:hover .pile-mound,
+.yard-pile:focus-visible .pile-mound {
+  filter: brightness(1.15);
+}
+.yard-pile[aria-pressed="true"] {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.yard-pile[aria-pressed="true"] .pile-label {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.yard-pile.is-receiving::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+  opacity: 0.7;
+}
+.yard-pile.is-dimmed {
+  opacity: 0.25;
+}
+.yard-pile-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.yard-plant .yard-piles {
+  gap: 6px;
+  align-items: flex-end;
+  padding: 8px 10px 6px;
+  border: 1px solid var(--site-yard-line);
+  border-radius: 4px;
+  background: var(--site-yard);
+}
+.yard-plant .yard-pile {
+  height: 58px;
+}
+.yard-plant .pile-mound {
+  height: calc(40px * var(--pile-height, 1));
+}
+
+/* 하역 컨베이어: 부두 → 발전처 */
+.site-conveyor {
+  position: relative;
+  min-width: 0;
+}
+.site-conveyor::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 14px;
+  height: 7px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--site-belt);
+}
+.site-conveyor-belt {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  bottom: 0;
+  width: 7px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(
+    0deg,
+    var(--site-belt) 0 6px,
+    var(--site-belt-light) 6px 9px
+  );
+}
+.site-conveyor.is-running .site-conveyor-belt {
+  animation: site-belt-up 0.9s linear infinite;
+}
+.site-conveyor small {
+  position: absolute;
+  left: calc(50% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+/* 안벽(부두) */
+.harbor-quay {
+  grid-area: quay;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--plant-w);
+  column-gap: var(--site-gap);
+  margin: 0 -14px;
+  padding: 0 14px;
+  list-style: none;
+  background: var(--site-quay);
+  border-top: 1px solid var(--site-quay-edge);
+  box-shadow: inset 0 -3px 0 var(--site-quay-edge);
+}
+.harbor-quay::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 3px;
+  z-index: 1;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--site-fender) 0 7px,
+    transparent 7px 28px
+  );
+}
+.harbor-berth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  border-inline: 1px dashed var(--site-quay-edge);
+  font-size: 9px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.harbor-berth i {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--site-quay-edge);
+}
+.harbor-berth b {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.harbor-berth span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.harbor-berth.is-unloading i {
+  background: var(--site-ok);
+}
+.harbor-berth.is-unloading span {
+  color: var(--site-ok);
+}
+.harbor-berth.is-assigned i {
+  background: var(--primary);
+}
+.harbor-berth.is-assigned span {
+  color: var(--primary);
+}
+
+/* 해상 */
+.harbor-sea {
+  grid-area: sea;
+  position: relative;
+  margin-inline: -14px;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--site-sea), var(--site-sea-deep));
+}
+.harbor-waves {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--site-wave);
+  pointer-events: none;
+}
+.harbor-wave {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.harbor-contour {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+  vector-effect: non-scaling-stroke;
+}
+.harbor-sea-name {
+  position: absolute;
+  left: 18px;
+  bottom: 12px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.harbor-anchorage {
+  position: absolute;
+  right: 22px;
+  top: 30px;
+  width: 220px;
+  height: 104px;
+  border: 1px dashed color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.harbor-anchorage span {
+  position: absolute;
+  right: 26px;
+  top: -6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--site-sea);
+  font-size: 9px;
+  line-height: 12px;
+  color: var(--muted-foreground);
+}
+.harbor-ship {
+  position: absolute;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.harbor-ship.is-moored {
+  --col: calc(
+    (100% - 28px - var(--plant-w) - 3 * var(--site-gap)) / 3
+  );
+  top: 5px;
+  left: calc(
+    14px + (var(--col) + var(--site-gap)) * var(--slot, 0) + var(--col) * 0.1 +
+      var(--stack, 0) * 12px
+  );
+  width: calc(var(--col) * 0.8);
+  transition: left 0.6s ease;
+}
+.harbor-ship.is-anchored {
+  right: calc(56px + var(--k, 0) * 176px);
+  top: 56px;
+  width: 150px;
+}
+.harbor-ship.is-anchored .ship-glyph {
+  transform: rotate(-7deg);
+}
+.harbor-ship.is-sample {
+  cursor: default;
+}
+.harbor-ship.is-sample .ship-glyph {
+  opacity: 0.72;
+}
+.harbor-ship.is-sample .ship-hull {
+  stroke: var(--muted-foreground);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+.harbor-ship-label {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  text-shadow:
+    0 0 3px var(--site-sea),
+    0 0 3px var(--site-sea);
+}
+.harbor-ship-label b {
+  color: var(--foreground);
+  font-weight: 550;
+}
+.harbor-ship[aria-pressed="true"] .ship-hull {
+  stroke: var(--primary);
+  stroke-width: 2.5;
+}
+.harbor-ship[aria-pressed="true"] .harbor-ship-label b {
+  color: var(--primary);
+}
+.harbor-ship:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.ship-glyph {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.ship-shadow {
+  fill: #0b1f2e;
+  opacity: 0.12;
+}
+.ship-line {
+  fill: none;
+  stroke: var(--muted-foreground);
+  stroke-width: 0.8;
+}
+.ship-hull {
+  fill: var(--ship-hull);
+}
+.ship-deck {
+  fill: var(--ship-deck);
+}
+.ship-hatch {
+  fill: var(--ship-hatch);
+}
+.ship-hatch.is-open {
+  fill: var(--ship-coal);
+}
+.ship-bridge,
+.ship-mast {
+  fill: var(--ship-bridge);
+}
+.ship-funnel {
+  fill: var(--ship-funnel);
+}
+.ship-unloader rect {
+  fill: var(--ship-unloader);
+  stroke: color-mix(in srgb, var(--ship-unloader) 60%, #000);
+  stroke-width: 0.6;
+}
+.ship-unloader rect:last-child {
+  animation: site-grab 2.4s ease-in-out infinite;
+}
+
+/* 우측 패널 */
+.stockyard-site-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 16px 14px;
+  border-left: 1px solid var(--border);
+}
+.site-side-heading {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 6px 10px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.site-ship-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.site-ship-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 33px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.site-ship-list button svg {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+}
+.site-ship-list button small {
+  margin-left: auto;
+  font-size: 10px;
+}
+.site-ship-list button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--foreground);
+  font-weight: 500;
+}
+.site-ship-list button[aria-pressed="true"] svg {
+  color: var(--primary);
+}
+.site-ship-list p {
+  margin: 0 6px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.site-ship-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 10px;
+  margin: 16px 6px 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.site-ship-detail > div {
+  min-width: 0;
+}
+.site-ship-detail-name,
+.site-ship-rec,
+.site-ship-assign {
+  grid-column: 1 / -1;
+}
+.site-ship-detail > div:not(.site-ship-rec) > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.site-ship-detail b {
+  display: block;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.site-ship-detail-name strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 550;
+}
+.site-ship-rec {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.site-ship-rec small {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+.site-ship-assign {
+  display: flex;
+  gap: 6px;
+}
+.site-ship-assign select {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11px;
+}
+.site-ship-assign button {
+  padding: 3px 12px;
+  border: 1px solid #7984c4;
+  border-radius: 5px;
+  background: #7984c41a;
+  color: var(--foreground);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.site-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px 12px;
+  margin: 20px 6px 0;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+.site-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.site-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--muted-foreground);
+}
+.site-legend .legend-moored {
+  background: var(--site-ok);
+}
+.site-legend .legend-anchored {
+  background: transparent;
+  border: 1px dashed var(--muted-foreground);
+}
+.site-legend .legend-belt {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--site-belt) 0 3px,
+    var(--site-belt-light) 3px 5px
+  );
+}
+.site-legend .legend-medium {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--site-medium);
+}
+.site-legend .legend-high {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--site-high);
+}
+.site-legend b {
+  color: var(--primary);
+  font-weight: 600;
+}
+.site-credit {
+  margin: 12px 6px 0;
+  font-size: 9px;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+}
+
+/* Pile 하역 이력 툴팁 (document.body 포털) */
+.pile-history-tooltip {
+  position: fixed;
+  z-index: 60;
+  width: 300px;
+  max-height: min(440px, 70vh);
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 10px 28px #0000001f;
+  font-size: 11px;
+}
+.pile-history-tooltip > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.pile-history-tooltip > header strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.pile-risk-tag {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+.pile-risk-tag.risk-medium {
+  color: var(--amber);
+}
+.pile-risk-tag.risk-high {
+  color: var(--destructive);
+}
+.pile-history-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  margin: 0 0 10px;
+}
+.pile-history-summary dt {
+  margin-bottom: 2px;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+.pile-history-summary dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pile-history-flags {
+  margin: 0 0 8px;
+  font-size: 10px;
+  color: var(--amber);
+}
+.pile-history-title {
+  display: block;
+  margin-bottom: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.pile-history-entries {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pile-history-entries li > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pile-history-entries strong {
+  font-size: 11px;
+  font-weight: 550;
+}
+.pile-history-entries li > div span {
+  font-size: 9px;
+  color: var(--primary);
+}
+.pile-history-entries p {
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.pile-history-entries small {
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+.pile-history-empty {
+  margin: 0;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.pile-history-source {
+  margin: 10px 0 0;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+.stockyard-history {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.stockyard-history > strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.stockyard-history .pile-history-entries {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+@keyframes site-belt-right {
+  to {
+    background-position: 9px 0;
   }
-  .yard-pile small {
-    font-size: 8px;
+}
+@keyframes site-belt-down {
+  to {
+    background-position: 0 9px;
   }
-  .tower-kpis-six .tower-metric:nth-last-child(-n + 2) {
+}
+@keyframes site-belt-up {
+  to {
+    background-position: 0 -9px;
+  }
+}
+@keyframes site-flow {
+  to {
+    stroke-dashoffset: -8;
+  }
+}
+@keyframes site-grab {
+  50% {
+    transform: translateY(-5px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-belt-track,
+  .site-plant-drop,
+  .site-conveyor-belt,
+  .plant-gallery-flow,
+  .ship-unloader rect:last-child {
+    animation: none !important;
+  }
+  .harbor-ship.is-moored {
+    transition: none;
+  }
+}
+@media (max-width: 1200px) {
+  .stockyard-site {
+    grid-template-columns: minmax(0, 1fr) 236px;
+  }
+  .stockyard-site-side {
+    padding-inline: 12px;
+  }
+}
+@media (max-width: 1050px) {
+  .stockyard-site {
+    grid-template-columns: 1fr;
+  }
+  .stockyard-site-side {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto auto auto 1fr;
+    column-gap: 24px;
+    padding: 18px;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .stockyard-site-side > * {
+    grid-column: 1;
+  }
+  .stockyard-site-side > .site-ship-detail {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+@media (max-width: 760px) {
+  .stockyard-page {
+    --plant-w: 0px;
+    --site-gap: 8px;
+  }
+  .stockyard-site-header {
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+  .site-scene {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 36px repeat(3, auto) 26px 170px;
+    grid-template-areas: "belt" "P1" "P2" "P3" "quay" "sea";
+    row-gap: 18px;
+    padding-top: 10px;
+  }
+  .site-plant,
+  .site-conveyor,
+  .yard-block::before,
+  .site-belt-chip small {
+    display: none;
+  }
+  .harbor-quay {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 0;
+  }
+  .harbor-sea {
+    margin-top: -18px;
+  }
+  .harbor-ship.is-anchored {
+    top: 92px;
+    right: 18px;
+    width: 120px;
+  }
+  .harbor-anchorage {
+    top: 74px;
+    width: 170px;
+    height: 84px;
+  }
+  .stockyard-site-side {
+    display: flex;
+  }
+  .stockyard-site-side > .site-ship-detail {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* ── P1~P3: KPI 띠 · 알림 · 패널 탭 · 전망 · 타임라인 · 분석 · 원장 ── */
+.stockyard-anchor {
+  scroll-margin-top: 76px;
+  min-width: 0;
+}
+.stockyard-scope-note {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-search {
+  position: relative;
+}
+.stockyard-search input {
+  width: 150px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11px;
+}
+.stockyard-search small {
+  color: var(--site-high);
+  font-size: 10px;
+}
+
+/* KPI 띠: 7칸, 클릭 가능 */
+.stockyard-page .stockyard-kpis {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.stockyard-page .stockyard-kpi {
+  padding: 15px 16px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.stockyard-page .stockyard-kpi:last-child {
+  border-right: 0;
+}
+.stockyard-page .stockyard-kpi strong {
+  font-size: 23px;
+}
+.stockyard-page .stockyard-kpi:hover {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.stockyard-page .stockyard-kpi[aria-pressed="true"] {
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+.stockyard-kpi.is-danger strong {
+  color: var(--site-high);
+}
+.stockyard-kpi.is-warn strong {
+  color: var(--site-medium);
+}
+
+/* 알림 칩 */
+.stockyard-alerts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: -10px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-alerts-count b {
+  color: var(--foreground);
+}
+.stockyard-alerts > small {
+  margin-left: auto;
+  font-size: 9px;
+}
+.alert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+.alert-chip:disabled {
+  cursor: default;
+}
+.alert-chip i {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-style: normal;
+  color: var(--muted-foreground);
+  background: var(--accent);
+}
+.alert-chip.is-danger i {
+  color: #fff;
+  background: var(--site-high);
+}
+.alert-chip.is-warn i {
+  color: #fff;
+  background: var(--site-medium);
+}
+
+/* 약도 헤더: 연계 상태 */
+.site-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.link-chip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.link-chip.is-online i {
+  background: var(--site-ok);
+}
+.link-chip.is-online {
+  color: var(--foreground);
+}
+.link-chip.is-checking i {
+  background: var(--site-medium);
+}
+.site-links > button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+/* 약도: 처 선택·재고일수 */
+.site-yards {
+  display: contents;
+}
+.yard-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.yard-title:hover strong {
+  color: var(--primary);
+}
+.yard-days {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted-foreground) 14%, transparent);
+}
+.yard-days.is-danger {
+  color: #fff;
+  background: var(--site-high);
+}
+.yard-days.is-warn {
+  color: #fff;
+  background: var(--site-medium);
+}
+.yard-days.is-ok {
+  color: #fff;
+  background: var(--site-ok);
+}
+.yard-block.is-selected {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.site-conveyor.is-selected .site-conveyor-belt {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+.harbor-berth.is-selected {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+/* 패널 탭 */
+.site-panel-tabs {
+  display: flex;
+  gap: 2px;
+  margin: -4px 0 14px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--accent);
+}
+.site-panel-tabs button {
+  flex: 1;
+  height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+.site-panel-tabs button[aria-selected="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 550;
+  box-shadow: 0 1px 2px #00000014;
+}
+.site-tabpanel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.site-yard-chooser {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.site-yard-chooser button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+.site-yard-chooser button[aria-pressed="true"] {
+  border-color: var(--primary);
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.days-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.days-dot.is-danger {
+  background: var(--site-high);
+}
+.days-dot.is-warn {
+  background: var(--site-medium);
+}
+.days-dot.is-ok {
+  background: var(--site-ok);
+}
+.site-yard-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 10px;
+  margin: 12px 6px 16px;
+}
+.site-yard-detail > div {
+  min-width: 0;
+}
+.site-yard-detail > div > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.site-yard-detail b {
+  display: block;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+.days-text.is-danger {
+  color: var(--site-high);
+}
+.days-text.is-warn {
+  color: var(--site-medium);
+}
+.days-text.is-ok {
+  color: var(--site-ok);
+}
+.stockyard-site-side .stockyard-transfer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 6px;
+  padding: 0;
+}
+.stockyard-site-side .stockyard-transfer input,
+.stockyard-site-side .stockyard-transfer select {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  font-size: 11px;
+}
+.stockyard-site-side .stockyard-transfer .is-wide,
+.stockyard-site-side .stockyard-transfer button {
+  grid-column: 1 / -1;
+}
+.stockyard-site-side .stockyard-transfer-result {
+  margin: 8px 6px 0;
+  font-size: 11px;
+}
+.sim-badge,
+.saved-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--site-medium);
+  border-radius: 4px;
+  font-size: 9px;
+  font-style: normal;
+  color: var(--site-medium);
+}
+.saved-badge {
+  border-color: var(--site-ok);
+  color: var(--site-ok);
+}
+.site-sim-note,
+.site-ledger-link {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.site-ledger-link {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.site-ledger-link > span {
+  width: 100%;
+}
+.site-ledger-link b {
+  font-size: 11px;
+  font-weight: 450;
+  color: var(--foreground);
+}
+.site-ledger-link b.is-offline {
+  color: var(--muted-foreground);
+}
+.site-ledger-link input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11px;
+}
+.site-sim-note button,
+.site-ledger-link button,
+.site-transfer-list button,
+.site-link-line button {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.site-ledger-link button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.site-transfer-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 6px 0;
+  padding: 0;
+  list-style: none;
+}
+.site-transfer-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.site-transfer-list li > span {
+  width: 100%;
+  color: var(--foreground);
+}
+.site-link-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 6px 0;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.site-empty {
+  margin: 8px 6px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+}
+.site-pile-title {
+  margin: 0 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.site-link-button {
+  align-self: flex-start;
+  margin: 12px 6px 0;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+.pile-detail.is-compact .tower-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 10px;
+  margin: 0 6px;
+}
+.pile-detail.is-compact .tower-details dt {
+  margin-bottom: 3px;
+}
+.pile-detail.is-compact .tower-details dd {
+  font-size: 11px;
+}
+.pile-detail.is-compact .stockyard-history {
+  margin: 16px 6px 0;
+}
+.pile-detail.is-compact .stockyard-history .pile-history-entries {
+  grid-template-columns: 1fr;
+}
+
+/* 전망·입하 */
+.stockyard-segment {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--accent);
+}
+.stockyard-segment button {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+.stockyard-segment button[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 550;
+  box-shadow: 0 1px 2px #00000014;
+}
+.stockyard-groups td,
+.stockyard-incoming td {
+  padding-block: 9px;
+}
+.days-pill {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted-foreground) 14%, transparent);
+}
+.days-pill.is-danger {
+  color: #fff;
+  background: var(--site-high);
+}
+.days-pill.is-warn {
+  color: #fff;
+  background: var(--site-medium);
+}
+.days-pill.is-ok {
+  color: #fff;
+  background: var(--site-ok);
+}
+.stockyard-incoming td:first-child small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.stockyard-incoming tr.is-selected td {
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+.timeline-head {
+  display: flex;
+  justify-content: space-between;
+  min-width: 160px;
+}
+.timeline-cell {
+  width: 50%;
+  min-width: 160px;
+}
+.timeline-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--muted-foreground) 12%, transparent);
+}
+.timeline-track i,
+.timeline-legend i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px;
+}
+.timeline-wait {
+  background: color-mix(in srgb, var(--site-medium) 70%, transparent);
+}
+.timeline-unload {
+  background: var(--site-ok);
+}
+.timeline-track .timeline-reflect {
+  width: 2px;
+  margin-left: -1px;
+  top: -3px;
+  bottom: -3px;
+  border-radius: 1px;
+  background: var(--primary);
+}
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.timeline-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.timeline-legend i {
+  position: static;
+  display: inline-block;
+  width: 12px;
+  height: 6px;
+}
+.timeline-legend .timeline-reflect {
+  width: 2px;
+  height: 10px;
+  background: var(--primary);
+}
+
+/* 분석 */
+.stockyard-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 16px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--accent);
+}
+.stockyard-tabs button {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+.stockyard-tabs button[aria-selected="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 550;
+  box-shadow: 0 1px 2px #00000014;
+}
+.stockyard-subhead {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.stockyard-blend-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 24px;
+}
+.stockyard-list-title {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.stockyard-top-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stockyard-top-list button,
+.stockyard-groups button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.stockyard-top-list span {
+  margin-left: 8px;
+}
+
+/* 원장 */
+.stockyard-csv {
+  padding: 3px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+.ledger-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ledger-filters input {
+  width: 180px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11px;
+}
+.stockyard-ledger td {
+  padding-block: 8px;
+}
+.stockyard-ledger th button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.stockyard-ledger th[aria-sort="ascending"] button,
+.stockyard-ledger th[aria-sort="descending"] button {
+  color: var(--foreground);
+}
+.stockyard-ledger tr.is-selected td {
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+.stockyard-ledger tr.ledger-detail td {
+  padding: 14px 0 18px;
+  white-space: normal;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.ledger-detail-body {
+  display: grid;
+  gap: 4px;
+  max-width: 760px;
+}
+.risk-text.risk-high {
+  color: var(--site-high);
+}
+.risk-text.risk-medium {
+  color: var(--site-medium);
+}
+.ledger-pager {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 12px;
+}
+.ledger-pager button {
+  min-width: 28px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+.ledger-pager button[aria-current="page"] {
+  border-color: var(--primary);
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.ledger-pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 1279px) {
+  .stockyard-page .stockyard-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .stockyard-page .stockyard-kpi {
+    border-bottom: 1px solid var(--border);
+  }
+  .stockyard-page .stockyard-kpi:nth-child(4n) {
+    border-right: 0;
+  }
+  .stockyard-page .stockyard-kpi:nth-child(n + 5) {
     border-bottom: 0;
+  }
+}
+@media (max-width: 1050px) {
+  .stockyard-site-side > .site-panel-tabs,
+  .stockyard-site-side > .site-tabpanel {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 760px) {
+  .stockyard-page .stockyard-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stockyard-page .stockyard-kpi {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .stockyard-page .stockyard-kpi:nth-child(2n) {
+    border-right: 0;
+  }
+  .stockyard-page .stockyard-kpi:nth-child(n + 5) {
+    border-bottom: 1px solid var(--border);
+  }
+  .stockyard-page .stockyard-kpi:last-child {
+    border-bottom: 0;
+  }
+  .stockyard-page .stockyard-kpi strong {
+    font-size: 21px;
+  }
+  .stockyard-site-header .site-links {
+    justify-content: flex-start;
+  }
+  .stockyard-blend-grid {
+    grid-template-columns: 1fr;
+  }
+  .stockyard-search input {
+    width: 120px;
+  }
+  .stockyard-controls {
+    flex-wrap: wrap;
+  }
+  .stockyard-alerts > small {
+    margin-left: 0;
   }
 }

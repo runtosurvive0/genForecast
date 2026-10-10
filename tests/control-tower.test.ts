@@ -478,9 +478,10 @@ test("pile totals and weighted quality are the plant inventory source", () => {
       plant.calorificKcalKg,
     );
   }
+  // Scope growth (R25): Dangjin keeps 4 piles and adds 56 × 3600 t.
   assert.equal(
     plantInputs.reduce((s, p) => s + p.inventoryTons, 0),
-    538000,
+    739600,
   );
   assert.equal(
     weightedCalorific([
@@ -634,7 +635,8 @@ test("summary scopes cargo and piles, links model generation to fuel and uses fo
     30,
     models,
   );
-  assert.equal(normal.currentStock, 180000);
+  // Scope growth (R25): Dangjin total grows by 56 × 3600 t.
+  assert.equal(normal.currentStock, 381600);
   assert.equal(normal.incomingTons, 80000);
   assert.equal(normal.forecast.daily.length, 30);
   assert.ok(changed.daily[0].requestedFuel > normal.daily[0].requestedFuel);

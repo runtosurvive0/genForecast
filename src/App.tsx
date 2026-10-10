@@ -941,7 +941,11 @@ function App() {
             </>
           )}
           {page === "fuel" && (
-            <Stockyard plants={selectedPlants} theme={theme} />
+            <Stockyard
+              plants={selectedPlants}
+              theme={theme}
+              horizon={horizon}
+            />
           )}
 
           {page === "vessels" && (

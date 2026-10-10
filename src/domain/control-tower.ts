@@ -83,19 +83,46 @@ export function freshness(receivedAt: string, now = Date.now()) {
           ? "ESTIMATED"
           : "STALE";
 }
+/**
+ * 센서 점수 구간 (임시 기준, 운영 기준으로 교체). SPEC §13:
+ * risk_score = age_score + temperature_score + co_score + coal_type_score.
+ */
+export const SENSOR_RISK_STEPS = {
+  temperature_c: [
+    [60, 40],
+    [50, 25],
+    [40, 10],
+  ],
+  co_ppm: [
+    [100, 35],
+    [50, 20],
+    [20, 8],
+  ],
+} as const;
+const stepScore = (value: number | null, steps: readonly (readonly [number, number])[]) =>
+  value === null || !Number.isFinite(value)
+    ? 0
+    : (steps.find(([limit]) => value >= limit)?.[1] ?? 0);
 export function pileRisk(pile: Stockpile) {
   const age = Math.max(
     0,
     Math.floor((base - Date.parse(pile.stacked_at)) / DAY),
   );
+  const sensed = pile.temperature_c !== null || pile.co_ppm !== null;
   const score = Math.min(
     100,
-    Math.round(age * 1.1 + (pile.coal_type.includes("인니") ? 15 : 5)),
+    Math.round(
+      age * 1.1 +
+        (pile.coal_type.includes("인니") ? 15 : 5) +
+        stepScore(pile.temperature_c, SENSOR_RISK_STEPS.temperature_c) +
+        stepScore(pile.co_ppm, SENSOR_RISK_STEPS.co_ppm),
+    ),
   );
   return {
     age,
     score,
-    source: "SIMULATED" as const,
+    /** 센서 값이 하나라도 있으면 SENSOR, 없으면 적치일·탄종만 쓴 SIMULATED. */
+    source: sensed ? ("SENSOR" as const) : ("SIMULATED" as const),
     label: score >= 70 ? "높음" : score >= 40 ? "관찰" : "낮음",
   };
 }
