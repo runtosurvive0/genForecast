@@ -14,6 +14,14 @@ export interface Stockpile {
   temperature_c: number | null;
   co_ppm: number | null;
   eligible_unit_ids: string[];
+  /** Dangjin-only: 1·2·3부두 중 하나, 타 발전소는 null. */
+  berth_id: "BD-1" | "BD-2" | "BD-3" | null;
+  /** Dangjin-only: 1·2·3발전처 저탄장, 타 발전소는 null. */
+  plant_yard: "P1" | "P2" | "P3" | null;
+  /** 옥내저탄장 여부 (2·3발전처). */
+  indoor: boolean;
+  /** Dangjin-only: 2x2 구역 0~3, 타 발전소는 null. */
+  zone: number | null;
 }
 export interface Voyage {
   voyage_id: string;
@@ -43,8 +51,60 @@ export interface Voyage {
   allowed_laytime_h: number;
   demurrage_usd_per_day: number;
   voyage_status: "active" | "cancelled";
+  /** 하역 부두 (Dangjin-only, SIMULATED). */
+  berth_id: string | null;
+  /** 처 간 이탄 가용용량 표본 (t, SIMULATED, 수기 입력 상한 참고용). */
+  transfer_capacity_t: number;
 }
 const day = 86400000;
+const COALS = ["호주 역청탄", "인니 아역청탄", "호주 역청탄", "인니 저열량탄"];
+const CV_OFFSETS = [300, -100, -250, -400];
+const MOISTURE = [8.2, 18.4, 10.1, 24.2];
+const ASH = [12.1, 5.5, 11.4, 4.2];
+const SULFUR = [0.42, 0.21, 0.38, 0.18];
+/** Dangjin: keep DA-01~04, add DA-05~60 so every (yard, zone) holds 5. */
+const EXTRA_SLOTS: Array<["P1" | "P2" | "P3", number]> = (() => {
+  const slots: Array<["P1" | "P2" | "P3", number]> = [];
+  const need: Record<"P1" | "P2" | "P3", number[]> = {
+    P1: [4, 5, 4, 5],
+    P2: [5, 4, 5, 5],
+    P3: [5, 5, 5, 4],
+  };
+  (["P1", "P2", "P3"] as const).forEach((yard) =>
+    need[yard].forEach((count, zone) => {
+      for (let k = 0; k < count; k++) slots.push([yard, zone]);
+    }),
+  );
+  return slots;
+})();
+const dangjinExtra = (p: (typeof plants)[number], n: number) => {
+  const [yard, zone] = EXTRA_SLOTS[n - 5] as ["P1" | "P2" | "P3", number];
+  return {
+    stockpile_id: `DA-${String(n).padStart(2, "0")}`,
+    plant_id: p.id,
+    coal_type: COALS[zone],
+    on_hand_t: 3600,
+    calorific_value_kcal_kg: p.calorificKcalKg + CV_OFFSETS[zone],
+    moisture_pct: MOISTURE[zone],
+    ash_pct: ASH[zone],
+    sulfur_pct: SULFUR[zone],
+    stacked_at: new Date(
+      Date.parse(BASE_TIME) - ((n * 7) % 30) * day - 1 * day,
+    ).toISOString(),
+    temperature_c: null,
+    co_ppm: null,
+    eligible_unit_ids:
+      zone === 3
+        ? p.units
+            .filter((u) => u.capacityMw >= 1000)
+            .map((u) => u.id)
+        : p.units.map((u) => u.id),
+    plant_yard: yard,
+    berth_id: (["BD-1", "BD-2", "BD-3"] as const)[["P1", "P2", "P3"].indexOf(yard)],
+    indoor: yard !== "P1",
+    zone,
+  };
+};
 export const stockpiles: Stockpile[] = plants.flatMap((p, pi) =>
   [0.4, 0.3, 0.2, 0.1].map((weight, i) => ({
     stockpile_id: `${p.id.toUpperCase().slice(0, 2)}-${String(i + 1).padStart(2, "0")}`,
@@ -62,9 +122,25 @@ export const stockpiles: Stockpile[] = plants.flatMap((p, pi) =>
     ).toISOString(),
     temperature_c: null,
     co_ppm: null,
-    eligible_unit_ids: p.units.map((u) => u.id),
+    // Single-fuel boilers cannot take the low-calorific blending pile.
+    eligible_unit_ids:
+      i === 3
+        ? p.units
+            .filter((u) => u.capacityMw >= 1000)
+            .map((u) => u.id)
+        : p.units.map((u) => u.id),
+    // Dangjin plant-yard attribution by coal type (SIMULATED):
+    // DA-01·DA-03 → P1, DA-02 → P2, DA-04 → P3(옥내).
+    plant_yard:
+      p.id === "dangjin" ? (["P1", "P2", "P1", "P3"] as const)[i] : null,
+    berth_id:
+      p.id === "dangjin" ? (["BD-1", "BD-2", "BD-1", "BD-3"] as const)[i] : null,
+    indoor: p.id === "dangjin" && (i === 1 || i === 3),
+    zone: p.id === "dangjin" ? i : null,
   })),
 );
+const dangjin = plants.find((p) => p.id === "dangjin")!;
+for (let n = 5; n <= 60; n++) stockpiles.push(dangjinExtra(dangjin, n));
 const positions = [
   [36.99, 126.35],
   [25.4, 123.8],
@@ -103,4 +179,6 @@ export const voyages: Voyage[] = shipments.map((s, i) => ({
   allowed_laytime_h: 24,
   demurrage_usd_per_day: 18000,
   voyage_status: "active",
+  berth_id: s.plantId === "dangjin" ? "BD-1" : null,
+  transfer_capacity_t: [20000, 15000, 12000, 10000][i],
 }));
