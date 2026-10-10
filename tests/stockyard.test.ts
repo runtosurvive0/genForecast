@@ -2,12 +2,36 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE_TIME } from "../src/domain/operations.ts";
 import { stockpiles } from "../src/data/control-tower.ts";
-import { plantInputs, weightedCalorific } from "../src/domain/control-tower.ts";
+import {
+  pileRisk,
+  plantInputs,
+  weightedCalorific,
+} from "../src/domain/control-tower.ts";
 import {
   allocateBurn,
   arrivalWaiting,
   attributeByCoalType,
   berthMap,
+  berthOccupancy,
+  daysStatus,
+  fromSupplyTransfers,
+  groupForecasts,
+  groupWeeklyBurn,
+  incomingSchedule,
+  ledgerCsv,
+  ledgerRows,
+  mergeAisPositions,
+  mergeSensorReadings,
+  normalizeAisPositions,
+  normalizeSensorReadings,
+  normalizeSupplyRecords,
+  sortLedger,
+  stockGroups,
+  stockyardAlerts,
+  supplyCumulative,
+  toSupplyTransfer,
+  toSupplyVessel,
+  unitDailyMwh,
   contrastLine,
   gaugeValue,
   historyForPile,
@@ -16,6 +40,9 @@ import {
   incomingTimeline,
   orderPiles,
   pileBlend,
+  pileFootprint,
+  showSampleWaiting,
+  siteVessels,
   transferTons,
   waitingVessels,
   weeklyBurnShares,
@@ -342,4 +369,432 @@ test("zone sections hold five piles each with matching coal type", () => {
       assert.ok(group.every((p) => p.coal_type === group[0].coal_type));
     }
   }
+});
+
+test("site vessels list each voyage once, moored first, waiting by ETA", () => {
+  const scope = yardScope("dangjin");
+  const arrived = arrivalWaiting(
+    scope.incoming,
+    Date.parse("2026-10-10T00:00:00Z"),
+  );
+  const unloading = arrived.filter(
+    (v) => Date.parse(v.forecast_unload_end) >= Date.parse(BASE_TIME),
+  );
+  const waiting = waitingVessels(arrived).map((r) => r.voyage);
+  // Pacific Horizon both waits and unloads: it is drawn once, at its berth.
+  const vessels = siteVessels(unloading, waiting, {});
+  assert.equal(
+    vessels.length,
+    new Set(vessels.map((v) => v.voyage.voyage_id)).size,
+  );
+  assert.deepEqual(
+    vessels.map((v) => [v.state, v.berth_id, v.assigned]),
+    [["unloading", "BD-1", false]],
+  );
+  const id = vessels[0].voyage.voyage_id;
+  const moved = siteVessels(unloading, waiting, { [id]: "BD-2" });
+  assert.deepEqual([moved[0].berth_id, moved[0].assigned], ["BD-2", true]);
+
+  const base = scope.incoming[0];
+  const late = { ...base, voyage_id: "w-late", ais_eta: "2026-10-05T00:00:00Z" };
+  const early = { ...base, voyage_id: "w-early", ais_eta: "2026-10-04T00:00:00Z" };
+  const atSea = siteVessels([], [late, early], {});
+  assert.deepEqual(
+    atSea.map((v) => [v.voyage.voyage_id, v.state]),
+    [
+      ["w-early", "waiting"],
+      ["w-late", "waiting"],
+    ],
+  );
+});
+
+test("berth occupancy follows effective berths, moored ships first", () => {
+  const base = yardScope("dangjin").incoming[0];
+  const moored = { ...base, voyage_id: "m" };
+  const waiter = { ...base, voyage_id: "w" };
+  const occupancy = berthOccupancy(
+    siteVessels([moored], [waiter], { m: "BD-2", w: "BD-3" }),
+  );
+  assert.deepEqual(
+    occupancy.map((b) => [b.berth_id, b.plant_yard, b.state]),
+    [
+      ["BD-1", "P1", "empty"],
+      ["BD-2", "P2", "unloading"],
+      ["BD-3", "P3", "assigned"],
+    ],
+  );
+  assert.equal(occupancy[1].vessel?.voyage.voyage_id, "m");
+  // 같은 부두면 접안 하역중 선박이 접안 지정된 대기선보다 우선한다.
+  const clash = berthOccupancy(siteVessels([moored], [waiter], { w: "BD-1" }));
+  assert.equal(clash[0].state, "unloading");
+  assert.equal(clash[0].vessel?.voyage.voyage_id, "m");
+  // 지정 없는 대기선은 부두를 점유하지 않는다.
+  const idle = berthOccupancy(siteVessels([], [waiter], {}));
+  assert.ok(idle.every((b) => b.state === "empty" && b.vessel === null));
+});
+
+test("pile footprint scales by cube root and keeps small piles visible", () => {
+  const big = pileFootprint(72000, 72000);
+  const small = pileFootprint(3600, 72000);
+  assert.equal(big.height, 1);
+  assert.ok(small.height >= 0.35 && small.height < 1);
+  assert.ok(Math.abs(big.grow / small.grow - Math.cbrt(20)) < 1e-9);
+  assert.equal(pileFootprint(0, 72000).height, 0.35);
+  assert.equal(pileFootprint(500, 0).height, 0.35);
+  assert.equal(pileFootprint(-10, 100).grow, 0);
+});
+
+test("sample waiting ship shows only while AIS is dummy", () => {
+  assert.equal(showSampleWaiting("dummy"), true);
+  assert.equal(showSampleWaiting("aisstream"), false);
+});
+
+const dangjinPlant = plantInputs.filter((p) => p.id === "dangjin");
+
+test("yard scope follows horizon and the app scope", () => {
+  const scope = yardScope(null, 60, ["dangjin", "boryeong"]);
+  assert.deepEqual(scope.plantIds, ["dangjin", "boryeong"]);
+  assert.ok(
+    scope.piles.every((p) => ["dangjin", "boryeong"].includes(p.plant_id)),
+  );
+  assert.equal(scope.forecast.daily.length, 60);
+  assert.equal(scope.extended.daily.length, 67);
+  assert.equal(yardScope("dangjin").horizon, FORECAST_HORIZON);
+});
+
+test("stock groups split Dangjin by yard and unit number, others by plant", () => {
+  const scope = yardScope(null);
+  const groups = stockGroups(plantInputs, scope.piles);
+  const dj = groups.filter((g) => g.plantId === "dangjin");
+  assert.deepEqual(
+    dj.map((g) => [g.id, g.unitIds]),
+    [
+      ["dangjin:P1", ["dj-1", "dj-2"]],
+      ["dangjin:P2", []],
+      ["dangjin:P3", ["dj-9"]],
+    ],
+  );
+  assert.ok(dj.every((g) => g.piles.length === 20));
+  const others = groups.filter((g) => g.plantId !== "dangjin");
+  assert.ok(others.every((g) => g.yard === null && g.id === g.plantId));
+  assert.equal(
+    groups.reduce((s, g) => s + g.piles.length, 0),
+    scope.piles.length,
+  );
+});
+
+test("unit daily MWh removes outage hours once even when outages overlap", () => {
+  const plant = {
+    ...dangjinPlant[0],
+    units: [
+      {
+        ...dangjinPlant[0].units[0],
+        capacityMw: 100,
+        loadPct: 50,
+        outages: [
+          {
+            startAt: "2026-10-06T12:00:00+09:00",
+            endAt: "2026-10-06T18:00:00+09:00",
+            reason: "a",
+          },
+          {
+            startAt: "2026-10-06T15:00:00+09:00",
+            endAt: "2026-10-06T21:00:00+09:00",
+            reason: "b",
+          },
+          {
+            startAt: "2026-10-07T09:00:00+09:00",
+            endAt: "2026-10-08T09:00:00+09:00",
+            reason: "c",
+          },
+        ],
+      },
+    ],
+  } as typeof dangjinPlant[0];
+  const mwh = unitDailyMwh(plant, 3)[plant.units[0].id];
+  assert.deepEqual(mwh, [50 * 15, 0, 50 * 24]);
+});
+
+test("yard forecasts add up to the plant engine until a yard runs short", () => {
+  const scope = yardScope("dangjin", 30);
+  const groups = stockGroups(dangjinPlant, scope.piles);
+  const forecasts = groupForecasts(groups, scope);
+  const plantDaily = scope.extended.byPlant[0].daily;
+  const firstShort = forecasts
+    .map((f) => f.firstShortageDate)
+    .filter((d): d is string => d !== null)
+    .sort()[0];
+  for (let d = 0; d < 30 && plantDaily[d].date < (firstShort ?? "9999"); d++) {
+    const sum = forecasts.reduce((s, f) => s + f.daily[d].stockTons, 0);
+    assert.ok(Math.abs(sum - plantDaily[d].stockTons) < 1e-6, plantDaily[d].date);
+  }
+  // 5~8호기가 없는 표본의 2발전처는 소비가 없어 재고일수를 판단하지 않는다.
+  const p2 = forecasts.find((f) => f.group.yard === "P2")!;
+  assert.equal(p2.currentDays, null);
+  assert.equal(p2.status, "unknown");
+  // 하역분(Pacific Horizon, BD-1)은 1발전처로 들어간다.
+  const p1 = forecasts.find((f) => f.group.yard === "P1")!;
+  assert.equal(
+    p1.daily.reduce((s, r) => s + r.inboundTons, 0),
+    80000,
+  );
+  assert.equal(p1.daily.length, 30);
+});
+
+test("berth reassignment and transfers move tonnage between yards only", () => {
+  const scope = yardScope("dangjin", 30);
+  const groups = stockGroups(dangjinPlant, scope.piles);
+  const baseline = groupForecasts(groups, scope);
+  const moved = groupForecasts(groups, scope, () => "BD-2");
+  const inbound = (fs: typeof baseline, yard: string) =>
+    fs.find((f) => f.group.yard === yard)!.daily.reduce((s, r) => s + r.inboundTons, 0);
+  assert.equal(inbound(moved, "P1"), 0);
+  assert.equal(inbound(moved, "P2"), 80000);
+  const transfer = {
+    id: "t1",
+    from: "P1",
+    to: "P2",
+    tons: 5000,
+    at: BASE_TIME,
+    note: "",
+  };
+  const after = groupForecasts(groups, scope, undefined, [transfer]);
+  const day0 = (fs: typeof baseline, yard: string) =>
+    fs.find((f) => f.group.yard === yard)!.daily[0];
+  assert.equal(day0(after, "P1").transferTons, -5000);
+  assert.equal(day0(after, "P2").transferTons, 5000);
+  assert.ok(
+    Math.abs(
+      day0(baseline, "P1").stockTons - day0(after, "P1").stockTons - 5000,
+    ) < 1e-6,
+  );
+  assert.ok(
+    Math.abs(day0(after, "P2").stockTons - day0(baseline, "P2").stockTons - 5000) <
+      1e-6,
+  );
+});
+
+test("days status follows SPEC thresholds", () => {
+  assert.equal(daysStatus(null), "unknown");
+  assert.equal(daysStatus(19.9), "danger");
+  assert.equal(daysStatus(20), "warn");
+  assert.equal(daysStatus(29.9), "warn");
+  assert.equal(daysStatus(30), "ok");
+  assert.equal(daysStatus(10, { danger: 7, normal: 15 }), "warn");
+});
+
+test("berth-aware attribution keeps cargo inside the berth's yard", () => {
+  const scope = yardScope("dangjin");
+  const atBerth = attributeByCoalType(scope.piles, scope.incoming, (v) => v.berth_id);
+  assert.ok(atBerth.length > 0);
+  assert.ok(atBerth.every((a) => a.pile.plant_yard === "P1"));
+  const atBd2 = attributeByCoalType(scope.piles, scope.incoming, () => "BD-2");
+  assert.ok(atBd2.every((a) => a.pile.plant_yard === "P2"));
+  for (const rows of [atBerth, atBd2])
+    assert.ok(Math.abs(rows.reduce((s, a) => s + a.tons, 0) - 80000) < 1e-6);
+  // 부두 정보가 없으면 기존처럼 발전소 전체의 같은 탄종 Pile에 배분한다.
+  const plantWide = attributeByCoalType(scope.piles, scope.incoming);
+  assert.ok(new Set(plantWide.map((a) => a.pile.plant_yard)).size > 1);
+});
+
+test("incoming schedule places wait and unload inside the horizon", () => {
+  const rows = incomingSchedule(yardScope(null).incoming, 30);
+  assert.ok(rows.length > 0);
+  for (const r of rows) {
+    for (const v of [...r.unload, r.reflect, ...(r.wait ?? [])])
+      assert.ok(v >= 0 && v <= 1);
+    assert.ok(r.unload[0] <= r.unload[1]);
+    assert.equal(r.reflect, r.unload[1]);
+  }
+  const ends = rows.map((r) => Date.parse(r.unloadEnd));
+  assert.deepEqual(ends, [...ends].sort((a, b) => a - b));
+});
+
+test("ledger rows sort, keep burn columns and export CSV with source", () => {
+  const scope = yardScope("dangjin");
+  const blend = pileBlend(scope.piles, []);
+  const rows = ledgerRows(scope.piles, plantInputs, blend, []);
+  assert.equal(rows.length, 60);
+  const byTons = sortLedger(rows, "tons", "desc");
+  assert.equal(byTons[0].pile.stockpile_id, "DA-01");
+  assert.ok(byTons.every((r, i) => i === 0 || byTons[i - 1].pile.on_hand_t >= r.pile.on_hand_t));
+  assert.deepEqual(
+    sortLedger(rows, "id", "asc").slice(0, 2).map((r) => r.pile.stockpile_id),
+    ["DA-01", "DA-02"],
+  );
+  const csv = ledgerCsv(rows.slice(0, 2)).split("\n");
+  assert.match(csv[0], /SIMULATED/);
+  assert.match(csv[1], /^stockpile_id,plant,yard/);
+  assert.equal(csv.length, 4);
+  const quoted = ledgerCsv([{ ...rows[0], plantName: "당진,본부" }]);
+  assert.match(quoted, /"당진,본부"/);
+});
+
+test("alerts rank danger before warnings and point at their targets", () => {
+  const scope = yardScope("dangjin");
+  const forecasts = groupForecasts(stockGroups(dangjinPlant, scope.piles), scope);
+  const alerts = stockyardAlerts({
+    forecasts,
+    piles: scope.piles,
+    vessels: [],
+    transferOver: true,
+  });
+  const rank = { danger: 0, warn: 1, info: 2 };
+  assert.ok(alerts.every((a, i) => i === 0 || rank[alerts[i - 1].level] <= rank[a.level]));
+  assert.ok(
+    alerts.some(
+      (a) => a.target?.kind === "pile" && a.target.id === "DA-04" && a.level === "warn",
+    ),
+  );
+  assert.ok(alerts.some((a) => a.target?.kind === "yard" && a.target.id === "P3"));
+  assert.ok(alerts.some((a) => a.text.includes("이탄 가용 초과")));
+});
+
+test("supply mapping uses g14/g58/g910 groups both ways", () => {
+  const body = toSupplyTransfer({
+    id: "x",
+    from: "P1",
+    to: "P3",
+    tons: 1200,
+    at: BASE_TIME,
+    note: "점검",
+  });
+  assert.deepEqual(body, {
+    at: BASE_TIME,
+    from_group: "g14",
+    to_group: "g910",
+    tonnes: 1200,
+    note: "점검",
+  });
+  assert.throws(() =>
+    toSupplyTransfer({ id: "y", from: "P9", to: "P1", tons: 1, at: BASE_TIME, note: "" }),
+  );
+  const back = fromSupplyTransfers([
+    { id: 7, at: BASE_TIME, from_group: "g58", to_group: "g14", tonnes: 300, note: "" },
+    { id: 8, at: BASE_TIME, from_group: "gx", to_group: "g14", tonnes: 1, note: "" },
+  ]);
+  assert.deepEqual(back.map((t) => [t.from, t.to, t.savedId]), [["P2", "P1", 7]]);
+});
+
+test("supply vessel body and cumulative unloading follow the backend rules", () => {
+  const voyage = yardScope("dangjin").incoming[0];
+  const body = toSupplyVessel(voyage, "BD-3");
+  assert.deepEqual(body.allocations, { g14: 0, g58: 0, g910: 1 });
+  assert.ok(Date.parse(body.start_at) >= Date.parse(body.arrival_at));
+  assert.ok(body.rate > 0);
+  const record = {
+    id: 1,
+    name: voyage.vessel_name,
+    cargo: 1000,
+    arrival_at: BASE_TIME,
+    points: [
+      { at: "2026-10-06T10:00:00+09:00", cumulative: 0, rate: 100, allocations: { g14: 1 } },
+      { at: "2026-10-06T12:00:00+09:00", cumulative: 300, rate: 50, allocations: { g14: 1 } },
+    ],
+  };
+  assert.equal(supplyCumulative(record, "2026-10-06T09:00:00+09:00"), 0);
+  assert.equal(supplyCumulative(record, "2026-10-06T11:00:00+09:00"), 100);
+  assert.equal(supplyCumulative(record, "2026-10-06T14:00:00+09:00"), 400);
+  assert.equal(supplyCumulative(record, "2026-10-08T00:00:00+09:00"), 1000);
+});
+
+test("sensor readings use the max per pile, drop stale data and raise risk", () => {
+  const pile = stockpiles.find((p) => p.stockpile_id === "DA-05")!;
+  const now = Date.parse("2026-10-06T09:00:00+09:00");
+  const merged = mergeSensorReadings(
+    [pile],
+    [
+      { stockpile_id: "DA-05", measured_at: "2026-10-06T08:50:00+09:00", temperature_c: 44, co_ppm: 12 },
+      { stockpile_id: "DA-05", measured_at: "2026-10-06T08:55:00+09:00", temperature_c: 61, co_ppm: null },
+      { stockpile_id: "DA-05", measured_at: "2026-10-05T20:00:00+09:00", temperature_c: 99, co_ppm: 500 },
+    ],
+    now,
+  )[0];
+  assert.equal(merged.temperature_c, 61);
+  assert.equal(merged.co_ppm, 12);
+  const before = pileRisk(pile);
+  const after = pileRisk(merged);
+  assert.equal(before.source, "SIMULATED");
+  assert.equal(after.source, "SENSOR");
+  assert.equal(after.score, Math.min(100, before.score + 40));
+});
+
+test("live AIS positions merge by MMSI and switch the screen source", () => {
+  const rows = yardScope("dangjin").incoming;
+  const live = mergeAisPositions(rows, [
+    {
+      vessel_id: "x",
+      mmsi: rows[0].mmsi,
+      received_at: "2026-10-10T01:00:00+09:00",
+      latitude: 37,
+      longitude: 126.5,
+      sog_kn: null,
+      cog_deg: 12,
+      source: "aisstream",
+    },
+  ]);
+  assert.equal(live.source, "aisstream");
+  assert.equal(live.voyages[0].received_at, "2026-10-10T01:00:00+09:00");
+  assert.equal(live.voyages[0].sog_kn, rows[0].sog_kn);
+  assert.equal(mergeAisPositions(rows, []).source, "dummy");
+});
+
+test("weekly burn stays inside each yard and matches the yard forecast", () => {
+  const scope = yardScope("dangjin");
+  const forecasts = groupForecasts(stockGroups(dangjinPlant, scope.piles), scope);
+  const shares = weeklyBurnShares(dangjinPlant, dangjinPlant[0].units.map((u) => u.id));
+  const burned = groupWeeklyBurn(forecasts, shares);
+  // 소속 호기가 없는 2발전처 Pile은 태우지 않는다.
+  assert.ok(burned.every((b) => b.pile.plant_yard !== "P2"));
+  for (const f of forecasts) {
+    const planned = f.daily.slice(0, 7).reduce((s, d) => s + d.useTons, 0);
+    const got = burned
+      .filter((b) => f.group.piles.includes(b.pile))
+      .reduce((s, b) => s + b.tons, 0);
+    const burnable = f.group.piles
+      .filter((p) =>
+        p.eligible_unit_ids.some((id) => f.group.unitIds.includes(id) && shares[id] > 0),
+      )
+      .reduce((s, p) => s + p.on_hand_t, 0);
+    assert.ok(Math.abs(got - Math.min(planned, burnable)) < 1e-6, f.group.id);
+    assert.ok(burned.every((b) => b.tons <= b.pile.on_hand_t + 1e-6));
+  }
+  const total = burned.reduce((s, b) => s + b.tons, 0);
+  const weekly = scope.forecast.daily.slice(0, 7).reduce((s, d) => s + d.requestedFuelTons, 0);
+  assert.ok(total <= weekly + 1e-6);
+});
+
+test("link responses keep only valid records so odd payloads cannot crash the page", () => {
+  assert.deepEqual(normalizeSupplyRecords({ schema_version: 1, vessels: "x" }), {
+    transfers: [],
+    vessels: [],
+  });
+  const records = normalizeSupplyRecords({
+    transfers: [
+      { id: 1, at: BASE_TIME, from_group: "g14", to_group: "g58", tonnes: 10 },
+      { id: 2, at: "not a date", from_group: "g14", to_group: "g58", tonnes: 10 },
+    ],
+    vessels: [
+      { id: 3, name: "A", cargo: 100, points: [{ at: BASE_TIME, cumulative: 0, rate: 5, allocations: { g14: 1, bad: "x" } }, { at: null }] },
+      { id: "4", name: "B", cargo: 100 },
+    ],
+  });
+  assert.deepEqual(records.transfers.map((t) => [t.id, t.note]), [[1, ""]]);
+  assert.equal(records.vessels.length, 1);
+  assert.deepEqual(records.vessels[0].points[0].allocations, { g14: 1 });
+  assert.equal(records.vessels[0].points.length, 1);
+  const ais = normalizeAisPositions({
+    positions: [
+      { mmsi: "999000001", latitude: 37, longitude: 126, received_at: BASE_TIME, source: "aisstream" },
+      { mmsi: "12", latitude: 37, longitude: 126, received_at: BASE_TIME },
+      { mmsi: "999000002", latitude: 91, longitude: 126, received_at: BASE_TIME },
+    ],
+  });
+  assert.deepEqual(ais.map((p) => [p.mmsi, p.source, p.sog_kn]), [["999000001", "aisstream", null]]);
+  assert.deepEqual(normalizeAisPositions({ plant_id: "dangjin" }), []);
+  const sensors = normalizeSensorReadings([
+    { stockpile_id: "DA-01", measured_at: BASE_TIME, temperature_c: "hot", co_ppm: 4 },
+    { stockpile_id: 7, measured_at: BASE_TIME },
+  ]);
+  assert.deepEqual(sensors.map((r) => [r.stockpile_id, r.temperature_c, r.co_ppm]), [["DA-01", null, 4]]);
 });
