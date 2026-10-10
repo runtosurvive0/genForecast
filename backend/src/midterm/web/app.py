@@ -37,6 +37,8 @@ from midterm.web.supply_api import router as supply_router
 app.include_router(supply_router)
 from midterm.web.planning_api import router as planning_router
 app.include_router(planning_router)
+from midterm.web.vessels_api import router as vessels_router
+app.include_router(vessels_router)
 _job_lock = threading.Lock()
 _job: dict = {"state": "idle"}
 

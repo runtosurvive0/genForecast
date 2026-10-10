@@ -52,7 +52,7 @@
 - 발전소 내부 `Plant.id`는 API의 `plant_id`와 동일 값이다. 당진 `dangjin`, 보령 `boryeong`, 하동 `hadong`, 동해·삼척 `donghae`.
 - `src/data/control-tower.ts`의 `Stockpile.stockpile_id`, `plant_id`, `on_hand_t`, `calorific_value_kcal_kg`, `moisture_pct`, `ash_pct`, `sulfur_pct`, `stacked_at`, `temperature_c`, `co_ppm`, `eligible_unit_ids`가 Pile 원장이다. 센서 두 필드는 null이며 위험도는 `pileRisk()`가 적치기간과 탄종만으로 계산한다.
 - `Voyage.voyage_id`, `destination_plant_id`로 화물을 발전소에 연결한다. 로컬 페이지 표본은 한 항차에 한 화물이며 `cargo_t`가 API `cargo.quantity_t`에 해당한다. API DTO는 `src/domain/contracts.ts`의 CargoContract와 구분된다. 데이터 내보내기는 현재 로컬 표본 형식이다.
-- MMSI `999000001` 등의 번호와 `DEMO-*` IMO는 시연용 식별자다. 지도와 상세정보는 동일한 좌표를 사용한다. 새 위치는 VesselMap의 positions 입력으로 전달하며, 알 수 없는 항차에 예시 항로를 생성하지 않는다.
+- MMSI `999000001` 등의 번호와 `DEMO-*` IMO는 시연용 식별자다. 지도와 상세정보는 동일한 좌표를 사용한다. 새 위치는 VesselMap의 positions 입력으로 전달하며, 온라인·오프라인 예시 항로도 같은 입력 좌표를 통과한다. 알려진 표본의 전후 경유점을 연결하는 시각 표현이며 실제 운항 이력이나 항해용 경로가 아니다. 알 수 없는 항차에 예시 항로를 생성하지 않는다.
 - API/MILP 경계는 `src/domain/contracts.ts`, AIS Provider/decoder 경계는 `src/domain/ais.ts`. 네트워크 서비스는 실행하지 않는다.
 
 ## 단위와 시간
@@ -73,12 +73,28 @@
 
 ## AIS / ETA
 
+- 온라인 선박 지도는 MapLibre + OpenFreeMap(OSM 기반) 상세 지도를 사용하며, 기본 지구본과 메르카토르 평면 보기를 전환할 수 있다. 평면용 도트는 투영 좌표에서 균일하게 샘플링하여 고위도 줄무늬를 방지한다. 도트→면 전환은 확대 배율에 따른 시각 표현이며 관측 데이터의 변경이 아니다. 외부 타일의 상세도·최신성은 지역별로 다르다.
+- 실제 관심 선박은 서버 AIS 관측을 표시하고, 합성 표본은 별도로 표시한다. 단일 HTML 오프라인 실행 또는 초기 지도 연결 실패 시 로컬 SVG 도트 지도를 표시한다. 연결 후 일부 타일 요청 실패는 현재 지도·배율을 유지하고 안내와 타일 재시도를 제공한다.
+
 - 최신성은 기준시각이 아니라 현재 컴퓨터 시각과 수신시각 차이로 계산한다: 10분 이내 LIVE, 60분 이내 RECENT, 360분 이내 ESTIMATED, 이후 STALE. 미래·잘못된 시각도 STALE. 고정된 10월 6일 표본은 시간이 지나면 모두 STALE다.
 - ESTIMATED는 최신성 구분이며 이 버전은 위치 외삽을 수행하지 않는다. 지도에는 항상 마지막 표본 위치만 표시한다.
-- 현재 ETA는 AIS ETA + 기상 지연 + 항로 지연 + 추가 시나리오 지연. 접안은 ETA + 항만 대기. 하역 완료 표본은 동일한 시나리오 지연만큼 이동한다. 잔여 항로거리/SOG로 ETA를 새로 계산하는 항로 모델은 후속 범위다.
+- 합성 항차 ETA는 등록 계획에 기상·항로·시나리오 지연을 더한다. 실제 선박의 기본 ETA는 유효한 AIS 속도와 예상 잔여 해상거리로 계산하며, 기상 보정은 가정값을 공개한 시연 모델이다. 오래된 위치·정지·불확실한 항로에서는 계산을 보류한다. 접안·하역 완료·재고 원장은 자동 변경하지 않는다.
 - 체선료는 max(항만 대기 − 허용시간, 0) × 일 요율 / 24의 단순 예제이며 계약 정산이 아니다.
-- [AISstream 공식 문서](https://aisstream.io/documentation)에 따라 키는 서버에 보관하고 브라우저 직접 연결을 하지 않는다. PositionReport decoder는 사용할 수 없는 좌표와 SOG/COG sentinel을 거른다. 서버 수집·재연결·보존은 별도 구현해야 한다.
+- [AISstream 공식 문서](https://aisstream.io/documentation)에 따라 키는 서버에 보관하고 브라우저 직접 연결을 하지 않는다. decoder는 사용할 수 없는 좌표와 SOG/COG sentinel을 거른다. 서버는 재연결·관심 선박 항적의 SQLite 보존을 담당한다. 수집 시작 전 항적은 제공하지 않으며 GFW 과거 기항은 별도 조회다.
 
 ## 현재 제공되지 않는 것
 
-FastAPI/SQLAlchemy DB, 로그인/권한, 실제 AIS/기상/센서 연동, Python 모델 작업 관리, 실제 항로 ETA, 혼탄 변화, MILP. 이 페이지 업데이트를 전체 운영 시스템 또는 SPEC 전체 POC 완료로 간주하지 않는다.
+로그인·운영 권한, 선박별 검증된 항해 성능 모델, 확정 운항계획·화물 자동 연계, 실제 센서 연동, 24시간 운영 보장은 제공하지 않는다. AIS·기상·GFW는 제공처 수신 범위·이용 조건과 자료 공백의 영향을 받는다. 발전소의 저장 MILP 조회와 선박 POC를 전체 SPEC 완료로 간주하지 않는다.
+
+## 실제 선박 검색 관측 (2026-10-09 추가)
+
+관심 선박 `TrackingVessel.source`는 기존 `demo | manual` 외에 `aisstream | digitraffic`을 허용한다.
+실제 제공처에는 선택적 `ais` 관측이 연결되며, 새 실제 선박 등록 시 관측 객체와 MMSI가 필요하다.
+`ais.updatedAt`은 선박 정보 기준 시각, `ais.position.observedAt`은 **위치 관측 기준 시각**이다.
+정적 정보 수신만으로 위치 최신성을 갱신하지 않는다. 속도 `sogKn`은 kn, 진행방향 `cogDeg`는 degree,
+좌표는 WGS84 경위도, 미수신·AIS sentinel은 `null`이다. AIS 목적지 문자열은 확정 목적 발전소가 아니다.
+`shipType`과 `navStatus`는 AIS 원래 코드이며 미수신은 null이다. 화면은 시각을 KST로 표시한다.
+Digitraffic REST의 `timestampExternal`과 metadata `timestamp`는 ms이며 AIS `timestamp`(초 필드)를
+epoch로 사용하지 않는다. 이 관측은 팀 Voyage/Cargo/입하 원장을 자동 생성하거나 수정하지 않는다.
+저장 형식은 workspace v1의 선택적 필드 확장으로 기존 저장 목록을 유지한다.
+설정·API·제한은 [선박 API 안내](VESSEL_API.md)를 참고한다.

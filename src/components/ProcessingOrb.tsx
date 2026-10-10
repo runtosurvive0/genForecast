@@ -4,7 +4,7 @@ export interface ProcessingOrbProps {
   theme: "light" | "dark";
   state: "solving" | "searching" | "connecting";
   label: string;
-  size?: 20 | 64;
+  size?: 20 | 32 | 64;
   className?: string;
 }
 

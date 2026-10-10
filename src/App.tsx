@@ -73,7 +73,7 @@ import {
 } from "@/domain/control-tower";
 import { PlantOverview } from "@/features/plant/PlantOverview";
 import { Stockyard } from "@/features/stockyard/Stockyard";
-import { VesselTracking } from "@/features/vessels/VesselTracking";
+import { VesselTracking } from "@/features/vessels/VesselWorkspace";
 import { ModelsPage } from "@/features/models/ModelsPage";
 import { DataPage } from "@/features/data/DataPage";
 import { forecastTask } from "@/lib/forecast-task";
