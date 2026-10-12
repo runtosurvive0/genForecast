@@ -5,6 +5,22 @@ import { planningFixture, suppliedPlanningFixture } from "./planning-fixture";
 import { mapStyleFixture } from "./map-style-fixture";
 import { voyages } from "../src/data/control-tower";
 
+test('AIS catalog tolerates transfer beyond twelve seconds and still renders received vessels', async ({ page }) => {
+  const at = new Date().toISOString();
+  await page.route('**/api/vessels/catalog?*', async route => {
+    await new Promise(resolve => setTimeout(resolve, 13000));
+    await route.fulfill({ json: { provider: 'aisstream', status: 'receiving', coverage: 'test',
+      fetchedAt: at, lastReceivedAt: at, capacity: 40000,
+      vessels: [{ id: 'ais-440123456', name: 'SLOW TRANSFER CARGO', mmsi: '440123456', imo: '', source: 'aisstream',
+        ais: { updatedAt: at, destination: 'KRTJI', shipType: 70, navStatus: 0, position: null } }] } });
+  });
+  await openEta(page);
+  await page.getByRole('button', { name: '관심 선박 구성', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('tab', { name: '실제 AIS 검색', exact: true }).click();
+  await expect(dialog.locator('.vessel-discovery-table')).toContainText('SLOW TRANSFER CARGO', { timeout: 18000 });
+});
+
 test("MILP upload stores inputs, starts calculation and opens the matching DB result", async ({ page }) => {
   test.setTimeout(65000);
   const detail = { id: 2, payload: { scenario: { name: "업로드 검증", start: "2027-01-01", end: "2027-12-31", coal_oh: [{}], nuclear_oh: [{}], quality: "normal" }, heat_prices: { "당진1": Array(12).fill(30000) } } };

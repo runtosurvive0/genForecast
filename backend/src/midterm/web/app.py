@@ -43,6 +43,8 @@ from midterm.web.ledger_api import router as ledger_router
 app.include_router(ledger_router)
 from midterm.web.vessels_api import router as vessels_router
 app.include_router(vessels_router)
+from midterm.web.catalog_transport import CatalogCompressionMiddleware
+app.add_middleware(CatalogCompressionMiddleware)
 from midterm.web.auth_api import install_access
 install_access(app)
 _job_lock = threading.Lock()
