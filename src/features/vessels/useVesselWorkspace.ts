@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAccount } from "@/lib/account-context";
 import { initialWatchlist, vesselCatalog } from "@/data/vessel-workflow";
 import {
   mergeWorkspace,
@@ -32,12 +33,14 @@ function load() {
   }
 }
 export function useVesselWorkspace() {
-  const [initial] = useState(load);
+  const account = useAccount();
+  const [initial] = useState(() => account ? { workspace: account.workspace, error: "" } : load());
   const [workspace, setWorkspace] = useState(initial.workspace);
   const [error, setError] = useState(initial.error);
   function save(next: VesselWorkspace) {
     // Validate before replacing state; malformed imports cannot clear the list.
     const checked = parseWorkspace(JSON.stringify(next));
+    if (account) { account.saveWorkspace(checked); setError(""); return; }
     try {
       localStorage.setItem(KEY, JSON.stringify(checked));
       setError("");
@@ -48,5 +51,5 @@ export function useVesselWorkspace() {
     }
     setWorkspace(checked);
   }
-  return { workspace, save, error, setError };
+  return { workspace: account?.workspace ?? workspace, save, error: [error, account?.error].filter(Boolean).join(" · "), setError };
 }

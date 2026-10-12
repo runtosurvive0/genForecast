@@ -38,6 +38,8 @@ export interface TrackPoint {
   longitude: number;
   latitude: number;
   observedAt: string;
+  cogDeg?: number | null;
+  sogKn?: number | null;
 }
 export interface TrackHistory {
   segments: TrackPoint[][];
@@ -45,7 +47,7 @@ export interface TrackHistory {
   truncated: boolean;
 }
 
-/** Connection guides never become observed tracks or change route-distance/ETA calculations. */
+/** Remaining estimated geometry and its separate, unverified connection guide. */
 export function vesselNavigationRoutes(
   id: string,
   current: TrackPoint | null | undefined,
@@ -54,18 +56,21 @@ export function vesselNavigationRoutes(
 ): NavigationRoute[] {
   const routes: NavigationRoute[] = [];
   if (estimate) {
+    const remaining = current ? remainingRoute(estimate, [current.longitude, current.latitude],
+      current.sogKn != null && current.sogKn >= .5 ? current.cogDeg : undefined) : null;
+    const coordinates = remaining?.coordinates ?? estimate.coordinates;
     routes.push({
       id: `estimate-${id}`,
       vesselId: id,
       kind: "estimated",
       selected: true,
-      coordinates: estimate.coordinates,
+      coordinates,
     });
     if (
       current &&
       seaDistance(
         [current.longitude, current.latitude],
-        estimate.coordinates[0],
+        coordinates[0],
       ) > 1e-8
     ) {
       routes.push({
@@ -75,7 +80,7 @@ export function vesselNavigationRoutes(
         selected: true,
         coordinates: [
           [current.longitude, current.latitude],
-          estimate.coordinates[0],
+          coordinates[0],
         ],
       });
     }
@@ -227,6 +232,34 @@ export function seaDistance(a: Coordinate, b: Coordinate) {
       Math.cos(b[1] * rad) *
       Math.sin(((b[0] - a[0]) * rad) / 2) ** 2;
   return 3440.065 * 2 * Math.asin(Math.sqrt(Math.min(1, h)));
+}
+
+/** COG breaks ties only between segments within 1 nm of the nearest segment.
+ * It never reverses waypoint order or invents an offshore shortcut to a distant leg.
+ */
+export function remainingRoute(route: EstimatedRoute, current: Coordinate, course?: number | null) {
+  const wrap = (n: number) => ((n + 180) % 360 + 360) % 360 - 180;
+  let total = 0;
+  const candidates = route.coordinates.slice(1).map((b, index) => {
+    const a = route.coordinates[index], length = seaDistance(a, b);
+    const scale = Math.cos((a[1] + b[1]) * Math.PI / 360);
+    const x = wrap(b[0] - a[0]) * scale, y = b[1] - a[1];
+    const px = wrap(current[0] - a[0]) * scale, py = current[1] - a[1];
+    const t = x * x + y * y ? Math.max(0, Math.min(1, (px * x + py * y) / (x * x + y * y))) : 0;
+    const point: Coordinate = [wrap(a[0] + wrap(b[0] - a[0]) * t), a[1] + y * t];
+    const heading = Math.atan2(x, y) * 180 / Math.PI;
+    const aligned = course != null && Number.isFinite(course) && course >= 0 && course < 360 && length > .001
+      && Math.abs(wrap(heading - course)) <= 90;
+    const candidate = { index, point, offset: seaDistance(current, point), along: total + length * t, aligned };
+    total += length;
+    return candidate;
+  });
+  candidates.sort((a, b) => a.offset - b.offset);
+  const nearest = candidates[0];
+  const best = candidates.find(c => c.aligned && c.offset <= nearest.offset + 1) ?? nearest;
+  const networkNm = total > 0 ? route.distanceNm * Math.max(0, 1 - best.along / total) : 0;
+  return { coordinates: [best.point, ...route.coordinates.slice(best.index + 1)],
+    offsetNm: nearest.offset, connectionNm: best.offset, networkNm, distanceNm: networkNm + best.offset };
 }
 export async function navigationJson(
   path: string,

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAccount } from "@/lib/account-context";
 import {
   validateVessel,
   type TrackingVessel,
   type TrackingVoyage,
 } from "@/domain/vessel-workflow";
-import { estimateBasicEta } from "./vessel-basic-eta";
-import { plantDestinations, useAisDestinations } from "./useAisDestinations";
+import { canReuseVesselRoute, estimateBasicEta } from "./vessel-basic-eta";
+import { supportedPlantDestinations, useAisDestinations } from "./useAisDestinations";
 import {
   decodeHistory,
   decodeRoute,
@@ -37,7 +38,8 @@ export function useTrackedVessels(
   catalog: TrackingVessel[],
   interests: string[],
 ) {
-  const [owner] = useState(ownerId);
+  const account = useAccount();
+  const [owner] = useState(() => account?.user.id ?? ownerId());
   const [vessels, setVessels] = useState<TrackingVessel[]>([]);
   const [error, setError] = useState("");
   const [ready, setReady] = useState("");
@@ -107,8 +109,10 @@ export function useVesselRoute(
   ready: boolean,
   catalog: TrackingVessel[] = vessel ? [vessel] : [],
 ) {
-  const [preferences, setDestinations] = useState<Record<string, string>>(
+  const account = useAccount();
+  const [localPreferences, setDestinations] = useState<Record<string, string>>(
     () => {
+      if (account) return {};
       try {
         const value = JSON.parse(localStorage.getItem(DEST_KEY) || "{}");
         return value && typeof value === "object" && !Array.isArray(value)
@@ -119,13 +123,14 @@ export function useVesselRoute(
       }
     },
   );
+  const preferences = account?.destinations ?? localPreferences;
   const [hours, setHours] = useState(24);
   const [revision, setRevision] = useState(0);
   const resolved = useAisDestinations(catalog, preferences, revision);
   const destinations = resolved.destinations;
   const destination = vessel ? destinations[vessel.id] || "" : "";
   const destinationChoice =
-    vessel && [...plantDestinations, "ais"].includes(preferences[vessel.id])
+    vessel && [...supportedPlantDestinations, "ais"].includes(preferences[vessel.id])
       ? preferences[vessel.id]
       : "";
   const aisDestination = vessel
@@ -195,8 +200,12 @@ export function useVesselRoute(
     const cached = cache.current.get(routeKey);
     if (
       cached &&
-      Date.now() - cached.at < 6 * 3600000 &&
-      seaDistance(cached.value.origin, [p.longitude, p.latitude]) < 25
+      canReuseVesselRoute(
+        cached.value,
+        [p.longitude, p.latitude],
+        cached.at,
+        Date.now(),
+      )
     ) {
       setRoute({ key: routeKey, value: cached.value, at: cached.at });
       return;
@@ -292,6 +301,7 @@ export function useVesselRoute(
     setDestination: (value: string) => {
       if (!vessel) return;
       const next = { ...preferences, [vessel.id]: value };
+      if (account) { account.saveDestinations(next); return; }
       setDestinations(next);
       try {
         localStorage.setItem(DEST_KEY, JSON.stringify(next));

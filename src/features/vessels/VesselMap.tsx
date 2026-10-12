@@ -12,6 +12,7 @@ import { validPosition } from "./map-data";
 import type { MapVessel, NavigationRoute } from "./vessel-navigation";
 import type { MapPosition } from "./vessel-symbol";
 import "./vessel-map.css";
+import type { FleetDiscoveryOptions } from './FleetDiscoveryLayer';
 
 const dateFormat = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
@@ -32,6 +33,7 @@ const samplePositions = voyages.map((v) => ({
 }));
 
 export interface VesselMapProps {
+  fleetDiscovery?: FleetDiscoveryOptions;
   shipments: MapVessel[];
   navigationRoutes?: NavigationRoute[];
   positions?: MapPosition[];
@@ -65,6 +67,7 @@ export function VesselMap({
   embedded = false,
   selectionNotice,
   navigationRoutes,
+  fleetDiscovery,
 }: VesselMapProps) {
   const titleId = useId();
   const [failure, setFailure] = useState<string | null>(
@@ -73,6 +76,7 @@ export function VesselMap({
       : null,
   );
   const [attempt, setAttempt] = useState(0);
+  const [fleetStatusTarget, setFleetStatusTarget] = useState<HTMLDivElement | null>(null);
   const visible = useMemo(
     () =>
       shipments.filter((shipment) =>
@@ -93,7 +97,7 @@ export function VesselMap({
       data-map-theme={theme}
       aria-labelledby={titleId}
     >
-      <div className={embedded ? "vessel-map-context" : "vessel-map-header"}>
+      <div className={embedded ? `vessel-map-context${!selectionNotice && fleetDiscovery ? " sr-only" : ""}` : "vessel-map-header"}>
         <div>
           <h3 id={titleId} className={embedded ? "sr-only" : undefined}>
             해상 운송 현황
@@ -105,12 +109,13 @@ export function VesselMap({
             </p>
           )}
         </div>
-        <span className="vessel-map-sample">
+        {!fleetDiscovery && <span className="vessel-map-sample">
           {visible.some((v) => v.source && v.source !== "demo")
             ? `${visible.some((v) => !v.source || v.source === "demo") ? "AIS 관측 + 샘플 위치" : "실제 AIS 관측"} · 점선은 예상 항로`
             : "샘플 위치 · 예시 항로"}
-        </span>
+        </span>}
       </div>
+      {fleetDiscovery && !failure && <div className="vessel-fleet-status-slot" ref={setFleetStatusTarget} />}
       <div className="vessel-map-canvas">
         {failure ? (
           <>
@@ -155,13 +160,15 @@ export function VesselMap({
             weatherBusy={weatherBusy}
             weatherToolbar={weatherToolbar}
             navigationRoutes={navigationRoutes}
+            fleetDiscovery={fleetDiscovery}
+            fleetStatusTarget={fleetStatusTarget}
             onUnavailable={setFailure}
           />
         )}
         <span className="vessel-map-pan-hint">
           드래그하여 이동 · + / − 확대
         </span>
-        {!visible.length && (
+        {!visible.length && (!fleetDiscovery || failure) && (
           <div className="vessel-map-empty">
             현재 범위에 위치가 확인된 선박이 없습니다.
           </div>

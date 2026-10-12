@@ -227,7 +227,9 @@ No live response snapshots or credentials are committed to this repository.
 
 ## searoute
 
-Version: 1.6.0. Backend-only estimated sea-route dependency.
+Version: 1.6.0. Estimated sea-route dependency. Selected bundled Korean port
+coordinates are also used for frontend observation-location descriptions in
+`src/features/vessels/vessel-position-label.ts`; labels are translated to Korean.
 Source: https://github.com/genthalili/searoute-py
 
 ```text

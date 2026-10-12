@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -39,6 +39,8 @@ from midterm.web.planning_api import router as planning_router
 app.include_router(planning_router)
 from midterm.web.vessels_api import router as vessels_router
 app.include_router(vessels_router)
+from midterm.web.auth_api import install_access
+install_access(app)
 _job_lock = threading.Lock()
 _job: dict = {"state": "idle"}
 
@@ -71,13 +73,15 @@ def _check_units(scenario: Scenario) -> None:
 
 
 @app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    return (HERE / "supply.html").read_text(encoding="utf-8")
+def index(request: Request) -> str:
+    uid = request.state.session['user']['id']  # Server-generated UUID, never user HTML.
+    return (HERE / "supply.html").read_text(encoding="utf-8").replace("</head>", f'<meta name="genforecast-account" content="{uid}"><script src="/assets/access.js"></script></head>')
 
 
 @app.get("/planning", response_class=HTMLResponse)
-def planning() -> str:
-    return (HERE / "index.html").read_text(encoding="utf-8")
+def planning(request: Request) -> str:
+    uid = request.state.session['user']['id']
+    return (HERE / "index.html").read_text(encoding="utf-8").replace("</head>", f'<meta name="genforecast-account" content="{uid}"><script src="/assets/access.js"></script></head>')
 
 
 @app.get("/api/meta")

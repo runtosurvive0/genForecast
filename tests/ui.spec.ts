@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, readSavedWorkspace } from "./auth-fixture";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { planningFixture } from "./planning-fixture";
@@ -9,6 +9,47 @@ async function openEta(page: import("@playwright/test").Page) {
   await page.goto("/?source=synthetic");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
 }
+
+async function openVesselData(page: import("@playwright/test").Page, tab = "AIS 관측") {
+  const details = page.locator('.vessel-data-details');
+  if (!(await details.evaluate(el => (el as HTMLDetailsElement).open))) await details.locator('summary').first().click();
+  await page.getByRole('tab', { name: tab, exact: true }).click();
+}
+async function openVesselSettings(page: import("@playwright/test").Page) {
+  const dialog = page.getByRole('dialog', { name: '항로·계산 설정', exact: true });
+  if (!(await dialog.isVisible())) await page.getByRole('button', { name: '항로·계산 설정', exact: true }).click();
+  return dialog;
+}
+async function removeSelectedVessel(page: import("@playwright/test").Page) {
+  const dialog = await openVesselSettings(page);
+  await dialog.getByRole('button', { name: '관심 해제', exact: true }).click();
+}
+async function refreshVesselRoute(page: import("@playwright/test").Page) {
+  const dialog = await openVesselSettings(page);
+  await dialog.getByRole('button', { name: '항로·항적 갱신', exact: true }).click();
+  await dialog.getByRole('button', { name: '완료', exact: true }).click();
+}
+
+test("vessel shell separates observation times from the sample simulation baseline", async ({ page }) => {
+  await openEta(page);
+  await expect(page.locator('.sidebar-note')).toContainText('선박별 출처·관측시각 확인');
+  await expect(page.locator('.sidebar-note')).not.toContainText('2026.10.06');
+  await expect(page.locator('.demo-label')).toHaveText('선박별 데이터');
+  await expect(page.locator('.page-footer')).toContainText('선박별 관측·예보 기준');
+  await expect(page.locator('.page-footer')).not.toContainText('기준시각 고정');
+  await page.locator('.page-footer button').click();
+  const help = page.getByRole('dialog', { name: '데이터와 계산 기준' });
+  await expect(help).toContainText('실제 AIS는 마지막 위치 관측시각');
+  await expect(help).toContainText('기상은 예보 발표·조회시각과 항로 통과 예상시각');
+  await expect(help).not.toContainText('기준시각은 2026.10.06');
+  await page.screenshot({ path: '.tooling-tmp/vessel-time-basis-light.png', fullPage: true });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
+  await page.screenshot({ path: '.tooling-tmp/vessel-time-basis-dark.png', fullPage: true });
+  await page.getByRole('button', { name: '저탄장 현황', exact: true }).click();
+  await expect(page.locator('.sidebar-note')).toContainText('시연 기준 2026.10.06 09:00 KST');
+  await expect(page.locator('.context-right')).toContainText('시연 기준');
+});
 
 test("AIS destination option resolves global ports and clears obsolete routes on destination changes", async ({ page }) => {
   test.setTimeout(65000);
@@ -46,7 +87,7 @@ test("AIS destination option resolves global ports and clears obsolete routes on
   const selector = page.getByLabel("예상 항로 목적항");
   await selector.selectOption("ais");
   const controls = page.getByRole("region", { name: "실제 선박 항로 설정" });
-  const summary = page.getByRole("region", { name: "항로 정보", exact: true });
+  const summary = page.locator('section[aria-label="항로 정보"]');
   await expect(controls).toContainText("Busan");
   await expect(summary).toContainText("345 nm");
   await expect.poll(() => weatherDestinations).toContain("port:KRPUS");
@@ -96,6 +137,7 @@ test("GFW port visits show provenance, missing departure and errors without chan
   });
   await openEta(page);
   const panel = page.getByRole("region", { name: "과거 기항 기록" });
+  await openVesselData(page, '과거 기항');
   await expect(panel).toContainText("기항 기록 조회 중");
   finish();
   await expect(panel).toContainText("NEWCASTLE");
@@ -115,7 +157,7 @@ test("GFW port visits show provenance, missing departure and errors without chan
   await panel.getByLabel("기항 기록 조회 기간").selectOption("90");
   await expect(panel).toContainText("GFW_API_TOKEN");
   await expect(panel).not.toContainText("NEWCASTLE");
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("genforecast.vessel-workspace.v1")!).voyages)).toEqual([]);
+  expect((await readSavedWorkspace(page)).voyages).toEqual([]);
 });
 
 test("GFW response from another vessel is rejected and switching ships clears old visits", async ({ page }) => {
@@ -125,8 +167,11 @@ test("GFW response from another vessel is rejected and switching ships clears ol
   await page.route("**/api/vessels/port-visits/**", route => route.fulfill({ json: { provider: "gfw", mmsi: ships[0].mmsi, days: 30, status: "ready", message: "", fetchedAt: "2026-10-10T00:00:00Z", windowStart: "2026-09-10", windowEnd: "2026-10-11", delayHours: 72, matchBasis: "mmsi", truncated: false, datasets: [], visits: [{ id: "one", portName: "NEWCASTLE", country: "AUS", arrivalAt: "2026-10-03T00:00:00Z", departureAt: null, confidence: null }] } }));
   await openEta(page);
   const panel = page.getByRole("region", { name: "과거 기항 기록" });
+  await openVesselData(page, '과거 기항');
   await expect(panel).toContainText("NEWCASTLE");
   await page.locator('.vessel-watchlist').getByRole('button').filter({ hasText: "GFW SHIP 1" }).click();
+  await expect(page.locator('.vessel-data-details[open]')).toHaveCount(0);
+  await openVesselData(page, '과거 기항');
   await expect(panel).not.toContainText("NEWCASTLE");
   await expect(panel).toContainText("응답을 확인");
 });
@@ -239,7 +284,7 @@ for (const online of [false, true]) test(`actual vessel remains attached to rout
         await expect.poll(() => page.evaluate(() => (window as any).testVesselMap.loaded())).toBe(true);
         const hits = await page.evaluate(() => {
           const map = (window as any).testVesselMap;
-          const marker = document.querySelector('[data-vessel-id="ais-440123456"]')!.getBoundingClientRect();
+          const marker = document.querySelector('.vessel-map [data-vessel-id="ais-440123456"]')!.getBoundingClientRect();
           const frame = map.getContainer().getBoundingClientRect();
           const x = marker.x + marker.width / 2 - frame.x, y = marker.y + marker.height / 2 - frame.y;
           return map.queryRenderedFeatures([[x-2,y-2],[x+2,y+2]], { layers: ['vessel-route-connections','vessel-routes'] }).map((f: any) => f.properties.kind);
@@ -344,31 +389,32 @@ test("real vessel maps confirmed estimated routes and collected gaps without inv
   await expect(page.locator(".vessel-route-summary")).toContainText("135 nm");
   const expectedEta = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(Date.parse(at) + 135 / 12 * 3600000));
   await expect(page.locator(".vessel-eta-primary")).toHaveText(expectedEta);
-  await expect(page.locator('.shipment-card')).toContainText(expectedEta);
+  await expect(page.locator('.shipment-card')).not.toContainText(expectedEta);
   await expect(page.locator('.vessel-eta-reason')).toContainText('기상 미반영');
   const criteria = page.locator('.vessel-route-explanation');
   await expect(criteria).not.toHaveAttribute('open', '');
+  await openVesselData(page, '계산 근거');
   await criteria.locator('summary').click();
   await expect(criteria).toHaveAttribute('open', '');
   await expect(criteria.getByText(/6시간 이상 관측 공백/)).toBeVisible();
   await criteria.locator('summary').click();
   const observations = page.locator('.vessel-observation-details');
-  await observations.locator('summary').click();
+  await openVesselData(page);
   await expect(observations.getByText('35.00000, 125.00000', { exact: true })).toBeVisible();
-  await observations.locator('summary').click();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("genforecast.vessel-workspace.v1")!).voyages)).toEqual([]);
+  await openVesselData(page);
+  expect((await readSavedWorkspace(page)).voyages).toEqual([]);
   await page.locator(".vessel-route-controls").scrollIntoViewIfNeeded();
   await page.screenshot({ path: ".tooling-tmp/real-routes-light.png" });
   fail = true;
-  await page.getByRole("button", { name: "항로·항적 갱신" }).click();
+  await refreshVesselRoute(page);
   await expect(page.locator(".vessel-route-controls")).toContainText("갱신하지 못했습니다");
   await expect(estimate).toHaveCount(1);
   await expect(page.locator(".vessel-eta-primary")).toHaveText(expectedEta);
-  await page.getByLabel("예상 항로 목적항").selectOption("hadong");
+  await page.getByLabel("예상 항로 목적항").selectOption("donghae");
   await expect(estimate).toHaveCount(0);
   await expect(page.locator(".vessel-eta-primary")).not.toHaveText(expectedEta);
   fail = false;
-  await page.getByRole("button", { name: "항로·항적 갱신" }).click();
+  await refreshVesselRoute(page);
   await expect(estimate).toHaveCount(1);
   await page.getByRole("button", { name: "다크 모드로 전환" }).click();
   await page.locator(".vessel-route-controls").scrollIntoViewIfNeeded();
@@ -422,7 +468,52 @@ test("automatic ETA follows AIS and cached route progress, and holds stopped or 
   await expect(reason).toContainText('1시간보다 오래');
   await page.getByLabel('예상 항로 목적항').selectOption('');
   await expect(primary).toHaveText('ETA 계산 전');
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('genforecast.vessel-workspace.v1')!).voyages)).toEqual([]);
+  expect((await readSavedWorkspace(page)).voyages).toEqual([]);
+});
+
+test("route gaps refresh below 25 nm and show connection assumptions without blocking ETA", async ({ page }) => {
+  const at = Date.now();
+  await page.clock.install({ time: at });
+  const ship = { id: 'ais-440123456', name: 'GAP TEST BULK', mmsi: '440123456', imo: '', source: 'aisstream',
+    ais: { updatedAt: new Date(at).toISOString(), shipType: 70, navStatus: 0, destination: 'DANGJIN',
+      position: { latitude: 35, longitude: 125, observedAt: new Date(at).toISOString(), sogKn: 12, cogDeg: 90 } } };
+  await page.addInitScript(value => localStorage.setItem('genforecast.vessel-workspace.v1', JSON.stringify({ version: 1, vessels: [value], voyages: [], watchlist: [value.id] })), ship);
+  await page.route('**/api/vessels/tracking/**', route => route.fulfill({ json: route.request().url().includes('/aisstream/') ? { pointCount: 0, segments: [], truncated: false } : { vessels: [ship] } }));
+  let requests = 0;
+  let gap = false;
+  await page.route('**/api/vessels/route?*', route => {
+    requests++;
+    const params = new URL(route.request().url()).searchParams;
+    const lon = Number(params.get('longitude')), lat = Number(params.get('latitude'));
+    return route.fulfill({ json: { kind: 'estimated', provider: 'searoute', destinationId: 'dangjin', origin: [lon, lat],
+      coordinates: [[lon, lat + (gap ? .44 : 0)], [126, lat + (gap ? .44 : 0)]], distanceNm: 60, startOffsetNm: gap ? 26.5 : 0, endOffsetNm: 1 } });
+  });
+  await openEta(page);
+  await page.getByLabel('예상 항로 목적항').selectOption('dangjin');
+  await expect(page.locator('.vessel-eta-reason')).toContainText('기상 미반영');
+  expect(requests).toBe(1);
+  ship.ais.position.latitude = 35.11; // 6.6 nm cross-track; must refresh before 25 nm.
+  await page.clock.runFor(10100);
+  await expect.poll(() => requests).toBe(2);
+  await expect(page.locator('.vessel-eta-reason')).toContainText('기상 미반영');
+  gap = true;
+  await refreshVesselRoute(page);
+  await expect(page.locator('.vessel-eta-reason')).toContainText(/출발 연결.*26\.4.*직선/);
+  await expect(page.locator('.vessel-data-details')).not.toHaveAttribute('open');
+  await expect(page.locator('.vessel-arrival-insight')).toContainText('출발 연결 구간은 직선 거리 가정');
+  const summary = page.locator('section[aria-label="항로 정보"]');
+  await expect(summary).toContainText(/출발 연결.*26\.4.*직선/);
+  const afterGap = requests;
+  ship.ais.position.observedAt = new Date(at + 20000).toISOString();
+  await page.clock.runFor(30100);
+  expect(requests).toBe(afterGap); // A newly calculated sparse network is not a retry loop.
+  await expect(page.locator('.vessel-eta-primary')).not.toHaveText('ETA 계산 보류');
+  await page.screenshot({ path: '.tooling-tmp/route-gaps-light.png' });
+  await page.getByRole('button', { name: '다크 모드로 전환' }).click();
+  await page.screenshot({ path: '.tooling-tmp/route-gaps-dark.png' });
+  await page.setViewportSize({ width: 375, height: 844 });
+  expect(await summary.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await page.screenshot({ path: '.tooling-tmp/route-gaps-mobile.png' });
 });
 
 test("online real routes retain dash styling and camera across refresh and theme", async ({ page }) => {
@@ -445,7 +536,7 @@ test("online real routes retain dash styling and camera across refresh and theme
   const before = await camera();
   const kinds = () => page.evaluate(async () => (await (window as any).testVesselMap.getSource("vessel-routes").getData()).features.map((f: any) => f.properties.kind).sort());
   await expect.poll(kinds).toEqual(["estimated", "observed"]);
-  await page.getByRole("button", { name: "항로·항적 갱신" }).click();
+  await refreshVesselRoute(page);
   await expect.poll(kinds).toEqual(["estimated", "observed"]);
   expect(await camera()).toEqual(before);
   await page.locator(".vessel-map-online").screenshot({ path: ".tooling-tmp/real-routes-online-light.png" });
@@ -467,13 +558,13 @@ test("new polled AIS stays fresh after the page mount time", async ({ page }) =>
   await openEta(page);
   await expect(page.locator(".shipment-card")).toContainText("LIVE");
   const lights = page.locator('.vessel-live-light');
-  await expect(lights).toHaveCount(2);
+  await expect(lights).toHaveCount(1);
   await expect(lights.first()).toHaveCSS('animation-name', 'vessel-live-pulse');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(lights.first()).toHaveCSS('animation-name', 'none');
-  await page.locator('.vessel-selection-header').screenshot({ path: '.tooling-tmp/vessel-live-light.png' });
+  await page.locator('.shipment-card[aria-pressed=true]').screenshot({ path: '.tooling-tmp/vessel-live-light.png' });
   await page.getByRole('button', { name: '다크 모드로 전환' }).click();
-  await page.locator('.vessel-selection-header').screenshot({ path: '.tooling-tmp/vessel-live-dark.png' });
+  await page.locator('.shipment-card[aria-pressed=true]').screenshot({ path: '.tooling-tmp/vessel-live-dark.png' });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(lights.first()).toHaveCSS('animation-name', 'vessel-live-pulse');
   ship.ais.position.observedAt = new Date(at + 10000).toISOString();
@@ -491,13 +582,15 @@ test("vessel controls match the scope selector and horizon button sizes", async 
     provider: "aisstream", status: "not_configured", capacity: 20000, vessels: [],
   } }));
   await openEta(page);
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '저탄장 현황', exact: true }).click();
   const measure = (locator: import('@playwright/test').Locator) => locator.evaluate(el => {
     const css = getComputedStyle(el);
     return { height: el.getBoundingClientRect().height, radius: css.borderRadius, font: css.fontSize };
   });
   const regular = await measure(page.getByRole('combobox', { name: '발전본부 선택' }));
   const segmented = await measure(page.getByRole('button', { name: '30일', exact: true }));
-  for (const name of ['업데이트 확인', '관심 선박 구성', '관심 목록 더보기', '항차 수정']) {
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  for (const name of ['업데이트 확인', '관심 선박 구성', '관심 목록 더보기', '항로·계산 설정']) {
     expect(await measure(page.getByRole('button', { name, exact: true })), name).toEqual(regular);
   }
   for (const button of await page.locator('.vessel-workflow-filters button').all()) {
@@ -629,23 +722,24 @@ test("watchlist manager opens first, removes reversibly and keeps additions open
   await page.route("**/api/vessels/catalog*", route => { requests++; return route.fulfill({ json: { provider: "aisstream", status: "not_configured", vessels: [], capacity: 2000 } }); });
   await openEta(page);
   await page.locator(".shipment-card").filter({ hasText: "Ocean Frontier" }).click();
+  await openVesselSettings(page);
   await page.getByRole("button", { name: "항차 수정", exact: true }).click();
   await page.getByLabel("출항항", { exact: true }).fill("Preserved departure port");
-  await page.getByRole("button", { name: "이 브라우저에 항차 저장" }).click();
+  await page.getByRole("button", { name: "계정에 항차 저장" }).click();
   await page.getByRole("button", { name: "관심 선박 구성", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("tab").first()).toHaveText("관심 선박 4");
   await expect(dialog.getByRole("tab").first()).toHaveAttribute("aria-selected", "true");
   expect(requests).toBe(0);
-  const before = await page.evaluate(() => JSON.parse(localStorage.getItem("genforecast.vessel-workspace.v1") || "null"));
+  const before = await readSavedWorkspace(page);
   await dialog.getByRole("option", { name: /Ocean Frontier/ }).click();
   await dialog.getByRole("button", { name: "선택한 선박 관심 해제" }).click();
   await expect(dialog.getByRole("option")).toHaveCount(3);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("genforecast.vessel-workspace.v1")!).voyages)).toEqual(before.voyages);
+  expect((await readSavedWorkspace(page)).voyages).toEqual(before.voyages);
   await expect(dialog).toContainText("Ocean Frontier 관심을 해제했습니다");
   await dialog.getByRole("button", { name: "되돌리기" }).click();
   await expect(dialog.getByRole("option")).toHaveCount(4);
-  const after = await page.evaluate(() => JSON.parse(localStorage.getItem("genforecast.vessel-workspace.v1")!));
+  const after = await readSavedWorkspace(page);
   expect(after.voyages).toEqual(before.voyages);
   await dialog.getByRole("button", { name: "관심 선박 추가 검색" }).click();
   await expect(dialog.getByRole("tab", { name: "실제 AIS 검색" })).toHaveAttribute("aria-selected", "true");
@@ -681,6 +775,77 @@ test("watchlist manager opens first, removes reversibly and keeps additions open
   await page.getByRole("button", { name: "관심 선박 구성", exact: true }).click();
   await expect(dialog.getByRole("tab").first()).toHaveText("관심 선박 0");
   await expect(dialog.getByRole("option")).toHaveCount(0);
+});
+
+test("near Korea search separates position from destination and adds nearby vessels", async ({ page }) => {
+  const at = new Date().toISOString();
+  const ship = (mmsi: string, name: string, latitude: number, longitude: number, destination = '', observedAt = at) => ({
+    id: `ais-${mmsi}`, mmsi, name, imo: '', source: 'aisstream', ais: { updatedAt: at, shipType: 70, navStatus: 0, destination,
+      position: { latitude, longitude, observedAt, sogKn: 12, cogDeg: 90 } },
+  });
+  const overseas = ship('440123461', 'OVERSEAS ARRIVAL', -34, 152, 'KRPUS');
+  let moved = false;
+  await page.route('**/api/vessels/catalog*', route => route.fulfill({ json: {
+    provider: 'aisstream', status: 'receiving', coverage: '전 세계 수신 범위', capacity: 20000, fetchedAt: at, lastReceivedAt: at,
+    vessels: [overseas, ship('440123462', 'LOCAL DEPARTURE', 35, moved ? 140 : 129, 'SGSIN'),
+      ship('440123463', 'JEJU UNKNOWN', 32, 126),
+      ship('440123464', 'OLD POSITION', 35, 129, '', new Date(Date.now() - 2 * 3600000).toISOString())],
+    koreaCandidates: { capacity: 1000, retentionHours: 72, entries: [
+      { vessel: overseas, portCode: 'KRPUS', portName: '부산', matchedBy: 'code', destinationObservedAt: at },
+    ] },
+  } }));
+  await openEta(page);
+  await page.getByRole('button', { name: '관심 선박 구성', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('tab', { name: '실제 AIS 검색', exact: true }).click();
+  const scopes = dialog.getByRole('group', { name: 'AIS 검색 범위' });
+  const rows = dialog.locator('.vessel-discovery-table tbody tr');
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('OVERSEAS ARRIVAL');
+  const initial = await dialog.boundingBox();
+  await scopes.getByRole('button', { name: '한국 주변', exact: true }).click();
+  await expect(dialog.getByRole('combobox', { name: '위치 관측 필터' })).toHaveValue('60');
+  await expect(rows).toHaveCount(2);
+  await expect(dialog).toContainText('영해 구분이 아닙니다');
+  const localRow = rows.filter({ hasText: 'LOCAL DEPARTURE' });
+  await expect(localRow).toContainText(/관측 위치 · 부산항 남쪽 약 11km/);
+  const location = localRow.getByRole('button', { name: /관측 위치/ });
+  await location.hover();
+  await expect(page.getByRole('tooltip')).toContainText('35.0000°N, 129.0000°E');
+  await expect(page.getByRole('tooltip')).toContainText('관측 시각');
+  await expect(page.getByRole('tooltip')).toContainText('직선거리');
+  await page.keyboard.press('Escape');
+  await location.focus();
+  await expect(page.getByRole('tooltip')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await dialog.getByRole('button', { name: 'LOCAL DEPARTURE 관심 등록' }).click();
+  await expect(dialog.getByRole('button', { name: 'LOCAL DEPARTURE 관심 등록' })).toBeDisabled();
+  await dialog.getByRole('combobox', { name: '위치 관측 필터' }).selectOption('all');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.filter({ hasText: 'OLD POSITION' })).toContainText('과거 관측 · 부산항 남쪽 약 11km');
+  await dialog.getByRole('textbox', { name: '실제 선박 검색' }).fill('no-match');
+  await expect(rows).toHaveCount(0);
+  await expect(dialog).toContainText('조건에 맞는 한국 주변 관측 선박이 없습니다');
+  await dialog.getByRole('textbox', { name: '실제 선박 검색' }).fill('');
+  expect((await dialog.boundingBox())!.height).toBeCloseTo(initial!.height, 0);
+  await dialog.screenshot({ path: '.tooling-tmp/korea-nearby-light.png' });
+  moved = true;
+  await dialog.getByRole('button', { name: '목록 새로고침' }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: 'LOCAL DEPARTURE' })).toHaveCount(0);
+  await scopes.getByRole('button', { name: /한국행 후보/ }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('OVERSEAS ARRIVAL');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: '다크 모드로 전환' }).click();
+  await page.getByRole('button', { name: '관심 선박 구성', exact: true }).click();
+  await dialog.getByRole('tab', { name: '실제 AIS 검색', exact: true }).click();
+  await scopes.getByRole('button', { name: '한국 주변', exact: true }).click();
+  await dialog.screenshot({ path: '.tooling-tmp/korea-nearby-dark.png' });
+  await page.setViewportSize({ width: 320, height: 844 });
+  expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(scopes.getByRole('button', { name: '한국 주변', exact: true })).toBeInViewport();
+  await dialog.screenshot({ path: '.tooling-tmp/korea-nearby-mobile.png' });
 });
 
 test("Korean candidates survive outside general discovery and scope changes preserve dialog size", async ({ page }) => {
@@ -844,29 +1009,113 @@ test("AIS discovery filters, sorts, survives errors, and persists provenance wit
   await page.screenshot({ path: ".tooling-tmp/ais-search-mobile.png", fullPage: true });
 });
 
-test("AIS discovery searches all 20000 cached vessels while rendering one page", async ({ page }) => {
+test("AIS discovery searches all 40000 cached vessels while rendering one page", async ({ page }) => {
   const at = new Date().toISOString();
   await page.route('**/api/vessels/catalog*', route => route.fulfill({ json: {
-    provider: 'aisstream', status: 'receiving', coverage: '전 세계 · 테스트 응답', capacity: 20000, fetchedAt: at, lastReceivedAt: at,
-    vessels: Array.from({ length: 20000 }, (_, index) => ({ id: `ais-${440000000 + index}`, name: `CACHE VESSEL ${index}`, mmsi: String(440000000 + index), imo: '', source: 'aisstream',
+    provider: 'aisstream', status: 'receiving', coverage: '전 세계 · 테스트 응답', capacity: 40000, fetchedAt: at, lastReceivedAt: at,
+    vessels: Array.from({ length: 40000 }, (_, index) => ({ id: `ais-${440000000 + index}`, name: `CACHE VESSEL ${index}`, mmsi: String(440000000 + index), imo: '', source: 'aisstream',
       ais: { updatedAt: at, shipType: 70, navStatus: 0, destination: 'DANGJIN', position: { latitude: 35, longitude: 125, observedAt: at, sogKn: 12, cogDeg: 90 } } })),
   } }));
   await openEta(page);
   await page.getByRole('button', { name: '관심 선박 구성', exact: true }).click();
   await page.getByRole('tab', { name: '실제 AIS 검색', exact: true }).click();
   await expect(page.locator('.vessel-discovery-table tbody tr')).toHaveCount(20);
-  await expect(page.locator('.vessel-discovery-pagination')).toContainText('1 / 1000');
+  await expect(page.locator('.vessel-discovery-pagination')).toContainText('1 / 2000');
   await page.getByRole('button', { name: '다음', exact: true }).click();
-  await expect(page.locator('.vessel-discovery-pagination')).toContainText('2 / 1000');
+  await expect(page.locator('.vessel-discovery-pagination')).toContainText('2 / 2000');
   await expect(page.locator('.vessel-discovery-table tbody tr')).toHaveCount(20);
-  await page.getByLabel('실제 선박 검색', { exact: true }).fill('440019999');
+  await page.getByLabel('실제 선박 검색', { exact: true }).fill('440039999');
   await expect(page.locator('.vessel-discovery-table tbody tr')).toHaveCount(1);
-  await expect(page.getByRole('button', { name: 'CACHE VESSEL 19999 관심 등록' })).toBeVisible();
-  await expect(page.locator('.vessel-discovery .tower-footnote').last()).toContainText('20,000척');
-  await page.getByRole('dialog').screenshot({ path: '.tooling-tmp/ais-search-20000.png' });
+  await expect(page.getByRole('button', { name: 'CACHE VESSEL 39999 관심 등록' })).toBeVisible();
+  await expect(page.locator('.vessel-discovery .tower-footnote').last()).toContainText('40,000척');
+  await page.getByRole('dialog').screenshot({ path: '.tooling-tmp/ais-search-40000.png' });
 });
 
-test("watchlist shows observed speed including zero and missing values within a distinct surface", async ({ page }) => {
+test("underway filter includes AIS interests without voyages and excludes moored or unknown vessels", async ({ page }) => {
+  const at = new Date().toISOString();
+  const ships = [
+    { id: 'sailing', navStatus: 0, speed: 12 },
+    { id: 'moving', navStatus: null, speed: 8 },
+    { id: 'moored', navStatus: 5, speed: 0 },
+    { id: 'unknown', navStatus: null, speed: null },
+  ].map((s, i) => ({ id: s.id, name: s.id.toUpperCase(), source: 'aisstream', mmsi: `44012345${i}`, imo: '',
+    ais: { updatedAt: at, navStatus: s.navStatus, shipType: 70, destination: 'KRPUS', position: { latitude: 35, longitude: 128, observedAt: at, sogKn: s.speed, cogDeg: 90 } } }));
+  await page.addInitScript(v => localStorage.setItem('genforecast.vessel-workspace.v1', JSON.stringify({ version: 1, vessels: v, voyages: [], watchlist: v.map(s => s.id) })), ships);
+  await page.route('**/api/vessels/tracking/**', r => r.fulfill({ json: /\/aisstream\//.test(r.request().url()) ? { pointCount: 0, segments: [], truncated: false } : { vessels: ships } }));
+  await openEta(page);
+  await page.getByRole('group', { name: '관심 선박 상태 필터' }).getByRole('button', { name: '항해 중', exact: true }).click();
+  const cards = page.locator('.vessel-watchlist .shipment-card');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0)).toContainText('SAILING');
+  await expect(cards.nth(1)).toContainText('MOVING');
+  await expect(page.locator('.vessel-map-marker')).toHaveCount(2);
+  await cards.nth(1).click();
+  await expect(page.locator('.vessel-arrival-panel')).toHaveAttribute('data-vessel-id', 'moving');
+  await page.getByRole('group', { name: '관심 선박 상태 필터' }).getByRole('button', { name: '출항 예정', exact: true }).click();
+  await expect(cards).toHaveCount(0);
+  await page.getByRole('group', { name: '관심 선박 상태 필터' }).getByRole('button', { name: '전체 관심', exact: true }).click();
+  await expect(cards).toHaveCount(4);
+  expect((await readSavedWorkspace(page)).voyages).toEqual([]);
+});
+
+test("legacy port preferences and voyage edits are preserved while new choices use the two current plants", async ({ page }) => {
+  const at = new Date().toISOString();
+  const ship = { id: 'legacy-port', name: 'LEGACY PORT', source: 'aisstream', mmsi: '440123456', imo: '',
+    ais: { updatedAt: at, navStatus: 0, shipType: 70, destination: 'BORYEONG', position: { latitude: 35, longitude: 125, observedAt: at, sogKn: 12, cogDeg: 90 } } };
+  await page.addInitScript(v => {
+    localStorage.setItem('genforecast.vessel-workspace.v1', JSON.stringify({ version: 1, vessels: [v], watchlist: [v.id], voyages: [{ id: 'legacy-voyage', vesselId: v.id, plantId: 'boryeong', origin: 'Newcastle', destination: '보령 연료부두', state: 'underway', etd: null, plannedEta: null, distanceNm: 120, plannedSpeedKn: 12, position: null, portWaitH: 4, unloadH: 24, cargoT: 80000, cv: 5500 }] }));
+    localStorage.setItem('genforecast.vessel-route-destinations.v1', JSON.stringify({ [v.id]: 'boryeong' }));
+  }, ship);
+  await page.route('**/api/vessels/tracking/**', r => r.fulfill({ json: /\/aisstream\//.test(r.request().url()) ? { pointCount: 0, segments: [], truncated: false } : { vessels: [ship] } }));
+  await page.route('**/api/vessels/route?*', r => r.fulfill({ json: { kind: 'estimated', provider: 'searoute', destinationId: new URL(r.request().url()).searchParams.get('destination'), origin: [125, 35], coordinates: [[125, 35], [126, 35]], distanceNm: 60, startOffsetNm: 0, endOffsetNm: 0 } }));
+  await openEta(page);
+  await expect(page.getByLabel('예상 항로 목적항')).toHaveValue('boryeong');
+  await expect(page.locator('.vessel-eta-primary')).toHaveText(/\d{2}\. \d{2}\./);
+  await openVesselSettings(page);
+  await page.getByRole('button', { name: '항차 수정', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'LEGACY PORT · 이번 항차', exact: true });
+  await expect(editor.getByLabel('목적 발전소')).toHaveValue('boryeong');
+  await editor.getByLabel('항만 대기 가정 (h)').fill('8');
+  await editor.getByRole('button', { name: '계정에 항차 저장', exact: true }).click();
+  await expect(editor).toBeHidden();
+  const saved = (await readSavedWorkspace(page)).voyages[0];
+  expect(saved.plantId).toBe('boryeong');
+  expect(saved.portWaitH).toBe(8);
+  await page.getByLabel('예상 항로 목적항').selectOption('donghae');
+  await expect(page.getByLabel('예상 항로 목적항').locator('option[value="boryeong"]')).toHaveCount(0);
+});
+
+test("vessel decision layout puts arrival above the map and groups raw data and settings", async ({ page }) => {
+  const at = new Date().toISOString();
+  const ship = { id: 'layout-test', name: 'LAYOUT BULK', source: 'aisstream', mmsi: '440201101', imo: '',
+    ais: { updatedAt: at, shipType: 70, navStatus: 0, destination: 'KR PUS', position: { latitude: 35, longitude: 125, observedAt: at, sogKn: 12, cogDeg: 90 } } };
+  await page.addInitScript(v => localStorage.setItem('genforecast.vessel-workspace.v1', JSON.stringify({ version: 1, vessels: [v], voyages: [], watchlist: [v.id] })), ship);
+  await page.route('**/api/vessels/tracking/**', r => r.fulfill({ json: /\/aisstream\//.test(r.request().url()) ? { pointCount: 0, segments: [], truncated: false } : { vessels: [ship] } }));
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await openEta(page);
+  const arrival = page.locator('.vessel-arrival-panel');
+  await expect(arrival).toBeVisible();
+  const a = await arrival.boundingBox(), m = await page.locator('.vessel-map-canvas').boundingBox();
+  expect(a!.y + a!.height).toBeLessThanOrEqual(m!.y);
+  expect(Math.abs(a!.x - m!.x)).toBeLessThan(2);
+  await expect(page.getByLabel('예상 항로 목적항').locator('option')).toHaveText(['목적항 선택', 'AIS 목적지 기준', '당진 발전소 항만', '동해 발전소 항만']);
+  await expect(page.getByLabel('수집 항적 기간')).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'AIS 관측', exact: true })).toBeHidden();
+  await page.getByRole('button', { name: '항로·계산 설정', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '항로·계산 설정' });
+  await expect(dialog.getByLabel('수집 항적 기간')).toBeVisible();
+  await dialog.getByLabel('수집 항적 기간').selectOption('168');
+  await dialog.getByRole('button', { name: '완료', exact: true }).click();
+  await page.getByText('자료·계산 근거', { exact: true }).click();
+  await page.getByRole('tab', { name: 'AIS 관측', exact: true }).click();
+  await expect(page.getByRole('tabpanel', { name: 'AIS 관측' })).toContainText('KR PUS');
+  await page.getByRole('tab', { name: '계산 근거', exact: true }).click();
+  await expect(page.getByRole('tabpanel', { name: '계산 근거' })).toContainText('재고');
+  await page.getByRole('button', { name: '항로·계산 설정', exact: true }).click();
+  await expect(dialog.getByLabel('수집 항적 기간')).toHaveValue('168');
+});
+
+test("compact watchlist keeps metrics in the selected arrival panel including zero and missing speed", async ({ page }) => {
   const at = new Date().toISOString();
   const ships = [12.4, 0, null].map((sogKn, i) => ({ id: `speed-${i}`, name: `SPEED BULK ${i}`, source: 'aisstream', mmsi: String(440201100 + i), imo: '',
     ais: { updatedAt: at, shipType: 70, navStatus: 0, destination: '', position: { latitude: 35, longitude: 125, observedAt: at, sogKn, cogDeg: 90 } } }));
@@ -876,16 +1125,21 @@ test("watchlist shows observed speed including zero and missing values within a 
   await page.route('**/api/vessels/tracking/**', route => route.fulfill({ json: /\/(aisstream|digitraffic)\//.test(route.request().url()) ? { pointCount: 0, segments: [], truncated: false } : { vessels: ships } }));
   await openEta(page);
   const cards = page.locator('.vessel-watchlist .shipment-card');
-  await expect(cards.nth(0).getByText('관측 속도 12.4 kn', { exact: true })).toBeVisible();
-  await expect(cards.nth(1).getByText('관측 속도 0.0 kn', { exact: true })).toBeVisible();
-  await expect(cards.nth(2).getByText('속도 미수신', { exact: true })).toBeVisible();
+  await expect(page.locator('.vessel-selection-header')).toHaveCount(0);
+  await expect(page.locator('.vessel-workspace-title')).toHaveText('관심 선박3척');
+  for (const [i, speed] of ['12.4 kn', '0.0 kn', '미수신'].entries()) {
+    await expect(cards.nth(i)).not.toContainText(/kn|ETA|기상/);
+    await cards.nth(i).click();
+    await expect(page.locator('.vessel-arrival-panel')).toHaveAttribute('data-vessel-id', ships[i].id);
+    await expect(page.locator('.vessel-arrival-facts > div').first()).toContainText(speed);
+  }
   for (const dark of [false, true]) {
     if (dark) await page.getByRole('button', { name: '다크 모드로 전환' }).click();
     const appearance = await page.evaluate(() => {
       const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
       return { listBorder: style('.vessel-watchlist-panel').borderRightWidth, listBackground: style('.vessel-watchlist-panel').backgroundColor,
         pageBackground: style('.tower-page').backgroundColor, routeBorder: style('.vessel-route-overview').borderBottomWidth,
-        detailBorder: style('.vessel-eta-detail .tower-section').borderTopWidth };
+        detailBorder: style('.vessel-arrival-panel').borderTopWidth };
     });
     expect(appearance.listBorder).toBe('0px');
     expect(appearance.routeBorder).toBe('0px');
@@ -895,12 +1149,14 @@ test("watchlist shows observed speed including zero and missing values within a 
     await page.screenshot({ path: `.tooling-tmp/vessel-surfaces-${dark ? 'dark' : 'light'}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 375, height: 844 });
-  await expect(cards.nth(0).getByText('관측 속도 12.4 kn', { exact: true })).toBeVisible();
+  await cards.nth(0).click();
+  await expect(page.locator('.vessel-arrival-facts')).toContainText('12.4 kn');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: '.tooling-tmp/vessel-surfaces-mobile.png', fullPage: true });
 });
 
 test("weather correction compares ETA, adjusts sensitivity and removes an obsolete destination result", async ({ page }) => {
+  let weatherFailed = false;
   const at = new Date().toISOString();
   const ship = { id: 'weather-eta', name: 'WEATHER ETA BULK', source: 'aisstream', mmsi: '440200099', imo: '',
     ais: { updatedAt: at, shipType: 70, navStatus: 0, destination: 'DANGJIN', position: { latitude: 0, longitude: 0, observedAt: at, sogKn: 12, cogDeg: 90 } } };
@@ -912,34 +1168,116 @@ test("weather correction compares ETA, adjusts sensitivity and removes an obsole
   await page.route('**/api/vessels/route?*', route => route.fulfill({ json: { kind: 'estimated', provider: 'searoute', destinationId: new URL(route.request().url()).searchParams.get('destination'), origin: [0, 0], coordinates: [[0, 0], [1, 0], [2, 0]], distanceNm: 120, startOffsetNm: 0, endOffsetNm: 1 } }));
   await page.route('**/api/vessels/weather/**', route => {
     const destination = new URL(route.request().url()).searchParams.get('destination');
-    if (destination !== 'dangjin') return route.fulfill({ status: 503 });
+    if (weatherFailed || destination !== 'dangjin') return route.fulfill({ status: 503 });
     return route.fulfill({ json: { source: 'aisstream', mmsi: ship.mmsi, destinationId: destination, status: 'ready', reason: '실제 예보 테스트 응답', observedAt: at, fetchedAt: at, horizonHours: 72, speedKn: 12,
       points: [1, 4, 4].map((waveM, i) => ({ longitude: i, latitude: 0, passageAt: new Date(Date.parse(at) + i * 5 * 3600000).toISOString(), waveM, windKn: 10, gustKn: 20, windFromDeg: 90, waveFromDeg: 90, wavePeriodS: 8,
         airStatus: 'fresh', marineStatus: 'fresh', airFetchedAt: at, marineFetchedAt: at, airForecastAt: new Date(Date.parse(at) + i * 5 * 3600000).toISOString(), marineForecastAt: new Date(Date.parse(at) + i * 5 * 3600000).toISOString(), forecastIssuedAt: null })) } });
   });
   await openEta(page);
   const panel = page.getByRole('region', { name: '기상 보정 ETA 비교' });
+  await expect(page.locator('.vessel-arrival-panel .vessel-weather-eta-delay')).toHaveText('+0.8');
+  const baseline = (await page.locator('.vessel-eta-baseline p').innerText()).replace('기본 ETA ', '');
+  await expect(page.locator('.vessel-data-details')).not.toHaveAttribute('open');
+  await expect(page.locator('.vessel-arrival-panel')).toContainText('시연 모델');
+  await expect(page.locator('.vessel-arrival-facts')).toContainText('12.0 kn');
+  await expect(page.locator('.vessel-route-summary')).toBeHidden();
+  await page.locator('.vessel-eta-workspace').screenshot({ path: '.tooling-tmp/vessel-layout-ais-light.png' });
+  await openVesselData(page, '계산 근거');
   await expect(panel.locator('.vessel-weather-eta-delay')).toHaveText('+0.8 h');
-  const baseline = await page.locator('.vessel-eta-primary').innerText();
-  await expect(panel).toContainText('시연 모델');
-  await panel.getByText('보정 가정 및 구간별 영향', { exact: true }).click();
-  await panel.getByLabel('기상 보정 민감도').fill('0');
+  await page.getByText('항로 정보 · 계산 기준', { exact: true }).click();
+  await expect(page.locator('.vessel-route-summary')).toBeVisible();
+  await expect(page.locator('.vessel-route-summary')).toContainText('120 nm');
+  await page.getByText('항로 정보 · 계산 기준', { exact: true }).click();
+  const settings = await openVesselSettings(page);
+  await settings.getByLabel('기상 보정 민감도').fill('0');
+  await settings.getByRole('button', { name: '완료', exact: true }).click();
   await expect(panel.locator('.vessel-weather-eta-delay')).toHaveText('+0.0 h');
   await expect(panel.locator('.vessel-weather-eta-value')).toHaveText(baseline);
-  await panel.getByLabel('기상 보정 민감도').fill('1.5');
-  await expect(panel.locator('.vessel-weather-eta-delay')).toHaveText('+1.3 h');
   await expect(page.locator('.vessel-eta-primary')).toHaveText(baseline);
+  await openVesselSettings(page);
+  await settings.getByLabel('기상 보정 민감도').fill('1.5');
+  await settings.getByRole('button', { name: '완료', exact: true }).click();
+  await expect(panel.locator('.vessel-weather-eta-delay')).toHaveText('+1.3 h');
+  await expect(page.locator('.vessel-eta-primary')).toHaveText(await panel.locator('.vessel-weather-eta-value').innerText());
+  await expect(page.locator('.vessel-eta-baseline p')).toHaveText('기본 ETA ' + baseline);
+  await panel.getByText('보정 가정 및 구간별 영향', { exact: true }).click();
   await panel.screenshot({ path: '.tooling-tmp/weather-eta-light.png' });
   await page.getByRole('button', { name: '다크 모드로 전환' }).click();
   await panel.screenshot({ path: '.tooling-tmp/weather-eta-dark.png' });
-  await panel.getByText('보정 가정 및 구간별 영향', { exact: true }).click();
+  await page.locator('.vessel-data-details > summary').click();
+  await page.locator('.vessel-eta-workspace').screenshot({ path: '.tooling-tmp/vessel-layout-ais-dark.png' });
+  weatherFailed = true;
+  await refreshVesselRoute(page);
+  await expect(page.locator('.vessel-arrival-insight')).toContainText('기상 갱신 실패 · 이전 예보 사용');
+  await expect(page.locator('.vessel-data-details')).not.toHaveAttribute('open');
+  await expect(page.locator('.vessel-arrival-panel .vessel-weather-eta-delay')).toHaveText('+1.3');
+  await openVesselData(page, '계산 근거');
   await page.setViewportSize({ width: 375, height: 844 });
   await panel.screenshot({ path: '.tooling-tmp/weather-eta-mobile.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByLabel('예상 항로 목적항').selectOption('hadong');
+  await page.getByLabel('예상 항로 목적항').selectOption('donghae');
   await expect(panel.locator('.vessel-weather-eta-value')).toHaveText('보정 보류');
   await expect(panel.locator('.vessel-weather-eta-delay')).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('genforecast.vessel-workspace.v1')!).voyages)).toEqual([]);
+  await openVesselSettings(page);
+  await expect(settings.getByLabel('기상 보정 민감도')).toHaveValue('1');
+  await settings.getByRole('button', { name: '완료', exact: true }).click();
+  expect((await readSavedWorkspace(page)).voyages).toEqual([]);
+});
+
+test("weekly passage forecast switches cached ranges and greys the remaining route", async ({ page }) => {
+  await page.route('https://tiles.openfreemap.org/styles/*', route => route.fulfill({ json: mapStyleFixture }));
+  const at = new Date().toISOString();
+  const ship = { id: 'week-weather', name: 'WEEK FORECAST', source: 'aisstream', mmsi: '440201168', imo: '', ais: { updatedAt: at, shipType: 70, navStatus: 0, destination: 'DANGJIN', position: { latitude: 0, longitude: 0, observedAt: at, sogKn: 12, cogDeg: 90 } } };
+  await page.addInitScript(v => {
+    localStorage.setItem('genforecast.vessel-workspace.v1', JSON.stringify({ version: 1, vessels: [v], voyages: [], watchlist: [v.id] }));
+    localStorage.setItem('genforecast.vessel-route-destinations.v1', JSON.stringify({ [v.id]: 'dangjin' }));
+  }, ship);
+  await page.route('**/api/vessels/tracking/**', route => route.fulfill({ json: /\/(aisstream|digitraffic)\//.test(route.request().url()) ? { pointCount: 0, segments: [], truncated: false } : { vessels: [ship] } }));
+  await page.route('**/api/vessels/route?*', route => route.fulfill({ json: { kind: 'estimated', provider: 'searoute', destinationId: 'dangjin', origin: [0, 0], coordinates: [[0, 0], [10, 0], [20, 0]], distanceNm: 2400, startOffsetNm: 0, endOffsetNm: 0 } }));
+  const hours = [...Array.from({ length: 9 }, (_, i) => i * 3), ...Array.from({ length: 8 }, (_, i) => 30 + i * 6), ...Array.from({ length: 8 }, (_, i) => 84 + i * 12)];
+  let requests = 0;
+  await page.route('**/api/vessels/weather/**', route => {
+    requests++;
+    return route.fulfill({ json: { source: 'aisstream', mmsi: ship.mmsi, destinationId: 'dangjin', status: 'partial', reason: '주간 예보 표본', observedAt: at, fetchedAt: at, horizonHours: 168, speedKn: 12,
+      points: hours.map(h => { const passageAt = new Date(Date.parse(at) + h * 3600000).toISOString(); return { longitude: h / 10, latitude: 0, passageAt,
+        waveM: h === 120 ? null : h >= 72 ? 4 : 1, windKn: 15, gustKn: 20, visibilityM: 20000, windFromDeg: 90, waveFromDeg: 270, wavePeriodS: 8,
+        airStatus: 'fresh', marineStatus: 'fresh', airFetchedAt: at, marineFetchedAt: at, airForecastAt: passageAt, marineForecastAt: passageAt, forecastIssuedAt: null }; }) } });
+  });
+  await page.route('**/api/vessels/cyclones', route => route.fulfill({ json: { status: 'ready', fetchedAt: at, reason: '', storms: [] } }));
+  await page.goto('/?source=synthetic');
+  await captureOnlineMap(page);
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await expect(page.locator('.vessel-map-online')).toHaveAttribute('data-map-ready', 'true');
+  await page.getByRole('button', { name: '지도 기상 레이어', exact: true }).click();
+  const panel = page.getByRole('region', { name: '지도 기상 레이어 설정' });
+  await expect(panel.getByRole('button', { name: '7일', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.vessel-weather-marker')).toHaveCount(25);
+  await expect(panel.locator('.vessel-weather-coverage')).toContainText('84%');
+  const calls = requests;
+  await panel.getByLabel('지도 통과 시각').fill('24');
+  await panel.getByRole('button', { name: '3일', exact: true }).click();
+  await expect(page.locator('.vessel-weather-marker')).toHaveCount(17);
+  await expect(panel.getByLabel('지도 통과 시각')).toHaveValue('0');
+  await expect(panel.locator('.vessel-weather-coverage')).toContainText('36%');
+  expect(requests).toBe(calls);
+  await panel.getByRole('button', { name: '7일', exact: true }).click();
+  await expect(page.locator('.vessel-weather-marker')).toHaveCount(25);
+  const status = await page.evaluate(() => {
+    const map = (window as any).testVesselMap;
+    return { route: !!map.getLayer('vessel-weather-route'), end: !!map.getLayer('vessel-weather-end') };
+  });
+  expect(status).toEqual({ route: true, end: true });
+  await page.evaluate(() => (window as any).testVesselMap.jumpTo({ center: [9, 0], zoom: 3 }));
+  await expect(page.locator('.vessel-weather-marker.is-compact').first()).toBeAttached();
+  await expect(page.locator('.vessel-weather-marker.is-active')).not.toHaveClass(/is-compact/);
+  await page.locator('.vessel-weather-marker.is-compact').first().focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.vessel-weather-marker.is-active')).not.toHaveClass(/is-compact/);
+  await page.locator('.vessel-map').screenshot({ path: '.tooling-tmp/weather-week-light.png' });
+  await page.getByRole('button', { name: '다크 모드로 전환' }).click();
+  await page.locator('.vessel-map').screenshot({ path: '.tooling-tmp/weather-week-dark.png' });
+  await page.setViewportSize({ width: 375, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test("route weather layers show visibility and timed cyclone radii without moving the camera", async ({ page }) => {
@@ -1016,7 +1354,7 @@ test("watchlist weather loads unselected interests, maps passage forecasts and i
   await page.route('**/api/vessels/weather/**', async route => {
     const url = new URL(route.request().url());
     requests.push(url.pathname + url.search);
-    if (url.searchParams.get('destination') === 'hadong') return route.fulfill({ status: 503 });
+    if (url.searchParams.get('destination') === 'donghae') return route.fulfill({ status: 503 });
     return route.fulfill({ json: { source: 'aisstream', mmsi: url.pathname.split('/').at(-1), destinationId: url.searchParams.get('destination'), status: 'partial', reason: '일부 예보 없음 · ETA 감속 보정 미적용', observedAt: at, fetchedAt: at, horizonHours: 72,
       points: [0, 1].map(i => ({ longitude: 125 + i * .1, latitude: 35, passageAt: new Date(Date.parse(at) + i * 3600000).toISOString(),
         waveM: i ? null : 2.5, windKn: 15, gustKn: 22, windFromDeg: 90, waveFromDeg: 270, wavePeriodS: 8,
@@ -1025,8 +1363,9 @@ test("watchlist weather loads unselected interests, maps passage forecasts and i
   await openEta(page);
   await expect.poll(() => requests.length).toBe(2);
   expect(requests.some(v => v.includes('440200001'))).toBe(true);
-  await expect(page.locator('.shipment-card').last()).toContainText('기상 일부 확인');
+  await expect(page.locator('.vessel-forecast-panel header')).toContainText('기상 일부 확인');
   const panel = page.locator('.vessel-forecast-panel');
+  await openVesselData(page, '기상 상세');
   await expect(panel).toContainText('2.5');
   await expect(panel).toContainText('Open-Meteo');
   await panel.getByRole('button', { name: '항로 예보 지도 표시', exact: true }).click();
@@ -1040,11 +1379,11 @@ test("watchlist weather loads unselected interests, maps passage forecasts and i
   await page.setViewportSize({ width: 375, height: 844 });
   await panel.screenshot({ path: '.tooling-tmp/watchlist-weather-mobile.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByLabel('예상 항로 목적항').selectOption('hadong');
+  await page.getByLabel('예상 항로 목적항').selectOption("donghae");
   await expect(panel).toContainText('기상 조회 실패');
   await expect(page.locator('.vessel-weather-marker')).toHaveCount(0);
   await expect(page.locator('.vessel-eta-primary')).not.toHaveText('ETA 계산 전');
-  await page.locator('.vessel-eta-detail').getByRole('button', { name: '관심 해제', exact: true }).click();
+  await removeSelectedVessel(page);
   await expect(page.locator('.shipment-card')).toHaveCount(1);
   await expect(panel).toContainText('2.5');
 });
@@ -1067,15 +1406,15 @@ test("watchlist weather cancels obsolete destinations and stops polling after re
   });
   await openEta(page);
   await expect(page.locator('.vessel-forecast-panel')).toContainText('관심 선박 예보 조회 중');
-  await page.getByLabel('예상 항로 목적항').selectOption('boryeong');
+  await page.getByLabel('예상 항로 목적항').selectOption("donghae");
   await expect(page.locator('.vessel-forecast-panel')).toContainText('NEW DESTINATION');
   finish();
   await expect(page.locator('.vessel-forecast-panel')).not.toContainText('OLD DESTINATION');
-  await page.locator('.vessel-eta-detail').getByRole('button', { name: '관심 해제', exact: true }).click();
+  await removeSelectedVessel(page);
   await expect(page.locator('.vessel-forecast-panel')).toHaveCount(0);
   await page.clock.install();
   await page.clock.fastForward(6 * 60000);
-  expect(calls).toEqual(['dangjin', 'boryeong']);
+  expect(calls).toEqual(['dangjin', 'donghae']);
 });
 
 test("AIS missing key can explicitly switch to Finnish public data", async ({ page }) => {
@@ -1098,7 +1437,7 @@ test("AIS missing key can explicitly switch to Finnish public data", async ({ pa
   await page.getByRole("button", { name: "FINNISH TEST 관심 등록" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "완료", exact: true }).click();
   await expect(page.locator(".vessel-eta-detail")).toContainText("Digitraffic · 핀란드");
-  await expect(page.locator(".vessel-eta-detail")).toContainText("실시간 위치 미수신");
+  await expect(page.locator(".vessel-arrival-panel")).toContainText("실시간 위치 미수신");
 });
 for (const renderer of ["offline", "online"]) {
   test(`ETA unlocated selection keeps the fleet and never selects another vessel (${renderer})`, async ({ page }) => {
@@ -1117,18 +1456,23 @@ for (const renderer of ["offline", "online"]) {
     await expect(page.locator('.vessel-map-marker[aria-pressed="true"]')).toHaveCount(0);
     await expect(page.locator(".vessel-map-empty")).toHaveCount(0);
     await expect(page.locator(".vessel-map-selection-note")).toContainText("Aurora Bulk · 출항 예정 · 현재 위치 미수신");
-    await expect(page.locator(".vessel-eta-detail h2")).toHaveText("Aurora Bulk · 도착 전망");
+    await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toHaveText("Aurora Bulk");
     if (zoom) await expect(page.locator(".vessel-map-online")).toHaveAttribute("data-zoom", zoom);
     await page.getByRole("button", { name: "출항 예정", exact: true }).click();
     await expect(page.locator(".vessel-map-marker")).toHaveCount(0);
-    await expect(page.locator(".vessel-map-empty")).toHaveText("현재 범위에 위치가 확인된 선박이 없습니다.");
+    if (renderer === "online") {
+      // Interest filters do not hide the independent received-fleet layer.
+      await expect(page.getByRole('button', { name: '전체 수신 선박', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator(".vessel-map-empty")).toHaveCount(0);
+      await expect(page.locator(".vessel-map-selection-note")).toContainText("Aurora Bulk · 출항 예정 · 현재 위치 미수신");
+    } else await expect(page.locator(".vessel-map-empty")).toHaveText("현재 범위에 위치가 확인된 선박이 없습니다.");
     await page.getByRole("button", { name: "전체 관심", exact: true }).click();
     await expect(page.locator(".vessel-map-marker")).toHaveCount(4);
     await expect(page.locator('.vessel-map-marker[aria-pressed="true"]')).toHaveCount(0);
     await page.locator(".shipment-card").filter({ hasText: "Ocean Frontier" }).click();
     await expect(page.locator('.vessel-map-marker[aria-pressed="true"]')).toHaveCount(1);
     await expect(page.locator('.vessel-map-marker[aria-pressed="true"]')).toHaveAttribute("aria-label", /Ocean Frontier/);
-    await expect(page.locator(".vessel-eta-detail h2")).toHaveText("Ocean Frontier · 도착 전망");
+    await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toHaveText("Ocean Frontier");
     await expect(page.locator(".vessel-map-selection-note")).toHaveCount(0);
     await page.locator(".shipment-card").filter({ hasText: "Aurora Bulk" }).click();
     await page.screenshot({ path: `.tooling-tmp/unlocated-${renderer}-light.png`, fullPage: true });
@@ -1150,12 +1494,13 @@ test("ETA workspace has one vessel list and synchronizes it with map and arrival
   await ocean.click();
   await expect(ocean).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('.vessel-map-marker[aria-pressed="true"]')).toContainText("Ocean Frontier");
-  await expect(page.locator(".vessel-eta-detail h2")).toHaveText("Ocean Frontier · 도착 전망");
+  await expect(page.locator(".vessel-arrival-panel h2")).toHaveText("도착 전망");
+  await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toContainText("Ocean Frontier");
   const southern = page.locator(".vessel-map-marker").filter({ hasText: "Southern Star" });
   await southern.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator('.shipment-card[aria-pressed="true"]')).toContainText("Southern Star");
-  await expect(page.locator(".vessel-eta-detail h2")).toHaveText("Southern Star · 도착 전망");
+  await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toContainText("Southern Star");
   await page.screenshot({ path: ".tooling-tmp/vessel-single-selection-light.png", fullPage: true });
   await page.getByRole("button", { name: "다크 모드로 전환" }).click();
   await page.screenshot({ path: ".tooling-tmp/vessel-single-selection-dark.png", fullPage: true });
@@ -1163,14 +1508,15 @@ test("ETA workspace has one vessel list and synchronizes it with map and arrival
   await expect(page.locator(".vessel-map-legend")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await ocean.click();
-  await expect(page.locator(".vessel-eta-detail h2")).toHaveText("Ocean Frontier · 도착 전망");
+  await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toContainText("Ocean Frontier");
   await page.screenshot({ path: ".tooling-tmp/vessel-single-selection-mobile.png", fullPage: true });
 });
 
 test("ETA workspace aligns list and map, groups actions and collapses the mobile list", async ({ page }) => {
   await openEta(page);
   const add = page.getByRole("button", { name: "관심 선박 구성", exact: true });
-  const context = await page.locator(".context-bar").last().boundingBox();
+  await expect(page.locator('.context-bar')).toHaveCount(0);
+  const context = await page.locator('.page-heading').boundingBox();
   const addBox = await add.boundingBox();
   expect(addBox!.y - (context!.y + context!.height)).toBeGreaterThanOrEqual(16);
   const headingBox = await page.getByRole("heading", { name: "관심 선박", exact: true }).boundingBox();
@@ -1179,12 +1525,17 @@ test("ETA workspace aligns list and map, groups actions and collapses the mobile
   const listBox = await page.locator('.vessel-watchlist-panel').boundingBox();
   const mapColumn = await page.locator('.vessel-eta-map-column').boundingBox();
   expect(Math.abs(listBox!.y - mapColumn!.y)).toBeLessThan(2);
-  await expect(page.locator('.vessel-selection-header')).toContainText('Pacific Horizon');
+  await expect(page.locator('.shipment-card[aria-pressed=true] strong')).toContainText('Pacific Horizon');
   await expect(page.locator('.vessel-map-header')).toHaveCount(0);
-  const etaBox = await page.locator('.vessel-eta-detail').boundingBox();
+  const etaBox = await page.locator('.vessel-arrival-panel').boundingBox();
   const mapBox = await page.locator('.vessel-map').boundingBox();
-  expect(etaBox!.y).toBeGreaterThanOrEqual(mapBox!.y + mapBox!.height);
   expect(Math.abs(etaBox!.x - mapBox!.x)).toBeLessThan(2);
+  expect(etaBox!.y + etaBox!.height).toBeLessThanOrEqual(mapBox!.y);
+  await expect(page.locator('.vessel-data-details')).toHaveCount(1);
+  await expect(page.locator('.vessel-data-details[open]')).toHaveCount(0);
+  await openVesselData(page, '기상 상세');
+  await expect(page.locator('.vessel-weather-panel')).toBeVisible();
+  await openVesselData(page, '기상 상세');
   await page.getByRole('button', { name: '관심 목록 더보기' }).click();
   await expect(page.getByRole('menuitem', { name: '내보내기' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: '가져오기' })).toBeVisible();
@@ -1239,7 +1590,7 @@ test("ETA workflow persists searched interests and removes only the personal int
   await openEta(page);
   await expect(page.locator(".shipment-card")).toHaveCount(5);
   await page.locator(".shipment-card").filter({ hasText: "Aurora Bulk" }).click();
-  await page.getByRole("button", { name: "관심 해제", exact: true }).click();
+  await removeSelectedVessel(page);
   await expect(page.locator(".shipment-card")).toHaveCount(4);
   await page.getByRole("button", { name: "관심 선박 구성", exact: true }).click();
   await page.getByRole("tab", { name: "목록에서 찾기", exact: true }).click();
@@ -1250,7 +1601,7 @@ test("ETA workflow persists searched interests and removes only the personal int
   await page.getByRole('button', { name: '관심 목록 더보기' }).click();
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("menuitem", { name: "내보내기", exact: true }).click()]);
   const exported = await download.path();
-  await page.getByRole("button", { name: "관심 해제", exact: true }).click();
+  await removeSelectedVessel(page);
   await page.getByLabel("관심 목록 가져오기").setInputFiles(exported!);
   await expect(page.locator(".shipment-card")).toHaveCount(5);
 });
@@ -1258,7 +1609,7 @@ test("ETA workflow keeps an empty watchlist empty after reload", async ({ page }
   await openEta(page);
   for (let count = 4; count > 0; count--) {
     await expect(page.locator(".shipment-card")).toHaveCount(count);
-    await page.getByRole("button", { name: "관심 해제", exact: true }).click();
+    await removeSelectedVessel(page);
   }
   await openEta(page);
   await expect(page.locator(".shipment-card")).toHaveCount(0);
@@ -1273,7 +1624,7 @@ test("ETA workflow selects the canonical vessel on duplicate manual registration
   await page.getByRole("button", { name: "위치 연결 대기로 등록" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "완료", exact: true }).click();
   await expect(page.locator(".shipment-card")).toHaveCount(4);
-  await expect(page.locator(".vessel-eta-detail h2")).toContainText("Ocean Frontier");
+  await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toHaveText("Ocean Frontier");
 });
 test("ETA workflow registers an unlocated vessel and links a planned voyage without inventing positions", async ({ page }) => {
   await openEta(page);
@@ -1287,17 +1638,19 @@ test("ETA workflow registers an unlocated vessel and links a planned voyage with
   await expect(page.locator(".vessel-map-marker")).toHaveCount(4);
   await expect(page.locator('.vessel-map-marker[aria-pressed="true"]')).toHaveCount(0);
   await expect(page.locator(".vessel-map-selection-note")).toContainText("My Test Bulk · 항차 미연결 · 현재 위치 미수신");
+  await openVesselSettings(page);
   await page.getByRole("button", { name: "항차 연결", exact: true }).click();
   await page.getByLabel("출항항", { exact: true }).fill("Test Port");
   await page.getByLabel("예정 출항 (KST)", { exact: true }).fill("2026-10-10T09:00");
   await page.getByLabel("예상 잔여거리 (nm)", { exact: true }).fill("120");
   await page.getByLabel("계획 항해 속도 (kn)", { exact: true }).fill("10");
-  await page.getByRole("button", { name: "이 브라우저에 항차 저장" }).click();
+  await page.getByRole("button", { name: "계정에 항차 저장" }).click();
   await expect(page.locator(".vessel-eta-primary")).toContainText("21:00");
-  await expect(page.locator(".vessel-eta-detail")).toContainText("실시간 위치 미수신");
+  await expect(page.locator(".vessel-arrival-panel")).toContainText("실시간 위치 미수신");
+  await openVesselSettings(page);
   await page.getByRole("button", { name: "항차 수정", exact: true }).click();
   await page.getByLabel("항차 상태").selectOption("cancelled");
-  await page.getByRole("button", { name: "이 브라우저에 항차 저장" }).click();
+  await page.getByRole("button", { name: "계정에 항차 저장" }).click();
   await expect(page.locator(".vessel-eta-primary")).toContainText("ETA 계산 전");
 });
 test("ETA workflow rejects malformed imports without destroying the saved list", async ({ page }) => {
@@ -1309,9 +1662,10 @@ test("ETA workflow rejects malformed imports without destroying the saved list",
 test("ETA workflow never shows the old example route after destination editing", async ({ page }) => {
   await openEta(page);
   await page.locator(".shipment-card").filter({ hasText: voyages[1].vessel_name }).click();
+  await openVesselSettings(page);
   await page.getByRole("button", { name: "항차 수정", exact: true }).click();
   await page.getByLabel("목적 발전소").selectOption("dangjin");
-  await page.getByRole("button", { name: "이 브라우저에 항차 저장" }).click();
+  await page.getByRole("button", { name: "계정에 항차 저장" }).click();
   await expect(page.locator(".vessel-eta-detail")).toContainText("당진 연료부두");
   await expect(page.locator(".vessel-map-marker")).toHaveCount(3);
   await expect(page.locator('.vessel-map-marker[aria-label*="Ocean Frontier"]')).toHaveCount(0);
@@ -1321,9 +1675,10 @@ test("ETA workflow never shows the old example route after destination editing",
 test("ETA workflow hides the example route after departure port editing", async ({ page }) => {
   await openEta(page);
   await page.locator(".shipment-card").filter({ hasText: voyages[1].vessel_name }).click();
+  await openVesselSettings(page);
   await page.getByRole("button", { name: "항차 수정", exact: true }).click();
   await page.getByLabel("출항항", { exact: true }).fill("New departure port");
-  await page.getByRole("button", { name: "이 브라우저에 항차 저장" }).click();
+  await page.getByRole("button", { name: "계정에 항차 저장" }).click();
   await expect(page.locator(".vessel-map-marker")).toHaveCount(3);
   await expect(page.locator('.vessel-map-marker[aria-label*="Ocean Frontier"]')).toHaveCount(0);
   await expect(page.locator(".vessel-map-route.is-selected")).toHaveCount(0);
@@ -1342,6 +1697,7 @@ test("ETA weather timeline preserves the camera and marks missing synthetic fore
   await expect.poll(async () => Number(await map.getAttribute("data-zoom"))).toBeCloseTo(initialZoom + 1, 1);
   await expect.poll(() => page.evaluate(() => (window as any).testVesselMap.isMoving())).toBe(false);
   const zoom = await map.getAttribute("data-zoom");
+  await openVesselData(page, '기상 상세');
   await page.getByRole("button", { name: "기상 표본 표시", exact: true }).click();
   await expect(page.locator(".vessel-weather-marker")).toHaveCount(3);
   await page.getByLabel("기상 예보 시각").fill("72");
@@ -1407,12 +1763,12 @@ test("online map morphs into land, keeps compact attribution and preserves selec
   await expect(credit).toHaveCSS("font-size", "10px");
   await expect(credit).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await page.locator(".shipment-card").last().click();
-  const selected = await page.locator(".vessel-eta-detail h2").innerText();
+  const selected = await page.locator(".shipment-card[aria-pressed=true] strong").innerText();
   const previousZoom = await map.getAttribute("data-zoom");
   await page.getByRole("button", { name: "다크 모드로 전환" }).click();
   await expect(map).toHaveAttribute("data-map-ready", "true");
   await expect(map).toHaveAttribute("data-zoom", previousZoom!);
-  await expect(page.locator(".vessel-eta-detail h2")).toHaveText(selected);
+  await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toHaveText(selected);
   await page
     .getByRole("button", { name: "전체 세계지도 보기", exact: true })
     .click();
@@ -1523,7 +1879,7 @@ test("mobile overview renders dots and later tile requests retain geography", as
       }),
   );
   await expect(map).toHaveAttribute("data-map-mode", "detail");
-  await expect(map.getByRole("status")).toContainText("일부");
+  await expect(map.locator('.vessel-map-status')).toContainText("일부");
   await expect(
     map.getByRole("button", { name: "지도 타일 다시 시도" }),
   ).toBeVisible();
@@ -1954,7 +2310,7 @@ test("failed vector tiles retry without replacing the map or camera", async ({
   );
   await map.getByRole("button", { name: "지도 타일 다시 시도" }).click();
   await expect.poll(() => tiles).toBeGreaterThan(previousTiles);
-  await expect(map.getByRole("status")).not.toBeVisible();
+  await expect(map.locator('.vessel-map-status')).not.toBeVisible();
   await expect(map).toHaveAttribute("data-zoom", previousZoom!);
   await expect(map).toHaveAttribute("data-map-mode", "detail");
 });
@@ -2020,6 +2376,7 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    if (/^\/api\/(auth|me|admin)\//.test(url.pathname)) return route.fallback();
     if (url.pathname.startsWith("/api/vessels/")) return route.fallback();
     // 저탄장 연계(/api/supply, /api/v1)는 이 MILP 목업 대상이 아니다.
     if (url.pathname !== "/api/runs" && !url.pathname.startsWith("/api/planning/"))
@@ -2134,6 +2491,7 @@ test("incomplete fuel plans remain unknown and DB inventory forecasts render sep
 }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    if (/^\/api\/(auth|me|admin)\//.test(url.pathname)) return route.fallback();
     if (url.pathname === "/api/runs") {
       await route.fulfill({
         json: [
@@ -2280,7 +2638,7 @@ test("pile drilldown, stale AIS and model training update the operational foreca
   await expect(page.locator(".shipment-card .tower-tag").first()).toHaveText(
     "STALE",
   );
-  await page.locator('.vessel-observation-details summary').click();
+  await openVesselData(page);
   await expect(page.getByText("SOG / COG", { exact: true })).toBeVisible();
   await page
     .getByRole("navigation", { name: "주 메뉴" })
@@ -2436,20 +2794,29 @@ test("offline single HTML supports calculation without network", async ({
   await context.close();
 });
 
-test("world map selection, zoom and scoped shipment details stay synchronized", async ({
+test("vessel map is independent of plant scope and keeps selection while other pages retain their filters", async ({
   page,
 }) => {
   await page.goto("/?source=synthetic");
+  const nav = page.getByRole('navigation', { name: '주 메뉴' });
+  await nav.getByRole('button', { name: '저탄장 현황', exact: true }).click();
+  await page.getByRole('combobox', { name: '발전본부 선택' }).click();
+  await page.getByRole('option', { name: '하동', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: '발전본부 선택' })).toContainText('하동');
   await page
     .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "선박 추적", exact: true })
     .click();
   await expect(page.locator(".vessel-map-dots").first()).toBeVisible();
+  await expect(page.locator('.shipment-card')).toHaveCount(4);
+  await expect(page.locator('.context-bar')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: '발전본부 선택' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: '전망 기간' })).toHaveCount(0);
   const selector = page.locator(".shipment-card").last();
   const name = (await selector.locator("strong").innerText()).trim();
   await selector.click();
   await expect(selector).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".vessel-eta-detail h2")).toHaveText(`${name} · 도착 전망`);
+  await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toHaveText(name);
   await page.getByRole("button", { name: "지도 확대", exact: true }).click();
   await page
     .getByRole("button", { name: "전체 세계지도 보기", exact: true })
@@ -2457,11 +2824,13 @@ test("world map selection, zoom and scoped shipment details stay synchronized", 
   await expect(
     page.getByRole("button", { name: "지도 축소", exact: true }),
   ).toBeDisabled();
-  await page.getByRole("combobox", { name: "발전본부 선택" }).click();
-  await page.getByRole("option", { name: "하동", exact: true }).click();
-  await expect(page.locator(".vessel-map-marker")).toHaveCount(1);
-  await expect(page.locator(".vessel-eta-detail")).toContainText("하동");
-  await expect(page.locator(".shipment-card")).toHaveCount(1);
+  await nav.getByRole('button', { name: '저탄장 현황', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: '발전본부 선택' })).toContainText('하동');
+  await expect(page.getByRole('group', { name: '전망 기간' })).toBeVisible();
+  await nav.getByRole('button', { name: '선박 추적', exact: true }).click();
+  await expect(page.locator('.vessel-map-marker')).toHaveCount(4);
+  await expect(page.locator('.shipment-card')).toHaveCount(4);
+  await expect(page.locator('.shipment-card[aria-pressed=true] strong')).toHaveText(name);
 });
 
 test("map zoom adds land detail while dots retain their screen size", async ({
@@ -2566,7 +2935,7 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
     .filter({ hasText: "Southern Star" });
   await marker.focus();
   await page.keyboard.press("Enter");
-  await expect(page.locator(".vessel-eta-detail h2")).toHaveText("Southern Star · 도착 전망");
+  await expect(page.locator(".shipment-card[aria-pressed=true] strong")).toHaveText("Southern Star");
   await expect(page.locator('.shipment-card[aria-pressed="true"]')).toContainText("Southern Star");
   await expect(marker).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".aceternity-world-map")).toHaveAttribute(
@@ -2595,6 +2964,8 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
     "d",
     route!,
   );
+  await openVesselData(page, 'AIS 관측');
+  await page.getByText('등록 항차 · 접안·하역 일정', { exact: true }).click();
   await page.getByRole("button", { name: "발전 영향 보기" }).click();
   await expect(page.getByRole("dialog")).toContainText("하동");
 });

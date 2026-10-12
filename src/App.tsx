@@ -76,6 +76,8 @@ import { Stockyard } from "@/features/stockyard/Stockyard";
 import { VesselTracking } from "@/features/vessels/VesselWorkspace";
 import { ModelsPage } from "@/features/models/ModelsPage";
 import { DataPage } from "@/features/data/DataPage";
+import { AccountControls, AccountWorkspaceStatus } from "@/features/auth/AccountControls";
+import { MemberManagement } from "@/features/auth/MemberManagement";
 import { forecastTask } from "@/lib/forecast-task";
 import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
 import { number as n, date as fmtDate, shiftDate } from "@/lib/format";
@@ -397,17 +399,17 @@ function App() {
         <div className="sidebar-note">
           <div>
             <span className="online-dot" />
-            {isMilpOverview ? "Python MILP 조회" : "오프라인 데모"}
+            {isMilpOverview ? "Python MILP 조회" : page === "vessels" ? "선박 관측 조회" : "오프라인 데모"}
           </div>
           <p>
             {isMilpOverview
               ? "당진 1~10호기 · 저장된 계획"
-              : "운영·정비계획 샘플 데이터"}
+              : page === "vessels" ? "선박별 출처·관측시각 확인" : "운영·정비계획 샘플 데이터"}
           </p>
           <span>
             {isMilpOverview
               ? "계산별 기간 · KST 일 단위"
-              : "기준 2026.10.06 09:00 KST"}
+              : page === "vessels" ? "시각 표기 KST" : "시연 기준 2026.10.06 09:00 KST"}
           </span>
         </div>
         <button
@@ -611,7 +613,7 @@ function App() {
           <div className="top-actions">
             <span className="demo-label">
               <span />
-              {isMilpOverview ? "MILP 계획 조회" : "샘플 데이터"}
+              {isMilpOverview ? "MILP 계획 조회" : page === "vessels" ? "선박별 데이터" : "샘플 데이터"}
             </span>
             <Button
               variant="ghost"
@@ -635,9 +637,7 @@ function App() {
               <Bell />
               <span />
             </Button>
-            <div className="top-avatar" title="샘플 운영자">
-              OP
-            </div>
+            <AccountControls />
           </div>
         </header>
         <aside className="sidebar">
@@ -653,6 +653,7 @@ function App() {
           </SheetContent>
         </Sheet>
         <main id="main-content" className="main-content">
+          <AccountWorkspaceStatus />
           <div className="page-heading">
             <div>
               <h1>{currentPage.label}</h1>
@@ -662,7 +663,7 @@ function App() {
                   : currentPage.sub}
               </p>
             </div>
-            <div className="heading-actions">
+            {page !== "vessels" && <div className="heading-actions">
               <Button
                 variant="outline"
                 className="export-button"
@@ -680,7 +681,7 @@ function App() {
                 <Settings2 />
                 시나리오 분석
               </Button>
-            </div>
+            </div>}
           </div>
           {page === "overview" && (
             <div
@@ -716,7 +717,7 @@ function App() {
               </span>
             </div>
           )}
-          {!isMilpOverview && (
+          {!isMilpOverview && page !== "vessels" && (
             <div className="context-bar">
               <div className="context-left">
                 <span className="context-caption">조회 범위</span>
@@ -767,7 +768,7 @@ function App() {
                 )}
                 <Clock3 size={13} />
                 <span>
-                  2026.10.06 09:00 <b>KST</b>
+                  시연 기준 2026.10.06 09:00 <b>KST</b>
                 </span>
               </div>
             </div>
@@ -950,7 +951,7 @@ function App() {
 
           {page === "vessels" && (
             <VesselTracking
-              plants={selectedPlants}
+              plants={plants}
               theme={theme}
               scenario={applied}
               selectedId={selectedVesselId}
@@ -961,7 +962,7 @@ function App() {
           {page === "models" && (
             <ModelsPage models={models} onModels={setModels} theme={theme} />
           )}
-          {page === "data" && <DataPage plants={selectedPlants} />}
+          {page === "data" && <><MemberManagement /><DataPage plants={selectedPlants} /></>}
 
           {page === "scenario" && (
             <>
@@ -1173,10 +1174,10 @@ function App() {
             <footer className="page-footer">
               <span>
                 <Layers3 size={13} />
-                샘플 데이터 기반 운영 시뮬레이션
+                {page === "vessels" ? "선박별 관측·예보 기준 · KST" : "샘플 데이터 기반 운영 시뮬레이션"}
               </span>
               <span>
-                기준시각 고정 · 실제 운전 및 정지계획과 다를 수 있습니다.
+                {page === "vessels" ? "시연 표본은 별도 표시" : "시연 기준시각 고정 · 실제 운전 및 정지계획과 다를 수 있습니다."}
               </span>
               <button onClick={() => setHelpOpen(true)}>
                 산정 기준
@@ -1193,7 +1194,7 @@ function App() {
             <DialogHeader>
               <DialogTitle>{detailPlant?.name} 운영 상세</DialogTitle>
               <DialogDescription>
-                기준 2026.10.06 09:00 KST · 샘플 운영 및 정비계획
+                시연 기준 2026.10.06 09:00 KST · 샘플 운영 및 정비계획
               </DialogDescription>
             </DialogHeader>
             {detailPlant && (
@@ -1320,10 +1321,21 @@ function App() {
               <DialogDescription>
                 {isMilpOverview
                   ? "선택한 저장 계산의 기간 · KST 00시~24시입니다."
-                  : "모든 시간은 KST, 기준시각은 2026.10.06 09:00입니다."}
+                  : page === "vessels"
+                    ? "모든 시각은 KST로 표시하며, 관측·예보·시연 기준을 구분합니다."
+                    : "모든 시간은 KST, 시연 기준시각은 2026.10.06 09:00입니다."}
               </DialogDescription>
             </DialogHeader>
-            {isMilpOverview ? (
+            {page === "vessels" ? (
+              <div className="help-copy">
+                <h3>실제 관측과 서버 수신</h3>
+                <p>실제 AIS는 마지막 위치 관측시각을 표시합니다. 서버 수신시각은 수집기의 마지막 메시지 시각이며, 개별 선박의 위치가 최신이라는 뜻은 아닙니다.</p>
+                <h3>ETA와 항로 통과 예보</h3>
+                <p>기본 ETA는 선박 관측시각·속도와 예상 잔여 항로를 기준으로 계산합니다. 기상은 예보 발표·조회시각과 항로 통과 예상시각을 구분하며, 보정 ETA는 시연용 추정값입니다.</p>
+                <h3>시연 표본의 고정 날짜</h3>
+                <p>시연 표본은 2026.10.06 09:00 KST 기준의 합성 데이터입니다. 실제 관측으로 갱신하지 않으며, 선박별 출처에서 구분합니다.</p>
+              </div>
+            ) : isMilpOverview ? (
               <div className="help-copy">
                 <h3>저장된 MILP 계획</h3>
                 <p>

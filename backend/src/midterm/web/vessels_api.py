@@ -4,18 +4,22 @@ import asyncio
 from contextlib import suppress
 from pathlib import Path
 import os
+import logging
 from uuid import UUID
 from typing import Literal
 from typing import Annotated
 from fastapi import APIRouter, Response, HTTPException, Query
 from pydantic import BaseModel, Field
 from midterm.vessels.ais import AisCatalog
+from midterm.vessels.discovery_store import DiscoveryStore
 from midterm.vessels.digitraffic import DigitrafficCatalog
 from midterm.vessels.navigation import TrackStore, SeaRouter
 from midterm.vessels.weather import WeatherService
 from midterm.vessels.cyclones import CycloneService
 from midterm.vessels.port_visits import PortVisitService
 from midterm.vessels.destinations import resolve_destination
+from midterm.vessels.fleet_map import fleet_map, vessel_detail
+from midterm.vessels.ais import utc_now
 
 catalog: AisCatalog | None = None
 digitraffic: DigitrafficCatalog | None = None
@@ -26,39 +30,73 @@ cyclone_service = CycloneService()
 port_visit_service = PortVisitService()
 
 
-async def persist_loop():
+async def reconcile_tracking(app):
+    from midterm.web.auth_api import store_for_app
+    members = await asyncio.to_thread(store_for_app(app).tracking_members)
+    try:
+        await asyncio.to_thread(tracks.reconcile, members)
+        app.state.tracking_capacity_error = False
+    except ValueError:
+        # Legacy/externally changed databases must not prevent authentication/startup.
+        # Fail closed rather than continuing revoked subscriptions. Saved lists stay intact.
+        if not getattr(app.state, 'tracking_capacity_error', False):
+            logging.getLogger(__name__).error('Account tracking union exceeds capacity; collection paused until saved lists are reduced.')
+        app.state.tracking_capacity_error = True
+        await asyncio.to_thread(tracks.reconcile, {})
+    if any(source == 'aisstream' for source, _ in tracks.active):
+        catalog.start()  # Idempotent; also starts collection after account restoration.
+
+
+async def persist_loop(app):
     tick = 0
     while True:
         await asyncio.sleep(5)
         tick += 1
-        if tick % 12 == 0 and any(source == "digitraffic" for source, _ in tracks.active):
-            snapshot = await digitraffic.snapshot()
-            for vessel in snapshot["vessels"]:
-                tracks.record(vessel)
-        await asyncio.to_thread(tracks.flush)
+        try:
+            await catalog.flush()
+        except Exception:
+            logging.getLogger(__name__).error('AIS discovery save failed; pending records will be retried.')
+        try:
+            await reconcile_tracking(app)
+            if tick % 12 == 0 and any(source == "digitraffic" for source, _ in tracks.active):
+                snapshot = await digitraffic.snapshot()
+                for vessel in snapshot["vessels"]:
+                    tracks.record(vessel)
+            await asyncio.to_thread(tracks.flush)
+        except Exception:
+            logging.getLogger(__name__).error('Registered-vessel persistence failed; retrying next cycle.')
 
 
 @asynccontextmanager
 async def lifespan(app):
     global catalog, digitraffic, tracks
-    tracks = TrackStore(os.getenv("AIS_TRACK_DB", str(Path(__file__).resolve().parents[3] / "data" / "vessel-tracks.sqlite3")))
-    catalog = AisCatalog(on_observation=tracks.record,
+    track_path = Path(os.getenv("AIS_TRACK_DB", str(Path(__file__).resolve().parents[3] / "data" / "vessel-tracks.sqlite3")))
+    tracks = TrackStore(track_path)
+    discovery = DiscoveryStore(os.getenv('AIS_DISCOVERY_DB', str(track_path.with_name('vessel-discovery.sqlite3'))))
+    catalog = AisCatalog(store=discovery, on_observation=tracks.record,
                          lookup_observation=lambda mmsi: tracks.active_observation("aisstream", mmsi))
     digitraffic = DigitrafficCatalog()
-    if any(source == "aisstream" for source, _ in tracks.active):
-        catalog.start()
-    worker = asyncio.create_task(persist_loop())
+    worker = None
     try:
+        await catalog.restore()
+        await reconcile_tracking(app)
+        catalog.start()  # Server lifecycle, independent of browser sessions/watchlists.
+        worker = asyncio.create_task(persist_loop(app))
         yield
     finally:
-        worker.cancel()
-        with suppress(asyncio.CancelledError):
-            await worker
+        if worker:
+            worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await worker
         await catalog.stop()
-        tracks.close()
-        tracks = None
-        catalog = None
-        digitraffic = None
+        try:
+            await catalog.flush()
+        finally:
+            discovery.close()
+            tracks.close()
+            tracks = None
+            catalog = None
+            digitraffic = None
 
 
 router = APIRouter(lifespan=lifespan)
@@ -95,8 +133,33 @@ async def vessel_catalog(response: Response, provider: Literal["aisstream", "dig
         for vessel in snapshot["vessels"]:
             tracks.record(vessel)
         return snapshot
-    catalog.start()
-    return catalog.snapshot()
+    return await catalog.committed_snapshot()
+
+
+@router.get("/api/vessels/map")
+async def map_catalog(response: Response, west: float = Query(ge=-180, le=180), east: float = Query(ge=-180, le=180),
+                      south: float = Query(ge=-85, le=85), north: float = Query(ge=-85, le=85),
+                      zoom: float = Query(ge=-2, le=18)):
+    response.headers['Cache-Control'] = 'no-store'
+    if south > north:
+        raise HTTPException(422, 'Invalid latitude bounds')
+    if catalog is None or catalog.store is None:
+        raise HTTPException(503, 'AIS catalog not ready')
+    return await asyncio.to_thread(fleet_map, catalog.store, west, east, south, north, zoom, utc_now())
+
+
+@router.get("/api/vessels/map/{mmsi}")
+async def map_vessel(response: Response, mmsi: str):
+    import re
+    response.headers['Cache-Control'] = 'no-store'
+    if not re.fullmatch(r'[1-9][0-9]{8}', mmsi):
+        raise HTTPException(422, 'Invalid MMSI')
+    if catalog is None or catalog.store is None:
+        raise HTTPException(503, 'AIS catalog not ready')
+    value = await asyncio.to_thread(vessel_detail, catalog.store, mmsi, utc_now())
+    if value is None:
+        raise HTTPException(404, 'Vessel no longer in received catalog')
+    return value
 
 
 class TrackedMember(BaseModel):
