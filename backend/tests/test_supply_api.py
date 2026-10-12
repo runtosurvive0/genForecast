@@ -111,6 +111,9 @@ def test_snapshot_serves_ten_units_and_full_months_without_inventing_inventory(c
     assert body['plant_id'] == 'dangjin' and body['horizon_days'] == 90
     assert len(body['units']) == 10 and len(body['daily']) == 90
     assert body['daily'][0]['date'] == '2027-01-01' and body['daily'][-1]['date'] == '2027-03-31'
+    assert body['daily'][0]['unit_generation_mwh']['dj-1'] == 0
+    assert body['daily'][0]['unit_generation_mwh']['dj-2'] == 2400
+    assert sum(body['daily'][0]['unit_generation_mwh'].values()) == body['daily'][0]['generation_mwh']
     unit = body['units'][0]
     assert unit['generation_mwh'] == 88 * 24 * 100
     assert unit['capacity_factor_pct'] == pytest.approx(88 * 100 / (90 * 500) * 100)
@@ -145,6 +148,35 @@ def test_snapshot_rejects_out_of_period_and_keeps_missing_hours_unknown(client, 
     assert body['units'][0]['capacity_factor_pct'] is None
     assert body['models'][0]['coal_available_mw'] is None
     assert any('가용용량' in issue for issue in body['issues'])
+
+
+def test_run_scoped_unloading_defaults_to_seven_thousand_and_flows_into_snapshot(client, saved_snapshot_run):
+    body = {'name': '가상 하역선', 'cargo': 80000, 'incoming_cv': 5900,
+        'arrival_at': '2026-12-31T20:00:00+09:00', 'start_at': '2027-01-01T00:00:00+09:00',
+        'allocations': {'g14': 1, 'g58': 0, 'g910': 0}, 'berth_id': 'BD-1',
+        'run_id': 'snapshot-test', 'classification': 'simulation'}
+    assert client.post('/api/supply/vessels', json={**body, 'run_id': 'missing'}).status_code == 404
+    assert client.post('/api/supply/vessels', json={**body, 'classification': 'planned'}).status_code == 400
+    result = client.post('/api/supply/vessels', json=body)
+    assert result.status_code == 200
+    vid = result.json()['id']
+    assert client.post('/api/supply/vessels', json=body).json()['id'] == vid
+    assert client.post('/api/supply/vessels', json={**body, 'cargo': 90000}).status_code == 409
+    assert client.get('/api/supply/records').json()['vessels'] == []
+    scoped = client.get('/api/supply/records?run_id=snapshot-test').json()['vessels']
+    assert len(scoped) == 1 and scoped[0]['points'][0]['rate'] == pytest.approx(7000 / 24)
+    start = client.get('/api/planning/runs/snapshot-test/snapshot?start=2027-01-01&horizon=7').json()
+    assert start['inventory']['daily'][0]['groups']['g14']['receipts'] == pytest.approx(7000)
+    assert start['inventory']['daily'][0]['groups']['g58']['receipts'] == 0
+    assert start['vessels'][0]['today_receipts'] == pytest.approx(7000)
+    assert start['vessels'][0]['unloading_rate_tpd'] == pytest.approx(7000)
+    assert start['inventory']['kpis']['unloading_remaining'] == 80000
+    next_day = client.get('/api/planning/runs/snapshot-test/snapshot?start=2027-01-02&horizon=7').json()
+    assert next_day['vessels'][0]['remaining'] == pytest.approx(73000)
+    finished = client.get('/api/planning/runs/snapshot-test/snapshot?start=2027-01-13&horizon=7').json()
+    assert finished['vessels'][0]['unloading_rate_tpd'] == 0 and finished['vessels'][0]['today_receipts'] == 0
+    assert finished['inventory']['kpis']['unloading_remaining'] == 0
+    assert client.get('/api/supply/dashboard?at=2026-10-08&horizon=7').json()['vessels'] == []
 
 
 def test_vessel_correction_persists_version_and_rejects_backward_time(client):

@@ -1,14 +1,140 @@
 import { test, expect } from "@playwright/test";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { planningFixture } from "./planning-fixture";
+import { planningFixture, suppliedPlanningFixture } from "./planning-fixture";
 import { mapStyleFixture } from "./map-style-fixture";
 import { voyages } from "../src/data/control-tower";
+
+test("MILP upload stores inputs, starts calculation and opens the matching DB result", async ({ page }) => {
+  test.setTimeout(65000);
+  const detail = { id: 2, payload: { scenario: { name: "업로드 검증", start: "2027-01-01", end: "2027-12-31", coal_oh: [{}], nuclear_oh: [{}], quality: "normal" }, heat_prices: { "당진1": Array(12).fill(30000) } } };
+  let started = false;
+  let uploaded = false;
+  const summary = { scenario: detail.payload.scenario, annual: { dangjin_mwh: 123456 }, solve: { window_status: { optimal: 1 } } };
+  await page.route("**/api/planning/inputs", (r) => r.fulfill({ json: uploaded ? [{ id: 2, name: "업로드 검증", start: "2027-01-01", end: "2027-12-31", recorded_at: "2026-10-12" }] : [] }));
+  await page.route("**/api/planning/inputs/upload", (r) => {
+    expect(r.request().headers()["content-type"]).toContain("multipart/form-data");
+    expect(r.request().postDataBuffer()?.toString()).toContain('name="scenario"');
+    uploaded = true; return r.fulfill({ json: detail });
+  });
+  await page.route("**/api/job", (r) => r.fulfill({ json: { state: started ? "done" : "idle" } }));
+  await page.route("**/api/planning/executions", (r) => r.fulfill({ json: started ? [{ id: "upload-result", input_id: 2, state: "done", summary }] : [] }));
+  await page.route("**/api/run", (r) => {
+    expect(r.request().postDataJSON()).toEqual({ input_id: 2 });
+    started = true; return r.fulfill({ json: { run_id: "upload-result" } });
+  });
+  await page.route("**/api/runs", (r) => r.fulfill({ json: [{ id: "upload-result", name: "업로드 검증", period: "2027-01-01 ~ 2027-12-31" }] }));
+  await page.route("**/api/planning/runs/**/snapshot?*", (r) => r.fulfill({ json: { ...planningFixture(), run_id: "upload-result" } }));
+  await page.route("**/api/supply/simulation-stock", (r) => {
+    expect(r.request().postDataJSON()).toEqual({ run_id: "upload-result", high_cv: 6000, low_cv: 5000,
+      high_tonnes: { g14: 50000, g58: 100000, g910: 150000 }, low_tonnes: { g14: 90000, g58: 100000, g910: 150000 } });
+    return r.fulfill({ json: { total_tonnes: 640000 } });
+  });
+  await page.goto("/?source=synthetic");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "데이터/관리자", exact: true }).click();
+  await page.getByRole("tab", { name: "MILP 업로드", exact: true }).click();
+  await page.getByLabel("시나리오 JSON", { exact: true }).setInputFiles({ name: "scenario.json", mimeType: "application/json", buffer: Buffer.from("{}") });
+  await page.getByLabel("월별 열량단가", { exact: true }).setInputFiles({ name: "prices.csv", mimeType: "text/csv", buffer: Buffer.from("unit,1월\n당진1,30000") });
+  await page.getByRole("button", { name: "검증 및 DB 저장", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("입력 세트 #2");
+  await expect(page.getByLabel("DB 입력 세트")).toHaveValue("2");
+  await page.getByRole("button", { name: "MILP 계산 실행", exact: true }).click();
+  await expect(page.getByText("DB 저장 완료", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "가상 시작재고 DB 등록", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("640,000");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.locator(".milp-admin").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await page.getByRole("button", { name: "다크 모드로 전환", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "MILP 입력 업로드", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "발전소 종합에서 보기", exact: true }).click();
+  await expect(page.getByLabel("저장된 MILP 계산")).toHaveValue("upload-result");
+  await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-01-01");
+});
 
 async function openEta(page: import("@playwright/test").Page) {
   await page.goto("/?source=synthetic");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
 }
+
+test("yard conveyors show division MILP feeds and transfer belts sit between adjacent stockyards", async ({ page }) => {
+  await page.route("**/api/**", route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/runs") return route.fulfill({ json: [{ id: "feed-plan", name: "상탄 계획", period: "2027-01-01 ~ 2027-12-31" }] });
+    if (!url.pathname.startsWith("/api/planning/runs/")) return route.fulfill({ json: { vessels: [], transfers: [] } });
+    const start = url.searchParams.get("start")!;
+    const factor = start === "2027-02-01" ? 2 : 1;
+    const snapshot = suppliedPlanningFixture("feed-plan", start, Number(url.searchParams.get("horizon")));
+    snapshot.daily[0].unit_generation_mwh = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`dj-${i + 1}`, (i + 1) * 1000 * factor]));
+    ["g14", "g58", "g910"].forEach((id, i) => { snapshot.inventory.daily[0].groups[id].burn = (i + 1) * 2400 * factor; });
+    snapshot.vessels = [{ id: 1, name: "Pacific Horizon", cargo: 80000, incoming_cv: 5900,
+      arrival_at: "2026-12-31T20:00:00+09:00", berth_at: "2027-01-01T00:00:00+09:00",
+      unload_end: "2027-01-12T10:17:08+09:00", berth_id: "BD-1", run_id: "feed-plan", classification: "simulation",
+      remaining: factor === 1 ? 80000 : 0, state: factor === 1 ? "하역중" : "완료",
+      unloading_rate_tpd: factor === 1 ? 7000 : 0, today_receipts: factor === 1 ? 7000 : 0 }];
+    snapshot.inventory.daily[0].groups.g14.receipts = factor === 1 ? 7000 : 0;
+    return route.fulfill({ json: snapshot });
+  });
+  await page.goto("/");
+  await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-01-01");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "저탄장 현황", exact: true }).click();
+  const site = page.getByRole("region", { name: "당진 항만 · 저탄장 현황" });
+  await expect(site.locator(".site-plant")).toHaveCount(3);
+  await expect(site.locator('[data-feed-yard="P1"] [data-feed-value="generation"]')).toContainText("10,000");
+  await expect(site.locator('[data-feed-yard="P2"] [data-feed-value="generation"]')).toContainText("26,000");
+  await expect(site.locator('[data-feed-yard="P3"] [data-feed-value="hourly"]')).toContainText("300");
+  await expect(site.locator(".site-belt-chip")).toHaveCount(3);
+  await expect(site.locator('[data-unload-berth="BD-1"] [data-unload-value="rate"]')).toHaveText("7,000 t/일");
+  await expect(site.locator('[data-unload-berth="BD-1"] [data-unload-value="receipts"]')).toHaveText("7,000 t");
+  await expect(site.locator('[data-unload-berth="BD-2"] [data-unload-value="rate"]')).toHaveText("0 t/일");
+  for (const [i, id] of ["P1", "P2", "P3"].entries()) {
+    const conveyor = site.locator(`[data-conveyor-yard="${id}"]`);
+    await expect(conveyor).toContainText(`${i + 1}발전처 상탄 컨베이어`);
+    await expect(conveyor.locator("strong")).toHaveText(`${(i + 1) * 100}.0 t/h`);
+    const plant = await site.locator(`[data-feed-yard="${id}"]`).boundingBox();
+    const belt = await conveyor.boundingBox();
+    const yard = await site.locator(`.yard-block[data-yard="${id}"]`).boundingBox();
+    expect(plant!.y + plant!.height).toBeLessThan(belt!.y);
+    expect(belt!.y + belt!.height).toBeLessThan(yard!.y);
+    expect(Math.abs(belt!.x + belt!.width / 2 - yard!.x - yard!.width / 2)).toBeLessThan(1);
+  }
+  expect(await site.locator("[data-transfer-route]").evaluateAll(elements => elements.map(el => el.getAttribute("data-transfer-route")))).toEqual(["P1-P2", "P2-P3"]);
+  for (const [from, to] of [["P1", "P2"], ["P2", "P3"]]) {
+    const left = await site.locator(`.yard-block[data-yard="${from}"]`).boundingBox();
+    const right = await site.locator(`.yard-block[data-yard="${to}"]`).boundingBox();
+    const belt = await site.locator(`[data-transfer-route="${from}-${to}"]`).boundingBox();
+    expect(belt!.x).toBeGreaterThanOrEqual(left!.x + left!.width);
+    expect(belt!.x + belt!.width).toBeLessThanOrEqual(right!.x);
+    expect(belt!.y).toBe(left!.y);
+  }
+  await site.locator(".site-scene").screenshot({ path: ".tooling-tmp/yard-conveyors-light.png" });
+  await site.locator('[data-feed-yard="P3"]').click();
+  await expect(site.locator('.yard-block[data-yard="P3"]')).toHaveClass(/is-selected/);
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "발전소 종합", exact: true }).click();
+  await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
+  await expect(page.locator(".midterm-source")).toContainText("2027-02-01");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "저탄장 현황", exact: true }).click();
+  await expect(site.locator(".site-plants-caption")).toContainText("2027-02-01");
+  await expect(site.locator('[data-feed-yard="P3"] [data-feed-value="hourly"]')).toContainText("600");
+  await expect(site.locator('[data-conveyor-yard="P3"] strong')).toHaveText("600.0 t/h");
+  await expect(site.locator('[data-unload-berth="BD-1"] [data-unload-value="rate"]')).toHaveText("0 t/일");
+  await expect(site.locator('[data-unload-berth="BD-1"] [data-unload-value="receipts"]')).toHaveText("0 t");
+  await expect(site.locator('.harbor-ship.is-moored')).toHaveCount(0);
+  await page.getByRole("button", { name: "다크 모드로 전환", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(site.locator(".site-plant")).toHaveCount(3);
+  await expect(site.locator('.site-conveyor')).toHaveCount(3);
+  for (const conveyor of await site.locator('.site-conveyor').all()) await expect(conveyor).toBeVisible();
+  expect(await site.locator(".site-scene").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  for (const [from, to] of [["P1", "P2"], ["P2", "P3"]]) {
+    const above = await site.locator(`.yard-block[data-yard="${from}"]`).boundingBox();
+    const below = await site.locator(`.yard-block[data-yard="${to}"]`).boundingBox();
+    const belt = await site.locator(`[data-transfer-route="${from}-${to}"]`).boundingBox();
+    expect(belt!.y).toBeGreaterThan(above!.y + above!.height);
+    expect(belt!.y + belt!.height).toBeLessThan(below!.y);
+  }
+  await expect(site.locator(".site-belt-chip strong")).toHaveText(["200.0 t/h", "400.0 t/h", "600.0 t/h"]);
+  await site.locator(".site-scene").screenshot({ path: ".tooling-tmp/yard-conveyors-dark-mobile.png" });
+});
 
 test("AIS destination option resolves global ports and clears obsolete routes on destination changes", async ({ page }) => {
   test.setTimeout(65000);
@@ -1537,7 +1663,7 @@ test("online overview uses one nested dot grid without overlapping crossfade pat
   await expect(page.locator(".vessel-map-online")).toHaveAttribute("data-map-ready", "true");
   let previousRadius = 0;
   for (const zoom of [-2, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3.5, 5.5]) {
-    await page.evaluate(zoom => (window as any).testVesselMap.jumpTo({ zoom }), zoom);
+    await page.evaluate(zoom => void (window as any).testVesselMap.jumpTo({ zoom }), zoom);
     await expect.poll(() => page.evaluate(() => (window as any).testVesselMap.loaded())).toBe(true);
     const dots = await page.evaluate(() => (window as any).testVesselMap.getStyle().layers.filter((layer: any) => layer.type === "circle" && layer.id.startsWith("vessel-dot")));
     expect(dots).toHaveLength(1);
@@ -2226,6 +2352,112 @@ test("failed backend stays an error and synthetic demo requires explicit selecti
   await expect(page.getByText("샘플 데이터", { exact: true })).toBeVisible();
 });
 
+test("shared supply preserves the existing stockyard UI while keeping DB plan/date/period", async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/runs") return route.fulfill({ json: ["연계 계획", "연계 계획 B"].map((id) => ({ id, name: id, period: "2027-01-01 ~ 2027-12-31" })) });
+    if (url.pathname === "/api/supply/records") return route.fulfill({ json: { vessels: [], transfers: [] } });
+    if (!url.pathname.startsWith("/api/planning/")) return route.fulfill({ status: 404, json: {} });
+    return route.fulfill({ json: suppliedPlanningFixture(decodeURIComponent(url.pathname.split("/")[4]), url.searchParams.get("start")!, Number(url.searchParams.get("horizon"))) });
+  });
+  await page.goto("/");
+  await page.getByLabel("저장된 MILP 계산").selectOption("연계 계획 B");
+  await page.getByRole("button", { name: "7일", exact: true }).click();
+  await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
+  await expect(page.locator(".midterm-source")).toContainText("2027-02-07");
+  await expect(page.locator('[data-fuel-metric="총 재고"]')).toContainText("290,000");
+  await page.getByRole("button", { name: "최소 재고일수 (7일) 상세 보기", exact: true }).click();
+  await expect(page.locator(".stockyard-site")).toBeVisible();
+  await expect(page.locator(".stockyard-kpi")).toHaveCount(7);
+  await expect(page.locator(".yard-pile")).toHaveCount(60);
+  await expect(page.getByRole("tablist", { name: "상세 패널" })).toBeVisible();
+  await expect(page.locator(".stockyard-ledger")).toBeVisible();
+  await expect(page.locator(".stockyard-kpi").nth(0)).toContainText("290,000");
+  await expect(page.locator(".stockyard-kpi").nth(1)).toContainText("5.0");
+  await expect(page.locator(".stockyard-kpi").nth(4)).toContainText("35,000");
+  await expect(page.locator(".stockyard-kpi").nth(4)).toContainText("60,000");
+  await expect(page.locator('.yard-block[data-yard="P2"] .yard-title')).toContainText("90,000");
+  await expect(page.locator(".stockyard-groups")).toContainText("02/04");
+  await expect(page.getByRole("group", { name: "저탄장 데이터 모드" })).toHaveCount(0);
+  await expect(page.getByLabel("MILP 조회 시작일")).toHaveCount(0);
+  await page.getByRole("button", { name: "60일", exact: true }).click();
+  await expect(page.locator(".stockyard-kpi").nth(4)).toContainText("60일");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "발전소 종합", exact: true }).click();
+  await expect(page.getByLabel("저장된 MILP 계산")).toHaveValue("연계 계획 B");
+  await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-02-01");
+  await expect(page.getByRole("button", { name: "60일", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-fuel-metric="총 재고"]')).toContainText("290,000");
+});
+
+test("shared supply ignores obsolete responses and keeps missing DB values inside the original yard UI", async ({ page }) => {
+  let release: () => void = () => {};
+  let pending = false;
+  let completed = false;
+  let fail = false;
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/runs") return route.fulfill({ json: [{ id: "연계 계획", name: "연계 계획", period: "2027-01-01 ~ 2027-12-31" }] });
+    if (url.pathname === "/api/supply/records") return route.fulfill({ json: { vessels: [], transfers: [] } });
+    if (!url.pathname.startsWith("/api/planning/")) return route.fulfill({ status: 404, json: {} });
+    const start = url.searchParams.get("start")!;
+    if (start === "2027-01-02") {
+      pending = true;
+      await new Promise<void>((resolve) => { release = resolve; });
+      await route.fulfill({ json: suppliedPlanningFixture("연계 계획", start, Number(url.searchParams.get("horizon"))) }).catch(() => {});
+      completed = true;
+      return;
+    }
+    if (fail) return route.fulfill({ status: 503, json: { detail: "수급 조회 실패" } });
+    return route.fulfill({ json: suppliedPlanningFixture("연계 계획", start, Number(url.searchParams.get("horizon"))) });
+  });
+  await page.goto("/");
+  await expect(page.locator(".fuel-supply-kpis")).toBeVisible();
+  await page.getByLabel("MILP 조회 시작일").fill("2027-01-02");
+  await expect.poll(() => pending).toBe(true);
+  await page.getByLabel("MILP 조회 시작일").fill("2027-01-03");
+  await expect(page.locator(".midterm-source")).toContainText("2027-01-03");
+  release();
+  await expect.poll(() => completed).toBe(true);
+  await expect(page.locator(".midterm-source")).toContainText("2027-01-03");
+  fail = true;
+  await page.getByLabel("MILP 조회 시작일").fill("2027-01-04");
+  await expect(page.getByRole("alert")).toContainText("수급 조회 실패");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "저탄장 현황", exact: true }).click();
+  await expect(page.locator(".stockyard-alerts")).toContainText("수급 조회 실패");
+  await expect(page.locator(".stockyard-kpi").first()).toContainText("미확정");
+  await expect(page.locator(".yard-pile")).toHaveCount(60);
+  await expect(page.locator(".stockyard-site")).toBeVisible();
+  await expect(page.locator(".stockyard-kpi").first()).not.toContainText("290,000");
+  fail = false;
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "발전소 종합", exact: true }).click();
+  await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-01-04");
+  await page.getByRole("button", { name: "새로고침", exact: true }).click();
+  await expect(page.locator(".midterm-source")).toContainText("2027-01-04");
+});
+
+test("stockyard physical grids are 5 by 4, 5 by 4 and 10 by 2 with matching keyboard movement", async ({ page }) => {
+  await page.goto("/?source=synthetic");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "저탄장 현황", exact: true }).click();
+  for (const [yard, columns, rows] of [["P1", 5, 4], ["P2", 5, 4], ["P3", 10, 2]] as const) {
+    const tiles = page.locator(`.yard-block[data-yard="${yard}"] .yard-pile`);
+    await expect(tiles).toHaveCount(20);
+    const positions = await tiles.evaluateAll((elements) => elements.map((el) => {
+      const box = el.getBoundingClientRect(); return { x: Math.round(box.x), y: Math.round(box.y) };
+    }));
+    expect(new Set(positions.map((p) => p.x)).size).toBe(columns);
+    expect(new Set(positions.map((p) => p.y)).size).toBe(rows);
+  }
+  const third = page.locator('.yard-block[data-yard="P3"] .yard-pile');
+  await third.first().click();
+  await page.keyboard.press("ArrowDown");
+  await expect(third.nth(10)).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(third.first()).toBeFocused();
+  await page.getByRole("button", { name: "다크 모드로 전환", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test("world map accepts 200 normalized vessel positions without hard-coded shipment IDs", async ({
   page,
 }) => {
@@ -2629,7 +2861,9 @@ test("dangjin site plan links harbor, yards, burn conveyor and pile history", as
   expect(siteBox!.height).toBeLessThan(1000);
   // 상탄은 발전소로 들어가는 컨베이어 위 t/h (fact-gauge-th).
   await expect(site.locator(".site-belt.stockyard-gauge")).toContainText("t/h");
-  await expect(site.locator(".site-plant")).toContainText("당진 발전소");
+  await expect(site.locator(".site-plants")).toContainText("당진 발전소");
+  await expect(site.locator(".site-plant")).toHaveCount(3);
+  await expect(site.locator(".site-transfer-belt")).toHaveCount(2);
   // 부두 3개, 하역선은 안벽과 평행하게 접안, 해상 예시 대기선 1척 (더미 AIS).
   await expect(site.locator(".harbor-berth")).toHaveCount(3);
   const moored = site.locator(".harbor-ship.is-moored");
@@ -2732,11 +2966,11 @@ test("stockyard KPIs, alerts, search, keyboard, forecast and ledger work togethe
   await page.getByLabel("Pile 검색").press("Enter");
   await expect(page.locator(".yard-pile[data-pile-id='DA-04']")).toBeFocused();
   await page.keyboard.press("ArrowLeft");
-  await expect(page.locator(".yard-pile[data-pile-id='DA-41']")).toBeFocused();
+  await expect(page.locator(".yard-pile[data-pile-id='DA-56']")).toBeFocused();
   await page.keyboard.press("ArrowUp");
-  await expect(page.locator(".yard-pile[data-pile-id='DA-36']")).toBeFocused();
+  await expect(page.locator(".yard-pile[data-pile-id='DA-46']")).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page.locator(".site-pile-title")).toHaveText("DA-36 · 호주 역청탄");
+  await expect(page.locator(".site-pile-title")).toHaveText("DA-46 · 호주 역청탄");
   await expect(page.locator('.site-yards [tabindex="0"]')).toHaveCount(1);
   // 원장: 20행 페이지, 혼탄 열, 원장에서 보기 → 해당 페이지에서 펼침.
   const ledger = page.locator(".stockyard-ledger");
@@ -2745,7 +2979,7 @@ test("stockyard KPIs, alerts, search, keyboard, forecast and ledger work togethe
   await expect(ledger.locator("thead")).toContainText("주간 소진");
   await page.getByRole("button", { name: "원장에서 보기 →" }).click();
   await expect(ledger.locator(".ledger-detail")).toHaveCount(1);
-  await expect(ledger.locator("tr.is-selected")).toContainText("DA-36");
+  await expect(ledger.locator("tr.is-selected")).toContainText("DA-46");
   await ledger.getByRole("button", { name: /^재고 · t/ }).click();
   await expect(ledger.locator("th[aria-sort='ascending']")).toContainText("재고");
   // 혼탄 요약은 처별 소진과 일치: 소속 호기가 없는 2발전처는 소진 없음.

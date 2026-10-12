@@ -106,7 +106,9 @@ def main(argv: list[str] | None = None) -> None:
         _cmd_run(args)
     elif args.command == "serve":
         import uvicorn
-        uvicorn.run("midterm.web.app:app", host=args.host, port=args.port, log_level="warning")
+        # Windows Proactor의 연결 취소 후 accept 중단을 피한다. MILP는 별도 프로세스로 실행한다.
+        loop = "asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto"
+        uvicorn.run("midterm.web.app:app", host=args.host, port=args.port, log_level="warning", loop=loop)
 
 
 if __name__ == "__main__":

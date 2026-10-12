@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from midterm.database import connect, load_settings, _put
 from midterm.scenario import Scenario, ROOT
-from midterm.supply import GROUPS, UNITS, DEFAULTS, timestamp, now, init_supply, read_supply, simulate, unloading
+from midterm.supply import GROUPS, UNITS, DEFAULTS, DEFAULT_UNLOAD_TPD, timestamp, now, init_supply, read_supply, simulate, unloading
 from midterm.supply_plans import run_plan, db_plan, model_forecast, latest_forecast
 from midterm.fuel_calendar import fuel_calendar
 
@@ -34,8 +34,14 @@ class Vessel(BaseModel):
     incoming_cv: float = Field(ge=1000, le=10000, allow_inf_nan=False)
     arrival_at: str
     start_at: str
-    rate: float = Field(ge=0, allow_inf_nan=False)
+    rate: float = Field(default=DEFAULT_UNLOAD_TPD / 24, ge=0, allow_inf_nan=False)
     allocations: dict[Group, float]
+    mmsi: str | None = Field(default=None, pattern=r"^\d{9}$")
+    imo: str | None = Field(default=None, pattern=r"^\d{7}$")
+    berth_id: Literal["BD-1", "BD-2", "BD-3"] | None = None
+    coal_grade: Literal["high", "low", "blend"] | None = None
+    run_id: str | None = Field(default=None, min_length=1, max_length=150)
+    classification: Literal["planned", "simulation"] = "planned"
 
 
 class UnloadPoint(BaseModel):
@@ -88,6 +94,7 @@ class PlanBatch(BaseModel):
     source_name: str = Field(min_length=1, max_length=200)
     as_of: str
     rows: list[PlanHour] = Field(min_length=1, max_length=50000)
+    classification: Literal["generation_plan", "observed_generation"] = "generation_plan"
 
 
 def parse_at(value):
@@ -106,8 +113,9 @@ def ratios(values):
 
 
 @router.get("/records")
-def records():
+def records(run_id: str | None = None):
     data = read_supply()
+    data["vessels"] = [v for v in data["vessels"] if v.get("run_id") is None or v.get("run_id") == run_id]
     with connect() as db:
         init_supply(db)
         data["plan_batches"] = [dict(r) for r in db.execute("SELECT * FROM supply_plan_batches ORDER BY id DESC")]
@@ -134,10 +142,30 @@ def vessel(body: Vessel):
     if start < arrival:
         raise HTTPException(400, "하역 시작은 입항시각 이후로 입력하세요")
     allocations = ratios(body.allocations)
+    if (body.classification == "simulation") != (body.run_id is not None):
+        raise HTTPException(400, "가상 하역 계획은 MILP 계산 ID와 simulation 분류를 함께 입력하세요")
+    if body.run_id:
+        try:
+            _, _, source = run_plan(body.run_id)
+        except ValueError as error:
+            raise HTTPException(404, str(error)) from None
+        if not source["start"] <= start.date().isoformat() <= source["end"]:
+            raise HTTPException(400, "가상 하역 시작시각은 선택한 계산 기간 안에 입력하세요")
     with connect() as db:
         init_supply(db)
-        row = db.execute("INSERT INTO supply_vessels(name,cargo,incoming_cv,arrival_at,recorded_at) VALUES(?,?,?,?,?)",
-            (body.name.strip(), body.cargo, body.incoming_cv, arrival.isoformat(), now().isoformat()))
+        db.execute("BEGIN IMMEDIATE")
+        if body.run_id:
+            existing = db.execute("SELECT * FROM supply_vessels WHERE run_id=? AND name=? AND arrival_at=?",
+                (body.run_id, body.name.strip(), arrival.isoformat())).fetchone()
+            if existing:
+                point = db.execute("SELECT * FROM supply_unload_points WHERE vessel_id=? ORDER BY at LIMIT 1", (existing["id"],)).fetchone()
+                if (existing["cargo"] == body.cargo and existing["incoming_cv"] == body.incoming_cv and
+                    existing["berth_id"] == body.berth_id and point["at"] == start.isoformat() and
+                    point["rate"] == body.rate and json.loads(point["allocations"]) == allocations):
+                    return {"id": existing["id"]}
+                raise HTTPException(409, "동일 계산·선박·입항시각의 하역 계획이 이미 있습니다")
+        row = db.execute("INSERT INTO supply_vessels(name,cargo,incoming_cv,arrival_at,recorded_at,mmsi,imo,berth_id,coal_grade,run_id,classification) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (body.name.strip(), body.cargo, body.incoming_cv, arrival.isoformat(), now().isoformat(), body.mmsi, body.imo, body.berth_id, body.coal_grade, body.run_id, body.classification))
         db.execute("INSERT INTO supply_unload_points(vessel_id,at,cumulative,rate,allocations,recorded_at) VALUES(?,?,?,?,?,?)",
             (row.lastrowid, start.isoformat(), 0, body.rate, json.dumps(allocations), now().isoformat()))
         return {"id": row.lastrowid}
@@ -214,11 +242,15 @@ def config(body: Config):
 def import_plan(body: PlanBatch):
     """KPX/DCS 어댑터는 원천 단위를 MW, KST 시간 구간으로 변환한 후 이 경계에 전달."""
     as_of = parse_at(body.as_of)
+    if body.classification == "observed_generation" and (body.source != "API" or as_of > now()):
+        raise HTTPException(400, "발전 실적은 API 원천과 과거 기준시각을 사용하세요")
     rows, seen = [], set()
     from midterm.fleet import load_coal_units
     master = {u.name: u for u in load_coal_units() if u.is_dangjin}
     for r in body.rows:
         at = parse_at(r.at)
+        if body.classification == "observed_generation" and at + timedelta(hours=1) > as_of:
+            raise HTTPException(400, "발전 실적은 완료된 1시간 구간의 평균 MW를 입력하세요")
         key = (at.isoformat(), r.unit)
         if r.unit not in UNITS or at.minute or at.second or at.microsecond:
             raise HTTPException(400, "당진1~10의 정각 시간별 MW 자료를 입력하세요")
@@ -230,8 +262,8 @@ def import_plan(body: PlanBatch):
         rows.append((at.isoformat(), r.unit, r.mw, r.online if r.online is not None else r.mw > .5))
     with connect() as db:
         init_supply(db)
-        row = db.execute("INSERT INTO supply_plan_batches(source,source_name,as_of,recorded_at) VALUES(?,?,?,?)",
-            (body.source, body.source_name, as_of.isoformat(), now().isoformat()))
+        row = db.execute("INSERT INTO supply_plan_batches(source,source_name,as_of,recorded_at,classification) VALUES(?,?,?,?,?)",
+            (body.source, body.source_name, as_of.isoformat(), now().isoformat(), body.classification))
         db.executemany("INSERT INTO supply_plan_hours VALUES(?,?,?,?,?)", [(row.lastrowid, *r) for r in rows])
         return {"id": row.lastrowid, "hours": len(rows)}
 
@@ -261,6 +293,11 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
         init_supply(db)
         for r in db.execute("SELECT b.*,min(h.at) AS start,max(h.at) AS end FROM supply_plan_batches b JOIN supply_plan_hours h ON b.id=h.batch_id GROUP BY b.id ORDER BY b.id DESC"):
             plans.insert(0, {"key": "db:" + str(r["id"]), "name": r["source_name"], "start": r["start"][:10], "end": r["end"][:10], "source": r["source"]})
+    from midterm.milp_store import stored_runs
+    for r in stored_runs():
+        if r["state"] == "done" and not any(p["key"] == "mip:" + r["id"] for p in plans):
+            s = r["summary"]["scenario"]
+            plans.append({"key": "mip:" + r["id"], "name": "MIP · " + s["name"], "start": s["start"], "end": s["end"], "source": "FORECAST"})
     chosen = next((p for p in plans if p["key"] == plan_key), None) if plan_key else next(
         (p for p in plans if p["start"] <= as_of.date().isoformat() <= p["end"]), None)
     plan, model_rows, source = {}, [], None
@@ -272,7 +309,10 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
         else:
             plan, source = db_plan(int(chosen["key"][3:]))
     settings = load_settings()
-    fallback = settings["fuel"]
+    fallback = (source or {}).get("fuel") or settings["fuel"]
+    selected_run = chosen["key"][4:] if chosen and chosen["key"].startswith("mip:") else None
+    data["baselines"] = [b for b in data["baselines"] if b.get("run_id") is None or b.get("run_id") == selected_run]
+    data["vessels"] = [v for v in data["vessels"] if v.get("run_id") is None or v.get("run_id") == selected_run]
     result = simulate(data, plan, as_of, horizon, fallback["calorific_kcal_kg"])
     first, last = as_of.date().isoformat(), (as_of + timedelta(days=horizon - 1)).date().isoformat()
     saved_forecast = latest_forecast()
@@ -310,6 +350,7 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
         "plan_stale": stale, "models": model_rows, "model_source": forecast_source,
         "model_stale": model_stale,
         "config": data["config"], "fuel": fallback, "issues": issues,
+        "stock_lots": [r for r in data.get("stock_lots", []) if r["run_id"] == selected_run],
         "db_outages": settings["scenario"]["coal_oh"],
         "method": {"days": "각 날짜 말 재고 ÷ 다음 7일의 일평균 예상 사용량. 7일 전체 계획이 없거나 사용량이 0이면 일수 미표시.",
             "inventory": "최신 기준재고 + 이후 하역배분 + 이탄 유입 − 이탄 유출 − 계획 연소. 최대 1시간 구간 입고 후 연소, 기준시각에서 분할.",

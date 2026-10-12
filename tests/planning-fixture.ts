@@ -37,6 +37,7 @@ export function planningFixture(
     daily: Array.from({ length: horizon }, (_, i) => ({
       date: day(i),
       generation_mwh: 24000,
+      unit_generation_mwh: Object.fromEntries(Array.from({ length: 10 }, (_, j) => [`dj-${j + 1}`, 2400])),
       fuel_tonnes: 9600,
     })),
     monthly: Array.from({ length: 12 }, (_, i) => ({
@@ -78,15 +79,118 @@ export function planningFixture(
           baseline: null,
           expected_receipts: 0,
         },
+        ...["g58", "g910"].map((id) => ({
+          id,
+          name: id === "g58" ? "5~8호기 처" : "9~10호기 처",
+          stock: null,
+          cv: null,
+          days: null,
+          min_days: null,
+          risk: "unknown",
+          stale: false,
+          baseline: null,
+          expected_receipts: 0,
+        })),
       ],
       daily: Array.from({ length: horizon }, (_, i) => ({
         day: day(i),
-        groups: { g14: { stock: null, days: null, burn: 960 } },
+        groups: {
+          g14: { stock: null, days: null, burn: 960 },
+          g58: { stock: null, days: null, burn: null },
+          g910: { stock: null, days: null, burn: null },
+        },
       })),
-      kpis: { stock: null, min_days: null, risk: "unknown" },
+      kpis: {
+        stock: null,
+        min_days: null,
+        risk: "unknown",
+        days: null,
+        unloading_remaining: 0,
+        active_vessels: 0,
+        arrivals: 0,
+        arrival_count: 0,
+        incoming_cv: null,
+      },
+      thresholds: { danger_days: 7, normal_days: 15 },
       plan_stale: false,
     },
     vessels: [],
     issues: ["기준재고 미등록", "가용용량 시계열 미보존"],
   };
+}
+
+export function suppliedPlanningFixture(
+  runId = "연계 계획",
+  start = "2027-01-01",
+  horizon = 30,
+) {
+  const s = planningFixture(runId, start, horizon);
+  const stocks = [130000, 90000, 70000];
+  s.inventory.groups.forEach((g, i) =>
+    Object.assign(g, {
+      stock: stocks[i],
+      cv: 5800 + i * 100,
+      days: [25, 18, 20][i],
+      min_days: [16, 5, 17][i],
+      risk: i === 1 ? "danger" : "normal",
+      baseline: { at: `${start}T00:00:00+09:00`, tonnes: stocks[i] },
+      expected_receipts: [25000, 10000, 0][i],
+    }),
+  );
+  s.inventory.daily.forEach((row, d) =>
+    s.inventory.groups.forEach((g, i) => {
+      row.groups[g.id] = {
+        stock: stocks[i] - d * 1000,
+        days:
+          [16, 5, 17][i] +
+          Math.abs(d - (i === 1 ? Math.floor(horizon / 2) : horizon - 1)),
+        burn: 1000,
+      };
+    }),
+  );
+  const at = (offset: number) =>
+    new Date(
+      Date.parse(`${start}T00:00:00+09:00`) + offset * 86400000,
+    ).toISOString();
+  s.inventory.kpis = {
+    stock: 290000,
+    days: 18,
+    min_days: 5,
+    risk: "danger",
+    unloading_remaining: 25000,
+    active_vessels: 1,
+    arrivals: 60000,
+    arrival_count: 1,
+    incoming_cv: 6100,
+  };
+  s.vessels = [
+    {
+      id: 1,
+      name: "DB 하역선",
+      cargo: 50000,
+      incoming_cv: 5800,
+      arrival_at: at(-1),
+      remaining: 25000,
+      state: "하역중",
+    },
+    {
+      id: 2,
+      name: "DB 입항선",
+      cargo: 60000,
+      incoming_cv: 6100,
+      arrival_at: at(2),
+      remaining: 60000,
+      state: "입항예정",
+    },
+    {
+      id: 3,
+      name: "DB 중단선",
+      cargo: 20000,
+      incoming_cv: 5800,
+      arrival_at: at(-2),
+      remaining: 5000,
+      state: "하역중단",
+    },
+  ];
+  return s;
 }

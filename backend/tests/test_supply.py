@@ -71,6 +71,32 @@ def test_unload_mixes_yard_cv_and_burn_uses_mixed_cv():
     assert g['stock'] == pytest.approx(1100 - 4 * 55 * 2000 / mixed_cv)
 
 
+def test_seven_thousand_daily_unloading_reconciles_inventory_partial_days_and_cargo_caps():
+    r = records()
+    r['vessels'] = []
+    for i, (group, cargo, delay) in enumerate(zip(GROUPS, [80000, 9000, 3000], [0, 12, 24])):
+        v = {**vessel(), 'id': i + 1, 'cargo': cargo, 'incoming_cv': 5500, 'berth_id': f'BD-{i + 1}'}
+        v['points'] = [{'at': (START + timedelta(hours=delay)).isoformat(), 'cumulative': 0,
+                        'rate': 7000 / 24, 'allocations': {g: float(g == group) for g in GROUPS}}]
+        r['vessels'].append(v)
+    output = simulate(r, plan(), START, 7)
+    assert output['kpis']['stock'] == 300000
+    first = output['forecast'][0]['groups']
+    assert [first[g]['receipts'] for g in GROUPS] == pytest.approx([7000, 3500, 0])
+    for g in GROUPS:
+        previous = 100000
+        for row in output['forecast']:
+            day = row['groups'][g]
+            assert day['stock'] == pytest.approx(previous + day['receipts'] - day['burn'])
+            previous = day['stock']
+    assert [sum(row['groups'][g]['receipts'] for row in output['forecast']) for g in GROUPS] == pytest.approx([49000, 9000, 3000])
+    assert [v['unloading_rate_tpd'] for v in output['vessels']] == pytest.approx([7000, 0, 0])
+    assert [v['today_receipts'] for v in output['vessels']] == pytest.approx([7000, 3500, 0])
+    later = simulate(r, plan(), START + timedelta(days=2), 7)
+    assert later['vessels'][1]['remaining'] == 0 and later['vessels'][1]['unloading_rate_tpd'] == 0
+    assert later['groups'][1]['received'] == pytest.approx(9000)
+
+
 def test_rebase_counts_only_events_after_new_baseline():
     r = records()
     r['vessels'] = [vessel()]

@@ -1,21 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { RefreshCw, CalendarClock, TriangleAlert } from "lucide-react";
-import { Button } from "../../components/ui/button";
+import type { ReactNode } from "react";
 import { FuelDashboard } from "./FuelDashboard";
-import {
-  addDays,
-  loadPlanningRuns,
-  loadPlanningSnapshot,
-  type PlanningRun,
-  type PlanningSnapshot,
-} from "../../domain/planning";
+import { addDays, type PlanningSnapshot } from "../../domain/planning";
+import type { SupplyTarget } from "../../domain/supply";
 import "./midterm.css";
 
-const initialQuery = (run: PlanningRun) => ({
-  runId: run.id,
-  start: run.start,
-  horizon: addDays(run.start, 29) <= run.end ? 30 : 7,
-});
 function Section({
   title,
   note,
@@ -114,223 +102,22 @@ function Outages({ snapshot: s }: { snapshot: PlanningSnapshot }) {
   );
 }
 
-function Results({
+export function MidtermDashboard({
   snapshot,
   theme,
+  onSupplyTarget,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
+  onSupplyTarget: (target: SupplyTarget) => void;
 }) {
   return (
-    <FuelDashboard snapshot={snapshot} theme={theme}>
+    <FuelDashboard
+      snapshot={snapshot}
+      theme={theme}
+      onSupplyTarget={onSupplyTarget}
+    >
       <Outages snapshot={snapshot} />
     </FuelDashboard>
-  );
-}
-
-export function MidtermDashboard({ theme }: { theme: string }) {
-  const [runs, setRuns] = useState<PlanningRun[]>([]);
-  const [query, setQuery] = useState<{
-    runId: string;
-    start: string;
-    horizon: number;
-  } | null>(null);
-  const [snapshot, setSnapshot] = useState<PlanningSnapshot | null>(null);
-  const [listLoading, setListLoading] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [listError, setListError] = useState("");
-  const [error, setError] = useState("");
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    setListLoading(true);
-    setListError("");
-    loadPlanningRuns(controller.signal)
-      .then((rows) => {
-        if (controller.signal.aborted) return;
-        setRuns(rows);
-        setQuery((current) =>
-          current && rows.some((r) => r.id === current.runId)
-            ? current
-            : rows[0]
-              ? initialQuery(rows[0])
-              : null,
-        );
-      })
-      .catch((e: Error) => {
-        if (!controller.signal.aborted) setListError(e.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setListLoading(false);
-      });
-    return () => controller.abort();
-  }, [revision]);
-  useEffect(() => {
-    if (!query) return;
-    const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    setSnapshot(null);
-    loadPlanningSnapshot(
-      query.runId,
-      query.start,
-      query.horizon,
-      controller.signal,
-    )
-      .then((result) => {
-        if (!controller.signal.aborted) setSnapshot(result);
-      })
-      .catch((e: Error) => {
-        if (!controller.signal.aborted) setError(e.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [query, revision]);
-  const selected = runs.find((r) => r.id === query?.runId);
-  const current =
-    snapshot &&
-    query &&
-    snapshot.run_id === query.runId &&
-    snapshot.start === query.start &&
-    snapshot.horizon_days === query.horizon
-      ? snapshot
-      : null;
-  const failed = listError || error;
-  return (
-    <div className="tower-page midterm-page">
-      <div className="midterm-controls">
-        <label>
-          저장된 MILP 계산
-          <select
-            aria-label="저장된 MILP 계산"
-            value={query?.runId ?? ""}
-            disabled={listLoading || !runs.length}
-            onChange={(e) => {
-              const r = runs.find((x) => x.id === e.target.value)!;
-              setQuery(initialQuery(r));
-            }}
-          >
-            {!runs.length && <option value="">계산 목록 없음</option>}
-            {runs.map((r) => (
-              <option value={r.id} key={r.id}>
-                {r.name} · {r.period}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          조회 시작일 · KST
-          <input
-            aria-label="MILP 조회 시작일"
-            type="date"
-            value={query?.start ?? ""}
-            min={selected?.start}
-            max={
-              selected && query
-                ? addDays(selected.end, 1 - query.horizon)
-                : undefined
-            }
-            disabled={!query || listLoading}
-            onChange={(e) => {
-              if (query && e.target.value)
-                setQuery({ ...query, start: e.target.value });
-            }}
-          />
-        </label>
-        <div
-          className="horizon-control"
-          role="group"
-          aria-label="MILP 조회 기간"
-        >
-          {[7, 30, 60, 90].map((days) => (
-            <button
-              key={days}
-              aria-pressed={query?.horizon === days}
-              className={query?.horizon === days ? "selected" : ""}
-              disabled={
-                !query ||
-                !selected ||
-                addDays(query.start, days - 1) > selected.end
-              }
-              onClick={() => query && setQuery({ ...query, horizon: days })}
-            >
-              {days}일
-            </button>
-          ))}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setRevision((n) => n + 1)}
-          disabled={loading || listLoading}
-        >
-          <RefreshCw size={14} />
-          새로고침
-        </Button>
-      </div>
-      {failed ? (
-        <div className="error-banner" role="alert">
-          <TriangleAlert size={18} />
-          <div>
-            <strong>MILP 결과를 불러오지 못했습니다.</strong>
-            <p>{failed}</p>
-            <p>Python 서버와 선택한 계산 기간을 확인한 뒤 새로고침하세요.</p>
-          </div>
-        </div>
-      ) : listLoading || loading || (query && !current) ? (
-        <div className="midterm-empty" role="status">
-          저장된 MILP 결과를 불러오는 중입니다…
-        </div>
-      ) : !current ? (
-        <div className="midterm-empty">
-          저장된 MILP 계산이 없습니다. Python 백엔드에 계산 결과를 등록하세요.
-        </div>
-      ) : (
-        <>
-          <div className="tower-context midterm-source">
-            <div>
-              <span className="tower-tag">
-                {current.classification === "functional_demo"
-                  ? "동작 확인용 MILP"
-                  : "저장된 MILP 전망"}
-              </span>
-              <span>당진 1~10호기</span>
-            </div>
-            <span>
-              {current.start} ~ {current.end} · KST
-            </span>
-          </div>
-          <details className="fuel-source-details">
-            <summary>
-              {current.classification === "functional_demo"
-                ? "동작 확인용 계획 · 가정·정비자료 확인 필요"
-                : "계산 출처·주의사항 확인"}
-            </summary>
-            <p>
-              계산 ID {current.run_id} · 결과 저장{" "}
-              {current.generated_at.slice(0, 16).replace("T", " ")} KST
-            </p>
-            {current.classification_note && (
-              <p>{current.classification_note}</p>
-            )}
-          </details>
-          <Results snapshot={current} theme={theme} />
-          <Section title="자료 확인사항">
-            <ul className="midterm-issues">
-              {current.issues.map((issue, i) => (
-                <li key={i}>{issue}</li>
-              ))}
-            </ul>
-            <p className="tower-footnote">{current.fuel_method}</p>
-          </Section>
-          <div className="midterm-footer">
-            <CalendarClock size={14} /> 저장된 계획 조회 · 현재 운전 실적과 구분
-            · 모든 패널은 같은 계산 결과를 사용합니다.
-          </div>
-        </>
-      )}
-    </div>
   );
 }

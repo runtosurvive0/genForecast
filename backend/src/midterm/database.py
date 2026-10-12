@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -11,12 +12,17 @@ from pathlib import Path
 
 from midterm.scenario import ROOT, Scenario, default_scenario
 
-DATABASE = ROOT / "data" / "planning.sqlite3"
+DATABASE = Path(os.getenv("MIDTERM_PLANNING_DB", str(ROOT / "data" / "planning-local.sqlite3")))
 
 
 @contextmanager
 def connect(path: Path = DATABASE):
     path.parent.mkdir(parents=True, exist_ok=True)
+    # 공개 승인된 원본 스냅샷은 보존하고 로컬 입력·실행은 별도 DB에 쓴다.
+    original = ROOT / "data" / "planning.sqlite3"
+    if path == DATABASE and not path.exists() and original.exists() and path != original:
+        with sqlite3.connect(original) as source, sqlite3.connect(path) as target:
+            source.backup(target)
     db = sqlite3.connect(path, timeout=15)
     try:
         db.row_factory = sqlite3.Row

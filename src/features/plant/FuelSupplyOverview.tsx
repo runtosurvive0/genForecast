@@ -9,19 +9,17 @@ import {
   Sun,
   Fuel,
   CalendarDays,
-  CircleHelp,
-  CircleCheck,
-  TriangleAlert,
   ArrowRight,
 } from "lucide-react";
 import { TowerChart } from "../../components/TowerChart";
+import { SupplyForecasts } from "../../components/SupplyForecasts";
+import { SupplyKpis } from "../../components/SupplyKpis";
+import {
+  SUPPLY_GROUPS as groups,
+  type SupplyTarget,
+} from "../../domain/supply";
 import type { PlanningSnapshot } from "../../domain/planning";
 
-const groups = [
-  { id: "g14", name: "1~4호기 처", first: 1, last: 4, color: "#248df5" },
-  { id: "g58", name: "5~8호기 처", first: 5, last: 8, color: "#eea628" },
-  { id: "g910", name: "9~10호기 처", first: 9, last: 10, color: "#30b77b" },
-];
 const fmt = (value: number | null | undefined, digits = 0) =>
   value == null
     ? "미확정"
@@ -93,98 +91,6 @@ function NumberWithUnit({
       {fmt(value, digits)}
       {value != null && <small> {unit}</small>}
     </>
-  );
-}
-function SupplyKpis({ snapshot: s }: { snapshot: PlanningSnapshot }) {
-  const k = s.inventory.kpis;
-  const firstFuel = s.daily[0]?.fuel_tonnes;
-  const RiskIcon =
-    k.risk === "normal"
-      ? CircleCheck
-      : k.risk === "unknown"
-        ? CircleHelp
-        : TriangleAlert;
-  const cards = [
-    {
-      title: "총 재고",
-      icon: Boxes,
-      value: k.stock,
-      unit: "t",
-      note:
-        k.stock === null ? "기준재고 미등록" : "조회 시작시각 · DB 수급 원장",
-    },
-    {
-      title: `최소 재고일수 (${s.horizon_days}일)`,
-      icon: CalendarDays,
-      value: k.min_days,
-      unit: "일",
-      note: "처별 전망 중 최소값",
-      digits: 1,
-    },
-    {
-      title: "하역 잔량",
-      icon: Anchor,
-      value: k.unloading_remaining,
-      unit: "t",
-      note: `조회 시작시각 · ${fmt(k.active_vessels)}척 하역 중`,
-    },
-    {
-      title: `입항 예정 (${s.horizon_days}일)`,
-      icon: Ship,
-      value: k.arrivals,
-      unit: "t",
-      note: `DB 등록 선박 ${fmt(k.arrival_count)}척 · 화물량 기준`,
-    },
-    {
-      title: "입항탄 평균 열량",
-      icon: Flame,
-      value: k.incoming_cv,
-      unit: "kcal/kg",
-      note: "예정 선박 화물량 가중평균",
-    },
-    {
-      title: "조회 첫날 사용계획",
-      icon: Fuel,
-      value: firstFuel,
-      unit: "t",
-      note: `${s.start} · 고정 발열량 환산`,
-    },
-  ];
-  return (
-    <div className="fuel-supply-kpis">
-      <section className={`fuel-supply-kpi fuel-supply-status risk-${k.risk}`}>
-        <span>연료수급 상태</span>
-        <div>
-          <RiskIcon size={35} aria-hidden="true" />
-          <strong>{riskNames[k.risk] ?? "미확정"}</strong>
-        </div>
-        <p>
-          {k.risk === "unknown"
-            ? "재고·계획 자료와 최신성 확인 필요"
-            : "조회기간의 DB 재고전망 기준"}
-        </p>
-      </section>
-      {cards.map((card) => (
-        <section
-          className="fuel-supply-kpi"
-          key={card.title}
-          data-fuel-metric={card.title}
-        >
-          <span>
-            <card.icon size={17} aria-hidden="true" />
-            {card.title}
-          </span>
-          <strong>
-            <NumberWithUnit
-              value={card.value}
-              unit={card.unit}
-              digits={card.digits}
-            />
-          </strong>
-          <p>{card.note}</p>
-        </section>
-      ))}
-    </div>
   );
 }
 function Models({
@@ -545,39 +451,8 @@ function Forecasts({
   snapshot: PlanningSnapshot;
   theme: string;
 }) {
-  const has = (field: "stock" | "days") =>
-    s.inventory.daily.some((row) =>
-      Object.values(row.groups).some((group) => group[field] != null),
-    );
-  const plot = (field: "stock" | "days") =>
-    groups.map((group) =>
-      series(
-        group.name,
-        s.inventory.daily.map((row) => row.groups[group.id]?.[field]),
-        { lineStyle: { width: 2 } },
-      ),
-    );
-  const thresholds = s.inventory.thresholds;
-  const days = plot("days");
-  if (thresholds) {
-    days.push(
-      series(
-        `위험 기준 ${thresholds.danger_days}일`,
-        s.inventory.daily.map(() => thresholds.danger_days),
-        { lineStyle: { type: "dashed", width: 1, color: "#ed5a69" } },
-      ),
-    );
-    days.push(
-      series(
-        `안정 기준 ${thresholds.normal_days}일`,
-        s.inventory.daily.map(() => thresholds.normal_days),
-        { lineStyle: { type: "dashed", width: 1, color: "#30b77b" } },
-      ),
-    );
-  }
   const common = {
     tooltip,
-    color: groups.map((group) => group.color),
     legend: {
       top: 0,
       textStyle: {
@@ -585,68 +460,10 @@ function Forecasts({
         color: theme === "dark" ? "#a6bed7" : "#54677b",
       },
     },
-    grid: { left: 45, right: 15, top: 57, bottom: 30 },
-    xAxis: {
-      type: "category",
-      data: s.inventory.daily.map((row) => row.day.slice(5)),
-    },
   };
   return (
     <div className="fuel-forecast-row">
-      <Panel title={`처별 재고일수 전망 (${s.horizon_days}일)`}>
-        {has("days") ? (
-          <TowerChart
-            theme={theme}
-            label="처별 재고일수 전망 일"
-            height={225}
-            option={{
-              ...common,
-              aria: {
-                enabled: true,
-                label: { description: "처별 재고일수 전망 일" },
-              },
-              yAxis: axis("일"),
-              series: days,
-            }}
-          />
-        ) : (
-          <div className="midterm-empty">
-            재고일수 미확정 · 기준재고와 추가 7일 계획을 확인하세요.
-          </div>
-        )}
-        <p className="tower-footnote">
-          일말 재고 ÷ 다음 7일 평균 소비. 계획 누락·소비 0이면 미확정.
-        </p>
-      </Panel>
-      <Panel title={`처별 재고량 전망 (${s.horizon_days}일)`}>
-        {has("stock") ? (
-          <TowerChart
-            theme={theme}
-            label="처별 일말 예상 석탄 재고 톤"
-            height={225}
-            option={{
-              ...common,
-              aria: {
-                enabled: true,
-                label: { description: "처별 일말 예상 석탄 재고 톤" },
-              },
-              yAxis: axis("t", {
-                axisLabel: {
-                  formatter: (value: number) => `${fmt(value / 10000, 1)}만`,
-                },
-              }),
-              series: plot("stock"),
-            }}
-          />
-        ) : (
-          <div className="midterm-empty">
-            DB 기준재고 미등록 · 처별 재고전망 표시 보류
-          </div>
-        )}
-        <p className="tower-footnote">
-          혼합 발열량 기준 소비 · 음수 재고는 계획상 부족량.
-        </p>
-      </Panel>
+      <SupplyForecasts snapshot={s} theme={theme} />
       <Panel
         title="호기별 이용률·석탄 사용량"
         note={`${s.horizon_days}일 평균`}
@@ -702,9 +519,11 @@ function Forecasts({
 export function FuelSupplyOverview({
   snapshot,
   theme,
+  onSupplyTarget,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
+  onSupplyTarget: (target: SupplyTarget) => void;
 }) {
   return (
     <>
@@ -720,7 +539,7 @@ export function FuelSupplyOverview({
         </div>
         <span>조회 기준 {snapshot.start} 00:00 KST</span>
       </header>
-      <SupplyKpis snapshot={snapshot} />
+      <SupplyKpis snapshot={snapshot} onTarget={onSupplyTarget} />
       <Models snapshot={snapshot} theme={theme} />
       <GroupCards snapshot={snapshot} />
       <Flow snapshot={snapshot} />

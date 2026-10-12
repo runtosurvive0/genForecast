@@ -6,6 +6,14 @@ import {
 } from "../src/domain/planning.ts";
 import { planningFixture } from "./planning-fixture.ts";
 import { fuelMetrics } from "../src/features/plant/fuel-metrics.ts";
+import { minimumInventoryPoint } from "../src/domain/supply.ts";
+
+test("snapshot rejects an invalid per-unit daily generation value", async (t) => {
+  const body = planningFixture();
+  body.daily[0].unit_generation_mwh!["dj-1"] = -1;
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body), { status: 200 }));
+  await assert.rejects(loadPlanningSnapshot("검증 계산", "2027-01-01", 30), /일치하지/);
+});
 
 test("Python snapshot preserves missing inventory/capacity and encoded run identity", async (t) => {
   let url = "";
@@ -117,4 +125,57 @@ test("outage count intersects the selected KST interval, with exclusive end time
     },
   ];
   assert.equal(fuelMetrics(snapshot).outages, 1);
+});
+
+test("supply drilldown preserves zero and only locates a complete backend minimum", () => {
+  const snapshot = planningFixture();
+  snapshot.inventory.daily[5].groups.g58.days = 0;
+  assert.equal(minimumInventoryPoint(snapshot), null);
+  snapshot.inventory.kpis.min_days = 0;
+  assert.deepEqual(minimumInventoryPoint(snapshot), {
+    groupId: "g58",
+    day: "2027-01-06",
+  });
+  snapshot.inventory.kpis.min_days = -2;
+  snapshot.inventory.daily[8].groups.g910.days = -2;
+  assert.deepEqual(minimumInventoryPoint(snapshot), {
+    groupId: "g910",
+    day: "2027-01-09",
+  });
+});
+
+test("malformed supply groups, dates and vessel records cannot enter either screen", async (t) => {
+  let snapshot = planningFixture();
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response(JSON.stringify(snapshot)),
+  );
+  snapshot.inventory.daily[1].day = snapshot.inventory.daily[0].day;
+  await assert.rejects(
+    loadPlanningSnapshot("검증 계산", "2027-01-01", 30),
+    /일치하지/,
+  );
+  snapshot = planningFixture();
+  snapshot.inventory.groups.pop();
+  await assert.rejects(
+    loadPlanningSnapshot("검증 계산", "2027-01-01", 30),
+    /일치하지/,
+  );
+  snapshot = planningFixture();
+  snapshot.vessels = [
+    {
+      id: 1,
+      name: "invalid",
+      cargo: 100,
+      incoming_cv: 5500,
+      arrival_at: "2027-01-02T00:00:00+09:00",
+      remaining: 101,
+      state: "입항예정",
+    },
+  ];
+  await assert.rejects(
+    loadPlanningSnapshot("검증 계산", "2027-01-01", 30),
+    /일치하지/,
+  );
 });

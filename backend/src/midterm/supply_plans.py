@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import io
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -17,9 +18,13 @@ from midterm.supply import timestamp, now, init_supply
 def _read_run(folder: str, modified: tuple):
     folder = Path(folder)
     summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    return _decode_run(summary, folder / "hourly.npz")
+
+
+def _decode_run(summary, hourly):
     start = timestamp(summary["scenario"]["start"])
     plan, forecasts = {}, []
-    with np.load(folder / "hourly.npz") as data:
+    with np.load(hourly) as data:
         names = [str(n) for n in data["names"]]
         output, online = data["output"], data["online"]
         demand, solar = data["demand"], data["solar"]
@@ -42,13 +47,20 @@ def _read_run(folder: str, modified: tuple):
 
 
 def run_plan(run_id):
+    from midterm.milp_store import stored_run
+    record = stored_run(run_id)
     folder = (ROOT / "runs" / run_id).resolve()
-    if (ROOT / "runs").resolve() not in folder.parents or not (folder / "hourly.npz").exists():
+    if (ROOT / "runs").resolve() not in folder.parents or (record is None and not (folder / "hourly.npz").exists()):
         raise ValueError("저장된 발전계획이 없습니다")
-    plan, forecasts, summary = _read_run(str(folder), ((folder / "hourly.npz").stat().st_mtime_ns,
+    if record:
+        plan, forecasts, summary = _decode_run(record["summary"], io.BytesIO(record["hourly"]))
+        generated = record["finished_at"]
+    else:
+        plan, forecasts, summary = _read_run(str(folder), ((folder / "hourly.npz").stat().st_mtime_ns,
                                                     (folder / "summary.json").stat().st_mtime_ns))
+        generated = datetime.fromtimestamp((folder / "hourly.npz").stat().st_mtime, now().tzinfo).isoformat()
     return plan, forecasts, {"source": "FORECAST", "source_name": "동작 확인용 MIP 전망" if summary.get("classification") == "functional_demo" else "저장된 MIP 발전계획", "run_id": run_id,
-        "as_of": datetime.fromtimestamp((folder / "hourly.npz").stat().st_mtime, now().tzinfo).isoformat(),
+        "as_of": generated, "fuel": summary.get("fuel_settings"), "input_id": summary.get("input_id"),
         "start": summary["scenario"]["start"], "end": summary["scenario"]["end"],
         "warnings": summary["warnings"], "model_info": summary["model_info"],
         "outages": summary["outages"], "name": summary["scenario"]["name"],

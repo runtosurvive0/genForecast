@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Fuel, CalendarDays } from "lucide-react";
 import { TowerChart } from "../../components/TowerChart";
 import type { PlanningSnapshot } from "../../domain/planning";
+import type { SupplyTarget } from "../../domain/supply";
 import { fuelMetrics } from "./fuel-metrics";
 import { FuelSupplyOverview } from "./FuelSupplyOverview";
 import "./fuel-dashboard.css";
@@ -53,10 +54,12 @@ export function FuelDashboard({
   snapshot: s,
   theme,
   children,
+  onSupplyTarget,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
   children: ReactNode;
+  onSupplyTarget: (target: SupplyTarget) => void;
 }) {
   const metrics = fuelMetrics(s);
   const selectedMonth = (month: string) =>
@@ -64,7 +67,11 @@ export function FuelDashboard({
 
   return (
     <>
-      <FuelSupplyOverview snapshot={s} theme={theme} />
+      <FuelSupplyOverview
+        snapshot={s}
+        theme={theme}
+        onSupplyTarget={onSupplyTarget}
+      />
       <div className="fuel-basis">
         <div>
           <Fuel size={17} aria-hidden="true" />

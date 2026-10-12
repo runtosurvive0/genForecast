@@ -118,7 +118,7 @@ def _segments(total_days: int, count: int) -> list[tuple[int, int]]:
     return [(int(a), int(b)) for a, b in zip(edges[:-1], edges[1:]) if b > a]
 
 
-def prepare(scenario: Scenario) -> dict:
+def prepare(scenario: Scenario, heat_prices: dict | None = None) -> dict:
     """MILP 직전까지: 순수요·원전·석탄목표·입력행렬. 화면 미리보기도 이것을 쓴다."""
     warmup_first = scenario.start - timedelta(days=WARMUP_DAYS)
     all_days = [warmup_first + timedelta(days=i)
@@ -137,7 +137,7 @@ def prepare(scenario: Scenario) -> dict:
         for i, f in enumerate(forecast)])
     adjust = np.asarray([1 + scenario.coal_adjust_pct[at.month - 1] / 100 for at in hours])
     units = load_coal_units()
-    inputs = coal_inputs(units, load_heat_prices(), scenario.coal_oh, hours)
+    inputs = coal_inputs(units, heat_prices if heat_prices is not None else load_heat_prices(), scenario.coal_oh, hours)
     available = inputs.available_max
     target = np.clip(raw * adjust, 0, available * TARGET_CAP_OF_AVAILABLE)
     warnings = []
@@ -163,11 +163,11 @@ def prepare(scenario: Scenario) -> dict:
                 net_model=net_model, coal_model=coal_model, warnings=warnings)
 
 
-def run_annual(scenario: Scenario, progress: Progress | None = None) -> AnnualResult:
+def run_annual(scenario: Scenario, progress: Progress | None = None, heat_prices: dict | None = None) -> AnnualResult:
     began = time.perf_counter()
     notify = progress or (lambda event: None)
     notify({"stage": "prepare", "message": "순수요·원전·석탄목표 계산"})
-    return solve_prepared(prepare(scenario), scenario, notify, began)
+    return solve_prepared(prepare(scenario, heat_prices), scenario, notify, began)
 
 
 def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: float) -> AnnualResult:

@@ -10,11 +10,14 @@ import {
   historyForPile,
   orderPiles,
   yardShortName,
+  YARD_LAYOUT,
+  YARD_UNIT_RANGES,
+  DEFAULT_UNLOAD_TPD,
   type Attribution,
   type BerthStatus,
-  type GroupForecast,
   type SiteVessel,
 } from "./stockyard-domain";
+import { inventoryStatusLabel, type InventoryGroup, type YardFeed, type YardUnload } from "./supply-view";
 
 const YARDS = ["P1", "P2", "P3"] as const;
 const STATE_LABEL: Record<BerthStatus["state"], string> = {
@@ -48,8 +51,10 @@ export function StockyardSite({
   sort,
   riskFilter,
   unitCount,
-  unitLabel,
-  gauge,
+  feeds,
+  unloads,
+  feedDate,
+  feedSource,
   yardDeltas,
   yardForecasts,
   showSample,
@@ -71,11 +76,13 @@ export function StockyardSite({
   sort: "tons" | "age" | "risk";
   riskFilter: "all" | "낮음" | "관찰" | "높음";
   unitCount: number;
-  unitLabel: string;
-  gauge: number;
+  feeds: YardFeed[];
+  unloads: YardUnload[];
+  feedDate: string;
+  feedSource: string;
   /** 처별 이탄 순증감 (모의 + 저장분). */
   yardDeltas: Record<string, number>;
-  yardForecasts: GroupForecast[];
+  yardForecasts: InventoryGroup[];
   /** 해상 ‘예시 대기선’ 표시 (더미 AIS 동안만, showSampleWaiting 참고). */
   showSample: boolean;
   links: LinkChip[];
@@ -93,7 +100,7 @@ export function StockyardSite({
   const moored = vessels.filter((v) => v.state === "unloading");
   const atSea = vessels.filter((v) => v.state === "waiting");
   const running = new Set(
-    berths.filter((b) => b.state === "unloading").map((b) => b.berth_id),
+    unloads.filter((b) => b.rateTpd !== null && b.rateTpd > 0).map((b) => b.berth),
   );
   // 처 선택은 그 처의 부두·컨베이어를, 선박 선택은 그 선박의 부두 → 컨베이어 → 귀속 Pile 경로를 강조.
   const selectedBerth =
@@ -130,17 +137,19 @@ export function StockyardSite({
         if (ii >= 0) [y, z, i] = [yy, zz, ii];
       }
     if (y < 0) return null;
-    const row = grid[y][z];
+    const row = grid[y].flat();
+    i = row.findIndex((p) => p.stockpile_id === id);
+    const columns = YARD_LAYOUT[YARDS[y]].columns;
     const at = (yy: number, zz: number, ii: number) => {
       const r = grid[yy]?.[zz];
       return r?.length ? r[Math.max(0, Math.min(r.length - 1, ii))].stockpile_id : null;
     };
-    if (key === "ArrowRight") return i + 1 < row.length ? row[i + 1].stockpile_id : at(y + 1, z, 0);
-    if (key === "ArrowLeft") return i > 0 ? row[i - 1].stockpile_id : at(y - 1, z, Infinity);
-    if (key === "ArrowDown") return at(y, z + 1, i);
-    if (key === "ArrowUp") return at(y, z - 1, i);
-    if (key === "Home") return row[0].stockpile_id;
-    if (key === "End") return row[row.length - 1].stockpile_id;
+    if (key === "ArrowRight") return row[i + 1]?.stockpile_id ?? at(y + 1, 0, 0);
+    if (key === "ArrowLeft") return row[i - 1]?.stockpile_id ?? at(y - 1, 3, Infinity);
+    if (key === "ArrowDown") return row[i + columns]?.stockpile_id ?? null;
+    if (key === "ArrowUp") return row[i - columns]?.stockpile_id ?? null;
+    if (key === "Home") return row[Math.floor(i / columns) * columns].stockpile_id;
+    if (key === "End") return row[Math.min(row.length - 1, Math.floor(i / columns) * columns + columns - 1)].stockpile_id;
     return null;
   };
 
@@ -148,7 +157,7 @@ export function StockyardSite({
     const selected = activeShipId === v.voyage.voyage_id;
     const label =
       v.state === "unloading"
-        ? `하역중 · ${v.berth_id}`
+        ? `${v.ledgerState ?? "하역중"} · ${v.berth_id}`
         : `대기 ${v.waitH}h${v.assigned ? ` · 지정 ${v.berth_id}` : ""}`;
     return (
       <button
@@ -193,19 +202,35 @@ export function StockyardSite({
 
       <div className="stockyard-site-canvas">
         <div className="site-scene">
-          <div className="site-belt stockyard-gauge">
-            <span className="site-belt-track" aria-hidden="true" />
-            <span className="site-belt-chip">
-              상탄 컨베이어 <strong>{n(gauge, 1)} t/h</strong>
-              <small>모의 게이지 · 운영 지시 아님</small>
-            </span>
+          <div className="site-plants" role="group" aria-label="당진 발전소 처별 발전·상탄 계획">
+            <div className="site-plants-caption"><strong>당진 발전소</strong><span>{feedDate} · {feedSource} · KST · 일평균 · 실시간 계측 미연계</span></div>
+            <p className="site-unload-note">하역 기본 {n(DEFAULT_UNLOAD_TPD)} t/일 (약 {n(DEFAULT_UNLOAD_TPD / 24, 1)} t/h) · 가정 · 선박 잔량·접안시간 반영</p>
+            <div className="site-plant-grid">
+              {YARDS.map((yard) => {
+                const feed = feeds.find((f) => f.yard === yard);
+                const [first, last] = YARD_UNIT_RANGES[yard];
+                return <button key={yard} className={`site-plant${selectedYard === yard ? " is-selected" : ""}`} data-feed-yard={yard}
+                  aria-label={`${yardShortName(yard)} 발전·상탄 계획`} aria-pressed={selectedYard === yard} onClick={() => onSelectYard(yard)}>
+                  <div className="site-plant-heading"><PlantGlyph /><div><strong>{yardShortName(yard)}</strong><span>{first}~{last}호기</span></div></div>
+                  <dl>
+                    <div><dt>발전량</dt><dd data-feed-value="generation">{n(feed?.generationMwh)}<small> MWh/일</small></dd></div>
+                    <div><dt>상탄량</dt><dd data-feed-value="tonnes">{n(feed?.tonnesPerDay, 1)}<small> t/일</small></dd></div>
+                    <div><dt>일평균 상탄</dt><dd data-feed-value="hourly">{n(feed?.tonnesPerHour, 1)}<small> t/h</small></dd></div>
+                  </dl>
+                </button>;
+              })}
+            </div>
           </div>
-
-          <div className="site-plant">
-            <span className="site-plant-drop" aria-hidden="true" />
-            <PlantGlyph />
-            <strong>당진 발전소</strong>
-            <span>보일러 · {unitLabel}</span>
+          <div className="site-belt stockyard-gauge">
+            <div className="site-feed-conveyors">
+              {YARDS.map((yard) => <div key={yard} className="site-feed-conveyor" data-conveyor-yard={yard}
+                aria-label={`${yardShortName(yard)} 상탄 컨베이어`}>
+                <span className="site-feed-track" aria-hidden="true">↑</span>
+                <span className="site-belt-chip"><span>{yardShortName(yard)} 상탄 컨베이어</span>
+                  <strong>{n(feeds.find((f) => f.yard === yard)?.tonnesPerHour, 1)} t/h</strong>
+                </span>
+              </div>)}
+            </div>
           </div>
 
           <div
@@ -234,6 +259,8 @@ export function StockyardSite({
                 <div
                   key={yard}
                   className={`yard-block${indoor ? " is-indoor" : ""}${selectedYard === yard ? " is-selected" : ""}`}
+                  data-yard={yard}
+                  data-yard-layout={`${YARD_LAYOUT[yard].columns}x${YARD_LAYOUT[yard].rows}`}
                   style={{ gridArea: yard }}
                 >
                   <header>
@@ -244,16 +271,16 @@ export function StockyardSite({
                     >
                       <strong>{yardShortName(yard)}</strong>
                       <span>
-                        {indoor ? "옥내" : "옥외"} · {n(tons)} t
+                        {indoor ? "옥내" : "옥외"} · {n(forecast?.source === "db" ? forecast.currentTons : tons)} t
                       </span>
                     </button>
                     {forecast && (
                       <span
                         className={`yard-days is-${forecast.status}`}
-                        title={`재고일수 ${DAYS_STATUS_LABEL[forecast.status]} · 현재 → 기간 최저${forecast.minDays ? ` (${forecast.minDays.date.slice(5).replace("-", "/")})` : ""} · 기준 SPEC §13`}
+                        title={`재고일수 ${inventoryStatusLabel(forecast)} · 기준시각 → 기간 최저${forecast.minDays ? ` (${forecast.minDays.date.slice(5).replace("-", "/")})` : ""} · ${forecast.source === "db" ? "DB 설정 기준" : "기준 SPEC §13"}`}
                       >
                         {forecast.currentDays === null
-                          ? "소비 없음"
+                          ? forecast.source === "db" ? "미확정" : "소비 없음"
                           : forecast.minDays && forecast.minDays.days < forecast.currentDays - 0.05
                             ? `${n(forecast.currentDays, 1)}→${n(forecast.minDays.days, 1)}일`
                             : `${n(forecast.currentDays, 1)}일`}
@@ -298,21 +325,32 @@ export function StockyardSite({
                 </div>
               );
             })}
+            {[["P1", "P2"], ["P2", "P3"]].map(([from, to], i) =>
+              <div key={`${from}-${to}`} className="site-transfer-belt" style={{ gridArea: `t${i + 1}${i + 2}` }}
+                data-transfer-route={`${from}-${to}`} role="img" aria-label={`${yardShortName(from)} ↔ ${yardShortName(to)} 이탄벨트 연결 개념도`}
+                title="이탄 연결 개념도 · 실제 설비 연결 확인 필요">
+                <span className="site-transfer-label">이탄벨트</span>
+                <span className="site-transfer-track" aria-hidden="true">↔</span>
+                <small>{i + 1}↔{i + 2}</small>
+              </div>)}
           </div>
 
+          <div className="site-unload-conveyors" role="group" aria-label="부두별 하역량·당일 재고 반영">
           {BERTHS.map((berth, i) => (
             <div
               key={berth}
               className={`site-conveyor${running.has(berth) ? " is-running" : ""}${selectedBerth === berth ? " is-selected" : ""}`}
+              data-unload-berth={berth}
               style={{ gridArea: `c${i + 1}` }}
-              aria-hidden="true"
             >
-              <span className="site-conveyor-belt" />
-              <small>
-                하역 {berth} → {yardShortName(YARDS[i])}
-              </small>
+              <span className="site-conveyor-belt" aria-hidden="true" />
+              <span className="site-unload-chip"><small>하역 {berth} → {yardShortName(YARDS[i])}</small>
+                <strong data-unload-value="rate">{n(unloads.find((u) => u.berth === berth)?.rateTpd)} t/일</strong>
+                <small>당일 입고 <b data-unload-value="receipts">{n(unloads.find((u) => u.berth === berth)?.receipts)} t</b></small>
+              </span>
             </div>
           ))}
+          </div>
 
           <ul className="harbor-quay stockyard-berths" aria-label="부두 점유">
             {berths.map((b) => (
@@ -324,7 +362,7 @@ export function StockyardSite({
                 <i aria-hidden="true" />
                 <b>{b.berth_id}</b>
                 <span>
-                  {STATE_LABEL[b.state]}
+                  {b.vessel?.ledgerState ?? STATE_LABEL[b.state]}
                   {b.vessel ? ` · ${b.vessel.voyage.vessel_name}` : ""}
                 </span>
               </li>

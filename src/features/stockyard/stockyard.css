@@ -135,7 +135,6 @@
 /* ── 당진 항만·저탄장 약도 (SIMULATED 삽화, 측량 좌표 아님) ── */
 .stockyard-page {
   --site-gap: 12px;
-  --plant-w: 120px;
   --site-land: #f3f2ee;
   --site-yard: #ebe8e1;
   --site-yard-line: #d8d4ca;
@@ -241,18 +240,21 @@
   background: var(--site-land);
 }
 .site-scene {
+  --site-transfer-gap: 40px;
+  --site-columns: minmax(0, 1fr) var(--site-transfer-gap) minmax(0, 1fr) var(--site-transfer-gap) minmax(0, 1fr);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--plant-w);
-  grid-template-rows: 36px auto 36px 26px minmax(132px, 1fr);
+  grid-template-columns: var(--site-columns);
+  grid-template-rows: auto 64px auto 84px 26px minmax(132px, 1fr);
   flex: 1;
   grid-template-areas:
-    "belt belt belt plant"
-    "P1 P2 P3 plant"
-    "c1 c2 c3 plant"
-    "quay quay quay quay"
-    "sea sea sea sea";
-  column-gap: var(--site-gap);
+    "plants plants plants plants plants"
+    "belt belt belt belt belt"
+    "P1 t12 P2 t23 P3"
+    "c1 . c2 . c3"
+    "quay quay quay quay quay"
+    "sea sea sea sea sea";
   padding: 4px 14px 0;
+  row-gap: 4px;
   min-width: 0;
 }
 
@@ -262,35 +264,27 @@
   position: relative;
   min-width: 0;
 }
-.site-belt-track {
-  position: absolute;
-  left: 6px;
-  right: calc(-1 * (var(--site-gap) + 45px));
-  top: 15px;
-  height: 7px;
-  border-radius: 1px;
-  background: repeating-linear-gradient(
-    90deg,
-    var(--site-belt) 0 6px,
-    var(--site-belt-light) 6px 9px
-  );
-  animation: site-belt-right 0.9s linear infinite;
-}
+.site-feed-conveyors { display: grid; grid-template-columns: var(--site-columns); height: 100%; }
+.site-feed-conveyor { position: relative; min-width: 0; }
+.site-feed-conveyor:nth-child(2) { grid-column: 3; }
+.site-feed-conveyor:nth-child(3) { grid-column: 5; }
+.site-feed-track { display: block; margin: 0 auto; width: 8px; height: 100%; background: repeating-linear-gradient(0deg, var(--site-belt) 0 6px, var(--site-belt-light) 6px 9px); color: var(--foreground); text-align: center; font-size: 13px; }
 .site-belt-chip {
   position: absolute;
   left: 50%;
-  top: 18px;
+  top: 50%;
   transform: translate(-50%, -50%);
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 3px 11px;
+  display: grid;
+  gap: 2px;
+  padding: 4px 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--card);
   font-size: 10px;
   color: var(--muted-foreground);
-  white-space: nowrap;
+  width: max-content;
+  max-width: 100%;
+  text-align: center;
 }
 .site-belt-chip strong {
   color: var(--foreground);
@@ -298,45 +292,48 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.site-belt-chip small {
-  font-size: 9px;
-}
 
 /* 발전소 */
+.site-plants { grid-area: plants; min-width: 0; }
+.site-plants-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 6px 0 8px; }
+.site-plants-caption strong { font-size: 12px; }
+.site-plants-caption span { font-size: 10px; color: var(--muted-foreground); }
+.site-unload-note { margin: 0 0 8px; font-size: 9px; color: var(--muted-foreground); }
+.site-plant-grid { display: grid; grid-template-columns: var(--site-columns); }
+.site-plant:nth-child(2) { grid-column: 3; }
+.site-plant:nth-child(3) { grid-column: 5; }
 .site-plant {
-  grid-area: plant;
-  display: flex;
-  flex-direction: column;
+  display: block;
   min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--site-yard-line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
 }
-.site-plant-drop {
-  flex: 1;
-  min-height: 8px;
-  width: 7px;
-  margin: 22px 0 0 38px;
-  background: repeating-linear-gradient(
-    180deg,
-    var(--site-belt) 0 6px,
-    var(--site-belt-light) 6px 9px
-  );
-  animation: site-belt-down 0.9s linear infinite;
-}
+.site-plant.is-selected { border-color: var(--primary); }
+.site-plant:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.site-plant-heading { display: flex; align-items: center; gap: 8px; }
+.site-plant-heading > div { display: grid; gap: 3px; }
 .plant-glyph {
   display: block;
   flex-shrink: 0;
-  width: 100%;
-  height: auto;
+  width: 36px;
+  height: 44px;
 }
-.site-plant strong {
-  margin-top: 8px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.site-plant span {
-  margin-top: 2px;
-  font-size: 9px;
-  color: var(--muted-foreground);
-}
+.site-plant strong { font-size: 11px; font-weight: 600; }
+.site-plant-heading span { font-size: 9px; color: var(--muted-foreground); }
+.site-plant dl { display: grid; gap: 5px; margin: 7px 0 0; }
+.site-plant dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; flex-wrap: wrap; }
+.site-plant dt { font-size: 9px; color: var(--muted-foreground); }
+.site-plant dd { margin: 0; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.site-plant dd small { font-size: 9px; font-weight: 400; color: var(--muted-foreground); }
+.site-transfer-belt { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; text-align: center; color: var(--muted-foreground); }
+.site-transfer-label { writing-mode: vertical-rl; font-size: 10px; letter-spacing: 2px; }
+.site-transfer-track { width: 100%; height: 8px; background: repeating-linear-gradient(90deg, var(--site-belt) 0 6px, var(--site-belt-light) 6px 9px); color: var(--foreground); line-height: 8px; font-size: 18px; }
+.site-transfer-belt small { font-size: 9px; }
 .plant-stack {
   fill: var(--plant-stack);
   stroke: var(--plant-wall-dark);
@@ -392,11 +389,11 @@
 .yard-block::before {
   content: "";
   position: absolute;
-  right: 26px;
-  top: -15px;
-  width: 5px;
-  height: 14px;
-  background: var(--site-belt);
+  left: calc(50% - 4px);
+  top: -8px;
+  width: 8px;
+  height: 8px;
+  background: repeating-linear-gradient(0deg, var(--site-belt) 0 6px, var(--site-belt-light) 6px 9px);
 }
 .yard-block.is-indoor {
   border-style: dashed;
@@ -453,9 +450,14 @@
   text-overflow: ellipsis;
 }
 .yard-block .yard-piles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 3px;
   align-items: flex-end;
 }
+.yard-block[data-yard="P3"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.yard-block[data-yard="P3"] > header { grid-column: 1 / -1; }
+.yard-block .yard-pile { min-width: 0; }
 
 /* Pile: 재고 비례 둔덕 */
 .yard-pile {
@@ -592,6 +594,7 @@
 }
 
 /* 하역 컨베이어: 부두 → 발전처 */
+.site-unload-conveyors { display: contents; }
 .site-conveyor {
   position: relative;
   min-width: 0;
@@ -623,23 +626,34 @@
 .site-conveyor.is-running .site-conveyor-belt {
   animation: site-belt-up 0.9s linear infinite;
 }
-.site-conveyor small {
+.site-unload-chip {
   position: absolute;
-  left: calc(50% + 10px);
+  left: 50%;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 3px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  width: max-content;
+  max-width: 100%;
+  text-align: center;
+}
+.site-unload-chip small {
   font-size: 9px;
   color: var(--muted-foreground);
-  white-space: nowrap;
 }
+.site-unload-chip strong { font-size: 12px; color: var(--foreground); font-variant-numeric: tabular-nums; }
+.site-unload-chip b { font-weight: 500; }
 
 /* 안벽(부두) */
 .harbor-quay {
   grid-area: quay;
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--plant-w);
-  column-gap: var(--site-gap);
+  grid-template-columns: var(--site-columns);
   margin: 0 -14px;
   padding: 0 14px;
   list-style: none;
@@ -647,6 +661,8 @@
   border-top: 1px solid var(--site-quay-edge);
   box-shadow: inset 0 -3px 0 var(--site-quay-edge);
 }
+.harbor-berth:nth-child(2) { grid-column: 3; }
+.harbor-berth:nth-child(3) { grid-column: 5; }
 .harbor-quay::after {
   content: "";
   position: absolute;
@@ -770,11 +786,11 @@
 }
 .harbor-ship.is-moored {
   --col: calc(
-    (100% - 28px - var(--plant-w) - 3 * var(--site-gap)) / 3
+    (100% - 28px - 2 * var(--site-transfer-gap)) / 3
   );
   top: 5px;
   left: calc(
-    14px + (var(--col) + var(--site-gap)) * var(--slot, 0) + var(--col) * 0.1 +
+    14px + (var(--col) + var(--site-transfer-gap)) * var(--slot, 0) + var(--col) * 0.1 +
       var(--stack, 0) * 12px
   );
   width: calc(var(--col) * 0.8);
@@ -1201,8 +1217,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .site-belt-track,
-  .site-plant-drop,
   .site-conveyor-belt,
   .plant-gallery-flow,
   .ship-unloader rect:last-child {
@@ -1246,7 +1260,6 @@
 }
 @media (max-width: 760px) {
   .stockyard-page {
-    --plant-w: 0px;
     --site-gap: 8px;
   }
   .stockyard-site-header {
@@ -1254,21 +1267,34 @@
     padding: 16px;
   }
   .site-scene {
+    --site-transfer-gap: var(--site-gap);
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 36px repeat(3, auto) 26px 170px;
-    grid-template-areas: "belt" "P1" "P2" "P3" "quay" "sea";
+    grid-template-rows: auto auto auto 40px auto 40px auto 90px 26px 170px;
+    grid-template-areas: "plants" "belt" "P1" "t12" "P2" "t23" "P3" "unloads" "quay" "sea";
     row-gap: 18px;
     padding-top: 10px;
   }
-  .site-plant,
-  .site-conveyor,
-  .yard-block::before,
-  .site-belt-chip small {
+  .yard-block::before {
     display: none;
   }
   .harbor-quay {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: var(--site-gap);
   }
+  .harbor-berth:nth-child(n) { grid-column: auto; }
+  .site-plant-grid { grid-template-columns: minmax(0, 1fr); gap: var(--site-gap); }
+  .site-plant:nth-child(n) { grid-column: 1; }
+  .site-plant { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; }
+  .site-plant dl { margin-top: 0; }
+  .site-feed-conveyors { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--site-gap); height: 80px; }
+  .site-feed-conveyor:nth-child(n) { grid-column: auto; }
+  .site-unload-conveyors { grid-area: unloads; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--site-gap); }
+  .site-unload-conveyors .site-conveyor { grid-area: auto !important; }
+  .site-belt-chip { font-size: 9px; }
+  .site-belt-chip strong { font-size: 12px; }
+  .site-transfer-belt { flex-direction: row; gap: 10px; }
+  .site-transfer-label { writing-mode: horizontal-tb; letter-spacing: 0; }
+  .site-transfer-track { width: 8px; height: 100%; background: repeating-linear-gradient(0deg, var(--site-belt) 0 6px, var(--site-belt-light) 6px 9px); writing-mode: vertical-rl; text-orientation: sideways; line-height: 8px; }
   .harbor-sea {
     margin-top: -18px;
   }

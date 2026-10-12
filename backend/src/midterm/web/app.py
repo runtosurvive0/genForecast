@@ -37,6 +37,10 @@ from midterm.web.supply_api import router as supply_router
 app.include_router(supply_router)
 from midterm.web.planning_api import router as planning_router
 app.include_router(planning_router)
+from midterm.web.inputs_api import router as inputs_router
+app.include_router(inputs_router)
+from midterm.web.ledger_api import router as ledger_router
+app.include_router(ledger_router)
 from midterm.web.vessels_api import router as vessels_router
 app.include_router(vessels_router)
 _job_lock = threading.Lock()
@@ -233,20 +237,26 @@ def preview(body: dict) -> dict:
     return {"monthly": pack(monthly), "daily": pack(daily), "warnings": prep["warnings"]}
 
 
-def _run_job(scenario: Scenario, run_id: str) -> None:
+def _run_job(scenario: Scenario, run_id: str, input_record: dict) -> None:
     from midterm.annual import run_annual
     from midterm.report import save_run
+    from midterm.milp_store import finish_run
 
     def progress(event):
         with _job_lock:
             _job.update({k: v for k, v in event.items() if k != "stage"}, stage=event.get("stage"))
 
     try:
-        result = run_annual(scenario, progress)
-        save_run(result, RUNS / run_id)
+        result = run_annual(scenario, progress, heat_prices=input_record["payload"]["heat_prices"])
+        summary = save_run(result, RUNS / run_id)
+        summary.update(input_id=input_record["id"], fuel_settings=input_record["payload"]["fuel"],
+                       classification="scenario_forecast", classification_note="업로드 입력 기반 예측 시뮬레이션 · 운영 실적 아님")
+        (RUNS / run_id / "summary.json").write_text(json.dumps(summary, ensure_ascii=False), encoding="utf-8")
+        finish_run(run_id, summary, (RUNS / run_id / "hourly.npz").read_bytes())
         with _job_lock:
             _job.update(state="done", run_id=run_id, finished=time.time())
     except Exception as error:  # noqa: BLE001 - 화면에 그대로 보여 준다
+        finish_run(run_id, error=f"{type(error).__name__}: {error}")
         with _job_lock:
             _job.update(state="error", error=f"{type(error).__name__}: {error}",
                         trace=traceback.format_exc()[-2000:])
@@ -254,20 +264,29 @@ def _run_job(scenario: Scenario, run_id: str) -> None:
 
 @app.post("/api/run")
 def run(body: dict | None = None) -> dict:
+    from midterm.milp_store import begin_run, clean_input, get_input, save_input
+    from midterm.fleet import load_heat_prices
     config = load_settings()
-    scenario = _scenario_from(body if body is not None else config["scenario"])
+    try:
+        input_record = (get_input(body["input_id"]) if body and "input_id" in body else
+                        save_input(clean_input(body if body is not None else config["scenario"],
+                                               load_heat_prices(), config["fuel"])))
+    except (ValueError, TypeError, KeyError) as e:
+        raise HTTPException(400, str(e)) from None
+    scenario = _scenario_from(input_record["payload"]["scenario"])
     _check_units(scenario)
     with _job_lock:
         if _job.get("state") == "running":
             raise HTTPException(409, "이미 실행 중입니다")
         scenario.save(LAST_SCENARIO)
-        save_settings(scenario, config["fuel"])
+        save_settings(scenario, input_record["payload"]["fuel"])
         safe = "".join(c for c in scenario.name if c.isalnum() or c in "-_가-힣")[:30]
-        run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + (f"-{safe}" if safe else "")
+        run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f") + (f"-{safe}" if safe else "")
+        begin_run(run_id, input_record["id"])
         _job.clear()
-        _job.update(state="running", run_id=run_id, started=time.time(), stage="prepare",
+        _job.update(state="running", run_id=run_id, input_id=input_record["id"], started=time.time(), stage="prepare",
                     message="순수요·원전·석탄목표 계산", windows_done=0, windows_total=None)
-    threading.Thread(target=_run_job, args=(scenario, run_id), daemon=True).start()
+    threading.Thread(target=_run_job, args=(scenario, run_id, input_record), daemon=True).start()
     return {"run_id": run_id}
 
 
@@ -286,6 +305,7 @@ def job() -> dict:
 
 @app.get("/api/runs")
 def runs() -> list[dict]:
+    from midterm.milp_store import stored_runs
     out = []
     for folder in sorted(RUNS.glob("*/summary.json"), reverse=True):
         try:
@@ -295,7 +315,14 @@ def runs() -> list[dict]:
         out.append({"id": folder.parent.name, "name": summary["scenario"]["name"],
                     "period": f"{summary['scenario']['start']} ~ {summary['scenario']['end']}",
                     "annual": summary["annual"], "elapsed": summary["solve"]["elapsed_seconds"]})
-    return out
+    for row in stored_runs():
+        if row["state"] == "done":
+            summary = row["summary"]
+            out = [r for r in out if r["id"] != row["id"]]
+            out.append({"id": row["id"], "input_id": row["input_id"], "name": summary["scenario"]["name"],
+                        "period": f"{summary['scenario']['start']} ~ {summary['scenario']['end']}",
+                        "annual": summary["annual"], "elapsed": summary["solve"]["elapsed_seconds"]})
+    return sorted(out, key=lambda r: r["id"], reverse=True)
 
 
 def _run_dir(run_id: str) -> Path:
@@ -307,6 +334,10 @@ def _run_dir(run_id: str) -> Path:
 
 @app.get("/api/runs/{run_id}")
 def run_summary(run_id: str) -> dict:
+    from midterm.milp_store import stored_run
+    record = stored_run(run_id)
+    if record:
+        return record["summary"]
     return json.loads((_run_dir(run_id) / "summary.json").read_text(encoding="utf-8"))
 
 

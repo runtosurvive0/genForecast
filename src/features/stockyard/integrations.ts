@@ -66,8 +66,8 @@ export interface SupplyRecords {
   vessels: SupplyVesselRecord[];
 }
 
-export const fetchSupplyRecords = async (): Promise<SupplyRecords> =>
-  normalizeSupplyRecords(await request<unknown>("/api/supply/records"));
+export const fetchSupplyRecords = async (runId?: string): Promise<SupplyRecords> =>
+  normalizeSupplyRecords(await request<unknown>(`/api/supply/records${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`));
 
 export const saveSupplyTransfer = (transfer: SimTransfer) =>
   request<{ id: number }>("/api/supply/transfers", {
@@ -75,10 +75,10 @@ export const saveSupplyTransfer = (transfer: SimTransfer) =>
     body: JSON.stringify(toSupplyTransfer(transfer)),
   });
 
-export const registerSupplyVessel = (voyage: Voyage, berthId: string) =>
+export const registerSupplyVessel = (voyage: Voyage, berthId: string, context?: { runId: string; start: string }) =>
   request<{ id: number }>("/api/supply/vessels", {
     method: "POST",
-    body: JSON.stringify(toSupplyVessel(voyage, berthId)),
+    body: JSON.stringify(toSupplyVessel(voyage, berthId, context)),
   });
 
 export const correctSupplyUnloading = (
@@ -86,9 +86,10 @@ export const correctSupplyUnloading = (
   at: string,
   cumulative: number,
 ) => {
-  const last = [...vessel.points].sort(
-    (a, b) => Date.parse(a.at) - Date.parse(b.at),
-  )[vessel.points.length - 1];
+  const last = vessel.points
+    .filter((point) => Date.parse(point.at) <= Date.parse(at))
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+    .at(-1);
   return request<{ id: number; cumulative: number }>(
     `/api/supply/vessels/${vessel.id}/unloading`,
     {

@@ -16,6 +16,7 @@ from midterm.fleet import load_coal_units
 KST = ZoneInfo("Asia/Seoul")
 GROUPS = {"g14": "1~4호기 처", "g58": "5~8호기 처", "g910": "9~10호기 처"}
 UNITS = {f"당진{i}": "g14" if i <= 4 else "g58" if i <= 8 else "g910" for i in range(1, 11)}
+DEFAULT_UNLOAD_TPD = 7000.
 DEFAULTS = {"danger_days": 7., "normal_days": 15., "baseline_stale_hours": 72.,
             "plan_stale_hours": 48., "heat_method": "curve", "heat_rates": {}}
 
@@ -56,7 +57,29 @@ def init_supply(db):
       CREATE TABLE IF NOT EXISTS supply_schedule_changes (
         id INTEGER PRIMARY KEY, vessel_id INTEGER NOT NULL REFERENCES supply_vessels(id),
         old_schedule TEXT NOT NULL, new_schedule TEXT NOT NULL, recorded_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS supply_stock_lots (
+        id INTEGER PRIMARY KEY, run_id TEXT NOT NULL,
+        baseline_id INTEGER NOT NULL REFERENCES supply_baselines(id), group_id TEXT NOT NULL,
+        grade TEXT NOT NULL CHECK(grade IN ('high','low')), tonnes REAL NOT NULL CHECK(tonnes>=0),
+        cv REAL NOT NULL, is_assumption INTEGER NOT NULL,
+        UNIQUE(run_id,group_id,grade));
+      CREATE TABLE IF NOT EXISTS supply_port_visits (
+        id INTEGER PRIMARY KEY, source TEXT NOT NULL, event_id TEXT NOT NULL,
+        vessel_id INTEGER NOT NULL REFERENCES supply_vessels(id), port_id TEXT NOT NULL,
+        arrived_at TEXT NOT NULL, berthed_at TEXT, departed_at TEXT, berth_id TEXT,
+        recorded_at TEXT NOT NULL, UNIQUE(source,event_id));
     """)
+    columns = {r[1] for r in db.execute("PRAGMA table_info(supply_plan_batches)")}
+    if "classification" not in columns:
+        db.execute("ALTER TABLE supply_plan_batches ADD COLUMN classification TEXT NOT NULL DEFAULT 'generation_plan'")
+    vessel_columns = {r[1] for r in db.execute("PRAGMA table_info(supply_vessels)")}
+    for column in ("mmsi", "imo", "berth_id", "coal_grade"):
+        if column not in vessel_columns:
+            db.execute(f"ALTER TABLE supply_vessels ADD COLUMN {column} TEXT")
+    if "run_id" not in vessel_columns:
+        db.execute("ALTER TABLE supply_vessels ADD COLUMN run_id TEXT")
+    if "classification" not in vessel_columns:
+        db.execute("ALTER TABLE supply_vessels ADD COLUMN classification TEXT NOT NULL DEFAULT 'planned'")
 
 
 def read_supply(path=DATABASE) -> dict:
@@ -73,8 +96,10 @@ def read_supply(path=DATABASE) -> dict:
             vessels.append({**dict(row), "points": points})
         transfers = [dict(r) for r in db.execute("SELECT * FROM supply_transfers ORDER BY at,id")]
         changes = [dict(r) for r in db.execute("SELECT * FROM supply_schedule_changes ORDER BY id")]
+        visits = [dict(r) for r in db.execute("SELECT * FROM supply_port_visits ORDER BY arrived_at,id")]
+        lots = [dict(r) for r in db.execute("SELECT * FROM supply_stock_lots ORDER BY id")]
         return {"config": config, "baselines": baselines, "vessels": vessels, "transfers": transfers,
-                "schedule_changes": changes}
+                "schedule_changes": changes, "port_visits": visits, "stock_lots": lots}
 
 
 def unloading(vessel, at) -> dict:
@@ -121,6 +146,21 @@ def heat_gcal(unit, mw, online, config, master) -> float:
 
 def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> dict:
     as_of = timestamp(as_of)
+    vessels = []
+    for vessel in records["vessels"]:
+        visit = next((r for r in reversed(records.get("port_visits", []))
+                      if r["vessel_id"] == vessel["id"] and timestamp(r["arrived_at"]) <= as_of), None)
+        v = {**vessel, "points": [dict(p) for p in vessel["points"]]}
+        if visit:
+            v["arrival_at"] = visit["arrived_at"]
+            if not visit["berthed_at"] and all(p["cumulative"] == 0 for p in v["points"]):
+                # 입항·체선 관측을 과거 하역 예정시각만으로 입고 처리하지 않는다.
+                v["points"] = [{**p, "rate": 0 if timestamp(p["at"]) <= as_of else p["rate"]} for p in v["points"]]
+            elif visit["berthed_at"] and v["points"] and all(p["cumulative"] == 0 for p in v["points"]):
+                v["points"][0]["at"] = max(timestamp(v["points"][0]["at"]), timestamp(visit["berthed_at"])).isoformat()
+                v["points"].sort(key=lambda p: p["at"])
+        vessels.append(v)
+    records = {**records, "vessels": vessels}
     midnight = as_of.replace(hour=0, minute=0, second=0, microsecond=0)
     end = midnight + timedelta(days=horizon + 7)
     config = records["config"]
@@ -159,6 +199,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
     current, stock_days = {}, {}
     unit_daily = defaultdict(lambda: {u: {"mwh": 0., "tonnes": 0., "hours": 0., "online_hours": 0.} for u in UNITS})
     daily_coverage = defaultdict(lambda: dict.fromkeys(GROUPS, True))
+    daily_receipts = defaultdict(lambda: dict.fromkeys(GROUPS, 0.))
     transfer_issues = []
     ordered = sorted(times)
     for t, nxt in zip(ordered, ordered[1:]):
@@ -195,6 +236,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             before, after = unloading(v, t)["allocated"], unloading(v, nxt)["allocated"]
             for g, st in state.items():
                 q = after[g] - before[g]
+                daily_receipts[day][g] += q
                 b = active_anchors[g]
                 if q and b and t >= timestamp(b["at"]):
                     if q > 0:
@@ -247,7 +289,8 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
         for g in GROUPS:
             st = stock_days.get(day, {}).get(g, {"stock": 0, "cv": None, "known": False})
             point["groups"][g] = {"stock": st["stock"] if st["known"] else None,
-                "days": days_of_stock(st, d + timedelta(days=1), g), "cv": st["cv"], "burn": daily_burn(day, g)}
+                "days": days_of_stock(st, d + timedelta(days=1), g), "cv": st["cv"], "burn": daily_burn(day, g),
+                "receipts": daily_receipts[day][g]}
         forecast.append(point)
     groups = []
     for g, label in GROUPS.items():
@@ -256,7 +299,8 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
         full = all(x is not None for x in values)
         minimum = min(values) if full else None
         b = anchors[g]
-        stale = bool(b and (as_of - timestamp(b["at"])).total_seconds() / 3600 > config["baseline_stale_hours"])
+        stale = bool(b and b.get("classification") != "simulation" and
+                     (as_of - timestamp(b["at"])).total_seconds() / 3600 > config["baseline_stale_hours"])
         risk = "unknown" if minimum is None or stale else "danger" if minimum < config["danger_days"] else "caution" if minimum < config["normal_days"] else "normal"
         first_risk = next((x["day"] for x in forecast if x["groups"][g]["days"] is not None and
                            x["groups"][g]["days"] < config["normal_days"]), None)
@@ -278,7 +322,20 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
     incoming = [v for v in vessels if as_of <= timestamp(v["arrival_at"]) < midnight + timedelta(days=horizon)]
     for v in vessels:
         latest = next((p for p in reversed(v["points"]) if timestamp(p["at"]) <= as_of), None)
+        first_point = v["points"][0] if v["points"] else None
+        final_point = v["points"][-1] if v["points"] else None
+        visit = next((r for r in reversed(records.get("port_visits", [])) if r["vessel_id"] == v["id"] and timestamp(r["arrived_at"]) <= as_of), None)
+        v["berth_at"] = visit["berthed_at"] if visit else first_point["at"] if first_point else None
+        v["unload_end"] = (timestamp(final_point["at"]) + timedelta(hours=(v["cargo"] - final_point["cumulative"]) / final_point["rate"])).isoformat() if final_point and final_point["rate"] > 0 else None
+        v["wait_hours"] = max(0., (timestamp(v["berth_at"]) - timestamp(v["arrival_at"])).total_seconds() / 3600) if v["berth_at"] else None
+        v["port_visit"] = visit
         v["state"] = "입항예정" if timestamp(v["arrival_at"]) > as_of else "하역대기" if latest is None else "완료" if v["remaining"] <= 0 else "하역중" if latest["rate"] > 0 else "하역중단"
+        if visit and not visit["berthed_at"] and v["remaining"] > 0:
+            v["state"] = "하역대기"
+        v["unloading_rate_tpd"] = latest["rate"] * 24 if latest and v["state"] == "하역중" else 0.
+        v["today_receipts"] = unloading(v, midnight + timedelta(days=1))["cumulative"] - unloading(v, midnight)["cumulative"]
+        v["port_remaining"] = v["remaining"] if visit and not (visit["departed_at"] and timestamp(visit["departed_at"]) <= as_of) else 0.
+        v["demurrage_hours"] = max(0., ((timestamp(visit["berthed_at"]) if visit and visit["berthed_at"] and timestamp(visit["berthed_at"]) <= as_of else as_of) - timestamp(visit["arrived_at"])).total_seconds() / 3600) if visit else None
     active = [v for v in vessels if v["state"] == "하역중"]
     amounts = [g["today_burn"] for g in groups]
     unit_summary = []
@@ -300,6 +357,10 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             "unloading_cargo": sum(v["cargo"] for v in active), "unloading": sum(v["cumulative"] for v in active),
             "unloading_remaining": sum(v["remaining"] for v in active), "active_vessels": len(active),
             "arrival_count": len(incoming), "arrivals": sum(v["cargo"] for v in incoming),
+            "port_remaining": sum(v["port_remaining"] for v in vessels),
+            "waiting_cargo": sum(v["port_remaining"] for v in vessels if v["port_visit"] and
+                (not v["port_visit"]["berthed_at"] or timestamp(v["port_visit"]["berthed_at"]) > as_of)),
+            "stock_including_port": stock_total + sum(v["port_remaining"] for v in vessels) if stock_total is not None else None,
             "incoming_cv": sum(v["cargo"] * v["incoming_cv"] for v in incoming) / sum(v["cargo"] for v in incoming) if incoming else None,
             "today_burn": sum(amounts) if all(x is not None for x in amounts) else None,
             "period_burn": sum(u["tonnes"] for u in unit_summary) if all(u["tonnes"] is not None for u in unit_summary) else None}}
