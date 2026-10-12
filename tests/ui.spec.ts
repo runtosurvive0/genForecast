@@ -174,7 +174,7 @@ test("vessel shell separates observation times from the sample simulation baseli
   await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
   await page.screenshot({ path: '.tooling-tmp/vessel-time-basis-dark.png', fullPage: true });
   await page.getByRole('button', { name: '저탄장 현황', exact: true }).click();
-  await expect(page.locator('.sidebar-note')).toContainText('당진 1~10호기 · 저장된 계획');
+  await expect(page.locator('.sidebar-note')).toContainText('시연 기준 2026.10.06 09:00 KST');
   await expect(page.locator('.context-right')).toContainText('시연 기준');
 });
 
