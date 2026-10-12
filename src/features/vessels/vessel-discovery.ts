@@ -3,7 +3,18 @@ import {
   type TrackingVessel,
 } from "../../domain/vessel-workflow.ts";
 
-export const DISCOVERY_CAPACITY = 20_000;
+export const DISCOVERY_CAPACITY = 40_000;
+// Broad discovery rectangle, not territorial waters or a destination classifier.
+export const KOREA_NEARBY_BOUNDS = { south: 31, north: 39, west: 124, east: 132 } as const;
+
+export function isObservedNearKorea(vessel: TrackingVessel, now = Date.now()) {
+  const p = vessel.ais?.position;
+  if (!p || !Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) return false;
+  const observed = Date.parse(p.observedAt);
+  return Number.isFinite(observed) && observed <= now
+    && p.latitude >= KOREA_NEARBY_BOUNDS.south && p.latitude <= KOREA_NEARBY_BOUNDS.north
+    && p.longitude >= KOREA_NEARBY_BOUNDS.west && p.longitude <= KOREA_NEARBY_BOUNDS.east;
+}
 
 export interface DiscoverySnapshot {
   provider: "aisstream" | "digitraffic";
@@ -149,7 +160,7 @@ export function filterDiscoveredVessels(
   age: string,
   sort: string,
   now = Date.now(),
-  options: { destination?: string; destinationStatus?: string } = {},
+  options: { destination?: string; destinationStatus?: string; region?: "korea-nearby" } = {},
 ) {
   const q = query.trim().toLocaleLowerCase();
   const destinationQuery = (options.destination ?? "")
@@ -159,6 +170,7 @@ export function filterDiscoveredVessels(
     .filter((v) => {
       const a = v.ais,
         p = a?.position;
+      if (options.region === "korea-nearby" && !isObservedNearKorea(v, now)) return false;
       const destination = a?.destination?.trim().toLocaleLowerCase() ?? "";
       if (options.destinationStatus === "missing" && destination) return false;
       if (options.destinationStatus === "received" && !destination)

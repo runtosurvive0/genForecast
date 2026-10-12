@@ -246,7 +246,7 @@ export function VesselSearchDialog({
           </p>
         )}
         <footer className="vessel-manager-footer">
-          <span>변경 사항은 이 브라우저에 저장됩니다.</span>
+          <span>{location.protocol === "file:" ? "변경 사항은 이 브라우저에 저장됩니다." : "변경 사항은 로그인한 계정에 저장됩니다."}</span>
           <Button size="sm" onClick={() => setOpen(false)}>
             완료
           </Button>

@@ -3,10 +3,12 @@ import { createPortal } from "react-dom";
 import { RefreshCw, Search, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VesselConnectionStatus } from "./VesselConnectionStatus";
+import { ObservedPosition } from "./ObservedPosition";
 import type { TrackingVessel } from "@/domain/vessel-workflow";
 import { date } from "@/lib/format";
 import {
   DISCOVERY_CAPACITY,
+  KOREA_NEARBY_BOUNDS,
   fetchVesselCatalog,
   filterDiscoveredVessels,
   navStatusLabel,
@@ -135,6 +137,7 @@ export function AisVesselSearch({
         sort,
         Date.now(),
         {
+          region: activeScope === "nearby" ? "korea-nearby" : undefined,
           destination,
           destinationStatus:
             activeScope === "missing" ? "missing" : destinationStatus,
@@ -257,6 +260,7 @@ export function AisVesselSearch({
               "korea",
               `한국행 후보${supportsCandidates ? ` ${candidates.size}` : ""}`,
             ],
+            ["nearby", "한국 주변"],
             ["all", "전체"],
             ["missing", "목적지 미확인"],
           ] as const
@@ -269,6 +273,7 @@ export function AisVesselSearch({
             disabled={value === "korea" && !supportsCandidates}
             onClick={() => {
               setScope(value);
+              if (value === "nearby") setAge("60");
               setDestinationStatus("all");
               setDestination("");
             }}
@@ -319,7 +324,9 @@ export function AisVesselSearch({
         )}
       </div>
       <p className="tower-footnote">
-        {supportsCandidates
+        {activeScope === "nearby"
+          ? `마지막 AIS 관측 위치 기준 · 북위 ${KOREA_NEARBY_BOUNDS.south}~${KOREA_NEARBY_BOUNDS.north}°, 동경 ${KOREA_NEARBY_BOUNDS.west}~${KOREA_NEARBY_BOUNDS.east}°. 인접 국가 해역도 포함하는 검색 범위로 영해 구분이 아닙니다. 목적지와 무관하며, 오래된 위치는 현재 위치와 다를 수 있습니다. 위치 관측 필터로 시간을 조절하세요.`
+          : supportsCandidates
           ? "한국행 후보는 AIS 목적지의 항만 코드·이름으로 분류한 추정입니다. 현재 위치·국적·선박명은 판별에 쓰지 않으며, 확정 목적항과 석탄 운송 여부는 직접 확인해 주세요. 목적지 미확인은 입력값이 없는 선박입니다."
           : "현재 위치와 목적지는 별개입니다. 목적지 입력값만 검색하며 선박명·국적·좌표로 한국행을 추정하지 않습니다. 미수신은 행선지 미확정이며, 입력값도 변경·오기가 있을 수 있습니다."}
       </p>
@@ -406,6 +413,7 @@ export function AisVesselSearch({
                       IMO {v.imo || "미수신"} · MMSI {v.mmsi}
                     </span>
                     <small>AIS 목적지 {v.ais?.destination || "미수신"}</small>
+                    {activeScope === "nearby" && <ObservedPosition position={v.ais?.position ?? null} />}
                     {candidates.has(v.mmsi) && (
                       <small className="vessel-discovery-candidate">
                         한국행 후보 · {candidates.get(v.mmsi)!.portName} ·{" "}
@@ -454,7 +462,9 @@ export function AisVesselSearch({
         </table>
         {!matches.length && (
           <p className="vessel-workflow-empty">
-            {activeScope === "korea" && candidates.size === 0
+            {activeScope === "nearby"
+              ? "조건에 맞는 한국 주변 관측 선박이 없습니다. 위치 관측 시간과 검색 조건을 확인해 주세요. AIS 수신 공백으로 실제 주변 선박이 목록에 없을 수도 있습니다."
+              : activeScope === "korea" && candidates.size === 0
               ? "한국행 후보가 아직 없습니다. AIS 목적지 메시지가 수신되면 분류됩니다. 전체 목록에서 직접 검색할 수도 있습니다."
               : allVessels.length
                 ? "조건에 맞는 선박이 없습니다. 검색어나 필터를 바꿔 주세요."
@@ -490,7 +500,7 @@ export function AisVesselSearch({
         {supportsCandidates ? "과 별도 한국행 후보 최대 1,000척" : ""}에서
         검색합니다.
         {supportsCandidates &&
-          " 후보는 목적지 수신 후 72시간 보존하며, 목적지 변경·만료·한도 초과 시 제외됩니다. 서버 재시작 시 다시 수집합니다."}{" "}
+          " 후보는 목적지 수신 후 72시간 보존하며, 목적지 변경·만료·한도 초과 시 제외됩니다. 서버가 상시 수신하며 저장된 목록은 재시작 후에도 유지됩니다."}{" "}
         전 세계 선박 전체 목록은 아닙니다. 화물선 분류만으로 석탄 운반 여부는
         확인할 수 없습니다. 관심 등록 시 마지막 관측을 저장하며, 항차·확정
         목적항은 별도로 연결합니다.

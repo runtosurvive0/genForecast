@@ -49,6 +49,17 @@ def saved_snapshot_run(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    from midterm.auth.store import AccessStore
+    access = AccessStore(tmp_path / 'access.sqlite3')
+    admin = access.init_admin('test-admin', 'Test Admin', 'isolated supply test password')
+    token = access.login('test-admin', 'isolated supply test password')
+    csrf = access.csrf(token)
+    monkeypatch.setattr(app.state, 'access_store', access)
+    monkeypatch.setenv('AIS_TRACK_DB', str(tmp_path / 'tracks.sqlite3'))
+    monkeypatch.delenv('AISSTREAM_API_KEY', raising=False)
+    monkeypatch.delenv('GFW_API_TOKEN', raising=False)
+    headers = {'Content-Type': 'application/json', 'Origin': 'http://127.0.0.1:8093',
+               'Cookie': f'gf_session={token}; gf_csrf={csrf}', 'X-CSRF-Token': csrf, 'X-Account-ID': admin['id']}
     path = tmp_path / 'planning.sqlite3'
     monkeypatch.setattr(supply_api, 'connect', lambda: connect(path))
     monkeypatch.setattr(supply_api, 'read_supply', lambda: read_supply(path))
@@ -73,7 +84,7 @@ def client(tmp_path, monkeypatch):
         def request(self, method, path, json=None, params=None):
             url = f'http://127.0.0.1:{port}' + path + ('?' + urlencode(params) if params else '')
             body = jsonlib.dumps(json).encode() if json is not None else None
-            req = urllib.request.Request(url, body, headers={'Content-Type':'application/json'}, method=method)
+            req = urllib.request.Request(url, body, headers=headers, method=method)
             try:
                 response = urllib.request.urlopen(req, timeout=10)
             except urllib.error.HTTPError as error:

@@ -1,0 +1,11 @@
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { loadEnv } from 'vite';
+const local = process.platform === 'win32' ? 'backend/.venv/Scripts/python.exe' : 'backend/.venv/bin/python';
+const python = process.env.AUTH_TEST_PYTHON || (existsSync(local) ? resolve(local) : 'python');
+const env = { ...process.env, ...loadEnv('development', process.cwd(), 'MIDTERM_'), PYTHONPATH: resolve('backend/src'), AISSTREAM_API_KEY: '', GFW_API_TOKEN: '' };
+const child = spawn(python, ['backend/tests/auth_ui_server.py'], { stdio: 'inherit', windowsHide: true, env });
+child.on('exit', code => process.exit(code ?? 1));
+child.on('error', error => { console.error(error.message); process.exit(1); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));

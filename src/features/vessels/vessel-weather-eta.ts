@@ -139,7 +139,8 @@ export function estimateWeatherEta({
   const points = forecast.points;
   if (
     points.length < 2 ||
-    points.length > 12 ||
+    points.length > 25 ||
+    ![72, 168].includes(forecast.horizonHours) ||
     points.some(
       (point, i) =>
         ![point.longitude, point.latitude, Date.parse(point.passageAt)].every(
@@ -151,7 +152,7 @@ export function estimateWeatherEta({
           Date.parse(point.passageAt) <= Date.parse(points[i - 1].passageAt)),
     ) ||
     Math.abs(Date.parse(points[0].passageAt) - forecastObserved) > 1000 ||
-    Date.parse(points.at(-1)!.passageAt) - forecastObserved > 72 * HOUR + 1000
+    Date.parse(points.at(-1)!.passageAt) - forecastObserved > forecast.horizonHours * HOUR + 1000
   )
     return blocked("항로 예보의 좌표·통과 시각 순서가 유효하지 않습니다.");
   if (

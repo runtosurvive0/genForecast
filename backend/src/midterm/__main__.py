@@ -64,6 +64,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="midterm")
     sub = parser.add_subparsers(dest="command", required=True)
+    admin = sub.add_parser("admin", help="관리자 초기화 및 비밀번호 복구")
+    admin.add_argument("action", choices=["init", "reset-password"])
     snap = sub.add_parser("snapshot")
     snap.add_argument("--dsn", default=None)
     sub.add_parser("train")
@@ -84,7 +86,10 @@ def main(argv: list[str] | None = None) -> None:
     serve.add_argument("--host", default="127.0.0.1")
     args = parser.parse_args(argv)
 
-    if args.command == "snapshot":
+    if args.command == "admin":
+        from midterm.auth.cli import run as admin_run
+        admin_run(args.action)
+    elif args.command == "snapshot":
         from midterm.history import snapshot
         try:
             print(snapshot(args.dsn))

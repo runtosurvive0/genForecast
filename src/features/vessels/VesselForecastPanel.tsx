@@ -42,6 +42,8 @@ export function WeatherCredits() {
 }
 export function VesselForecastPanel({
   state,
+  hours,
+  setHours,
   busy,
   theme,
   enabled,
@@ -51,6 +53,8 @@ export function VesselForecastPanel({
   refresh,
 }: {
   state: ForecastState;
+  hours: 72 | 168;
+  setHours: (hours: 72 | 168) => void;
   busy: boolean;
   theme: "light" | "dark";
   enabled: boolean;
@@ -69,9 +73,10 @@ export function VesselForecastPanel({
           <h3>
             <Waves size={15} /> 항로 통과 예보
           </h3>
-          <span>{forecastLabels[state.status]} · 향후 최대 72시간 · KST</span>
+          <span>{forecastLabels[state.status]} · 최대 {(state.data?.horizonHours ?? hours) / 24}일 · KST</span>
         </div>
         <div className="vessel-workflow-actions">
+          {!enabled && <ForecastRangeControl hours={hours} setHours={setHours} />}
           <Button size="sm" variant="ghost" onClick={refresh} disabled={busy}>
             <RefreshCw size={13} /> 기상 갱신
           </Button>
@@ -218,9 +223,17 @@ export function VesselForecastPanel({
         <p>
           예상 항로·현재 속도 유지 기준의 격자 예보입니다. 실제 운항 계획·태풍
           경보가 아니며, 기상 보정 ETA는 도착 전망의 시연 모델에서 별도로
-          비교합니다. 72시간 이후는 이번 조회 범위 밖입니다.
+          비교합니다. 선택 기간 이후와 예보 누락 구간은 미확인으로 남깁니다.
         </p>
       </footer>
     </section>
   );
+}
+
+export function ForecastRangeControl({ hours, setHours }: {
+  hours: 72 | 168; setHours: (hours: 72 | 168) => void;
+}) {
+  return <div className="vessel-map-weather-switch" role="group" aria-label="항로 예보 기간">
+    {([72, 168] as const).map(h => <button key={h} type="button" aria-pressed={hours === h} onClick={() => setHours(h)}>{h / 24}일</button>)}
+  </div>;
 }

@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "연간 순수요 전망 → 기존 석탄곡선 모델 → 1년 석탄 MILP → 당진본부 일·월 발전량"
 requires-python = ">=3.12"
 dependencies = [
+  "argon2-cffi==25.1.0",
   "numpy>=2.0",
   "scipy>=1.14",
   "lightgbm>=4.5",
@@ -22,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3"]
+dev = ["pytest>=8.3", "httpx2==2.13.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

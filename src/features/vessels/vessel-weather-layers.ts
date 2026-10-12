@@ -1,5 +1,6 @@
 import type { FeatureCollection, Polygon, Geometry } from "geojson";
-import { validPosition, unwrapRoute } from "./map-data.ts";
+import { validPosition, unwrapRoute, type Coordinate } from "./map-data.ts";
+import { remainingRoute, seaDistance, type EstimatedRoute } from "./vessel-navigation.ts";
 import type { ForecastPoint } from "./vessel-weather.ts";
 
 export type WeatherMetric = "wave" | "wind" | "visibility";
@@ -30,6 +31,9 @@ export interface WeatherOverlay {
   metric: WeatherMetric;
   storms: Cyclone[];
   now: number;
+  route?: EstimatedRoute;
+  speedKn?: number | null;
+  course?: number | null;
   onSelectPoint: (index: number) => void;
 }
 const HOUR = 3600000;
@@ -199,6 +203,17 @@ export function metricText(p: ForecastPoint, metric: WeatherMetric) {
         : `${(v / 1000).toFixed(1)} km`
       : `${v.toFixed(1)} ${metric === "wave" ? "m" : "kn"}`;
 }
+
+export function forecastLabelIndices(points: ForecastPoint[], selected: number, project: (p: ForecastPoint) => [number, number]): Set<number> {
+  if (points.length <= 12) return new Set(points.map((_, i) => i));
+  const labels = new Set<number>();
+  for (const i of [selected, points.length - 1, ...points.map((_, index) => index)]) {
+    if (!points[i] || labels.has(i)) continue;
+    const [x, y] = project(points[i]);
+    if ([...labels].every(j => { const [a, b] = project(points[j]); return Math.hypot(x - a, y - b) >= 72; })) labels.add(i);
+  }
+  return labels;
+}
 export function overlayFeatures(
   overlay: WeatherOverlay,
 ): FeatureCollection<Geometry> {
@@ -206,6 +221,10 @@ export function overlayFeatures(
   const passage =
     overlay.points[Math.min(overlay.index, overlay.points.length - 1)];
   if (!passage) return { type: "FeatureCollection", features };
+  features.push(...weatherRouteFeatures(overlay));
+  const last = overlay.points.at(-1)!;
+  features.push({ type: "Feature", properties: { kind: "forecast-end" },
+    geometry: { type: "Point", coordinates: [last.longitude, last.latitude] } });
   features.push({
     type: "Feature",
     properties: { kind: "passage" },
@@ -234,4 +253,56 @@ export function overlayFeatures(
         });
   }
   return { type: "FeatureCollection", features };
+}
+
+/** Follow every route waypoint; joining distant forecast points directly cuts corners. */
+export function weatherRouteFeatures(overlay: WeatherOverlay): FeatureCollection<Geometry>["features"] {
+  const { route, speedKn: speed, points } = overlay;
+  if (!route || !speed || speed < .5 || !points.length) return [];
+  const start: Coordinate = [points[0].longitude, points[0].latitude];
+  const remaining = remainingRoute(route, start, overlay.course);
+  const coords: Coordinate[] = [start, ...remaining.coordinates];
+  const lengths = coords.slice(1).map((b, i) => seaDistance(coords[i], b));
+  const geometric = lengths.slice(1).reduce((a, b) => a + b, 0);
+  const weights = lengths.map((length, i) => i === 0 ? remaining.connectionNm : geometric ? length / geometric * remaining.networkNm : 0);
+  const total = weights.reduce((a, b) => a + b, 0);
+  const startAt = Date.parse(points[0].passageAt);
+  const distances = points.map(p => Math.min(total, Math.max(0, (Date.parse(p.passageAt) - startAt) / HOUR * speed)));
+  const slice = (from: number, to: number): Coordinate[] => {
+    const out: Coordinate[] = [];
+    let along = 0;
+    weights.forEach((length, i) => {
+      const end = along + length;
+      if (length > 0 && end > from && along < to) {
+        const a = coords[i], b = coords[i + 1];
+        const wrap = (n: number) => ((n + 180) % 360 + 360) % 360 - 180;
+        const point = (d: number): Coordinate => {
+          const t = (d - along) / length;
+          return [wrap(a[0] + wrap(b[0] - a[0]) * t), a[1] + (b[1] - a[1]) * t];
+        };
+        const first = point(Math.max(from, along));
+        if (!out.length || seaDistance(out.at(-1)!, first) > .00001) out.push(first);
+        out.push(point(Math.min(to, end)));
+      }
+      along = end;
+    });
+    return out;
+  };
+  const features: FeatureCollection<Geometry>["features"] = [];
+  for (let i = 1; i < points.length; i++) {
+    const coordinates = slice(distances[i - 1], distances[i]);
+    if (coordinates.length < 2) continue;
+    // API and navigation refresh independently. Do not paint an obsolete route.
+    if (seaDistance(coordinates[0], [points[i - 1].longitude, points[i - 1].latitude]) > 1 ||
+        seaDistance(coordinates.at(-1)!, [points[i].longitude, points[i].latitude]) > 1) return [];
+    const a = weatherAttention(points[i - 1], overlay.metric, overlay.now);
+    const b = weatherAttention(points[i], overlay.metric, overlay.now);
+    const status = a === "unknown" || b === "unknown" ? "unknown" : a === "attention" || b === "attention" ? "attention" : "normal";
+    features.push({ type: "Feature", properties: { kind: "forecast-route", status },
+      geometry: { type: "LineString", coordinates: unwrapRoute(coordinates) } });
+  }
+  const beyond = slice(distances.at(-1)!, total);
+  if (beyond.length > 1) features.push({ type: "Feature", properties: { kind: "forecast-route", status: "unknown" },
+    geometry: { type: "LineString", coordinates: unwrapRoute(beyond) } });
+  return features;
 }

@@ -137,6 +137,7 @@ def test_navigation_http_validation_membership_and_lifespan_restart(tmp_path, mo
     import asyncio
     import json
     from fastapi import FastAPI
+    from midterm.auth.store import AccessStore
     from midterm.web import vessels_api as api
     monkeypatch.setenv("AIS_TRACK_DB", str(tmp_path / "api.sqlite3"))
     monkeypatch.setenv("AISSTREAM_API_KEY", "")
@@ -144,7 +145,9 @@ def test_navigation_http_validation_membership_and_lifespan_restart(tmp_path, mo
     monkeypatch.setattr(AisCatalog, "start", lambda self: starts.append(True))
     app = FastAPI()
     app.include_router(api.router)
-    owner = "00000000-0000-4000-8000-000000000001"
+    access = AccessStore(tmp_path / 'access.sqlite3')
+    app.state.access_store = access
+    owner = access.init_admin('test-admin', 'Test Admin', 'isolated navigation password')['id']
 
     async def request(method, path, body=None, query=""):
         sent = []
@@ -163,6 +166,9 @@ def test_navigation_http_validation_membership_and_lifespan_restart(tmp_path, mo
             assert (await request("PUT", path, {"vessels": [{"mmsi": "invalid", "source": "aisstream"}]}))[0] == 422
             assert (await request("GET", "/api/vessels/route", query="longitude=125&latitude=35"))[0] == 422
             assert (await request("PUT", path, {"vessels": [{"mmsi": "440123456", "source": "aisstream"}]}))[0] == 200
+            # Restart now restores only saved active-account memberships.
+            vessel = ship("2026-10-09T11:00:00Z")
+            access.save_workspace(owner, 0, {'version': 1, 'watchlist': [vessel['id']], 'vessels': [vessel], 'voyages': []}, {})
             api.tracks.record(ship("2026-10-09T11:00:00Z"))
             assert (await request("GET", path))[1]["vessels"][0]["mmsi"] == "440123456"
             assert (await request("GET", path + "/aisstream/440123456", query="hours=24"))[1]["pointCount"] == 1

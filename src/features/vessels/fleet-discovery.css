@@ -1,0 +1,17 @@
+.vessel-fleet-status-slot:empty { display:none; }
+.vessel-fleet-status-line { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; padding:4px 10px 8px; color:var(--muted-foreground); font-size:10px; }
+.vessel-fleet-count { font-weight:500; }
+.vessel-fleet-freshness { display:block; font-size:10px; }
+.vessel-fleet-error { position:absolute; left:10px; top:108px; z-index:5; max-width:calc(100% - 20px); padding:5px 8px; border-radius:5px; background:var(--background); color:var(--muted-foreground); font-size:11px; }
+.vessel-fleet-error button { margin-left:6px; text-decoration:underline; }
+.vessel-fleet-detail { position:absolute; left:12px; bottom:30px; z-index:6; width:300px; max-width:calc(100% - 24px); max-height:65%; overflow:auto; padding:14px; border:1px solid var(--border); border-radius:9px; background:var(--background); color:var(--foreground); box-shadow:0 6px 24px #0002; font-size:12px; }
+.vessel-fleet-detail h4 { font-size:14px; font-weight:600; padding-right:25px; margin:0 0 6px; overflow-wrap:anywhere; }
+.vessel-fleet-detail p { font-size:11px; color:var(--muted-foreground); margin:6px 0 10px; }
+.vessel-fleet-detail dl { display:grid; grid-template-columns:90px 1fr; gap:7px; margin:12px 0; }
+.vessel-fleet-detail dt { color:var(--muted-foreground); }
+.vessel-fleet-detail dd { margin:0; overflow-wrap:anywhere; }
+.vessel-fleet-close { position:absolute; right:6px; top:6px; }
+@container vessel-canvas (max-width:560px) {
+  .vessel-fleet-error { top:186px; }
+  .vessel-fleet-detail { left:8px; right:8px; bottom:28px; width:auto; max-width:none; max-height:52%; }
+}

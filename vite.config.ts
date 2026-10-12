@@ -3,11 +3,14 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 import { fileURLToPath, URL } from "node:url";
+import { devOriginBridge, developmentBackend } from "./scripts/dev-origin.ts";
 
 export default defineConfig(({ mode }) => {
   const localEnv = loadEnv(mode, process.cwd(), "MIDTERM_");
+  const backend = developmentBackend(localEnv);
   return {
-    plugins: [react(), tailwindcss(), viteSingleFile()],
+    plugins: [react(), tailwindcss(), viteSingleFile(),
+      ...(backend.origin ? [devOriginBridge(backend.origin)] : [])],
     resolve: {
       alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
     },
@@ -16,8 +19,9 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: {
         "/api": {
-          target: localEnv.MIDTERM_API_TARGET || "http://127.0.0.1:8093",
+          target: backend.target,
           changeOrigin: true,
+          secure: true,
         },
       },
       watch: {

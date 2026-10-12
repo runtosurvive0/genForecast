@@ -1,13 +1,39 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { filterDiscoveredVessels, fetchVesselCatalog } from "../src/features/vessels/vessel-discovery.ts";
+import { watchStatus } from "../src/features/vessels/vessel-watch-status.ts";
+import type { TrackingVessel } from "../src/domain/vessel-workflow.ts";
+import { describeKoreanPosition } from "../src/features/vessels/vessel-position-label.ts";
 
-test("discovery accepts 20000 vessels and rejects an over-capacity response", async () => {
+test("nearby position labels use the nearest reference and bearing from port to vessel", () => {
+  const now = Date.parse("2026-10-12T00:00:00Z");
+  const at = (latitude: number, longitude: number) => describeKoreanPosition({ latitude, longitude, observedAt: new Date(now).toISOString() }, now);
+  assert.equal(at(37.480609, 126.35)?.label, "인천항 서쪽 약 24km");
+  assert.equal(at(37.6, 126.620786)?.label, "인천항 북쪽 약 13km");
+  assert.equal(at(35, 129)?.label, "부산항 남쪽 약 11km");
+  assert.equal(at(36.98, 126.45)?.label, "당진 발전소 항만 기준점 부근");
+  assert.equal(at(37.49, 129.25)?.label, "동해 발전소 항만 동쪽 약 9km");
+  assert.equal(at(32, 126)?.reference, "제주");
+});
+
+test("position labels do not invent locations for missing, invalid or overseas observations", () => {
+  const now = Date.parse("2026-10-12T00:00:00Z");
+  assert.equal(describeKoreanPosition(null, now), null);
+  for (const [latitude, longitude, observedAt] of [
+    [NaN, 126, "2026-10-12T00:00:00Z"], [35, Infinity, "2026-10-12T00:00:00Z"],
+    [-34, 152, "2026-10-12T00:00:00Z"], [35, 129, "invalid"], [35, 129, "2026-10-13T00:00:00Z"],
+  ] as const) assert.equal(describeKoreanPosition({ latitude, longitude, observedAt }, now), null);
+  const position = { latitude: 35, longitude: 129, observedAt: "2026-10-11T23:00:00Z" };
+  assert.equal(describeKoreanPosition(position, now)?.stale, false);
+  assert.equal(describeKoreanPosition(position, now + 1)?.stale, true);
+});
+
+test("discovery accepts 40000 vessels and rejects an over-capacity response", async () => {
   const original = globalThis.fetch;
   const at = "2026-10-10T00:00:00Z";
-  let count = 20000;
+  let count = 40000;
   globalThis.fetch = async () => new Response(JSON.stringify({
-    provider: "aisstream", status: "receiving", coverage: "global", fetchedAt: at, capacity: 20000,
+    provider: "aisstream", status: "receiving", coverage: "global", fetchedAt: at, capacity: 40000,
     vessels: Array.from({ length: count }, (_, i) => ({
       id: `ais-${440000000 + i}`, name: `TEST ${i}`, mmsi: String(440000000 + i), imo: "", source: "aisstream",
       ais: { updatedAt: at, destination: "DANGJIN", shipType: 70, navStatus: 0, position: null },
@@ -15,9 +41,9 @@ test("discovery accepts 20000 vessels and rejects an over-capacity response", as
   }));
   try {
     const snapshot = await fetchVesselCatalog();
-    assert.equal(snapshot.vessels.length, 20000);
-    assert.equal(snapshot.vessels[19999].mmsi, "440019999");
-    count = 20001;
+    assert.equal(snapshot.vessels.length, 40000);
+    assert.equal(snapshot.vessels[39999].mmsi, "440039999");
+    count = 40001;
     await assert.rejects(fetchVesselCatalog);
   } finally {
     globalThis.fetch = original;
@@ -83,6 +109,27 @@ const emptyWorkspace: VesselWorkspace = {
   vessels: [],
   voyages: [],
 };
+
+test("watch status uses AIS without requiring a voyage and never invents a departure plan", () => {
+  const ship: TrackingVessel = { id: "moving", name: "MOVING", source: "aisstream", mmsi: "440123456", imo: "",
+    ais: { updatedAt: "2026-10-12T00:00:00Z", navStatus: 0, shipType: 70, destination: "KRPUS", position: null } };
+  assert.equal(watchStatus(ship), "underway");
+  for (const status of [1, 5, 6]) {
+    ship.ais!.navStatus = status;
+    ship.ais!.position = { ...etaVoyage.position!, sogKn: 12 };
+    assert.equal(watchStatus(ship, etaVoyage), "stopped");
+  }
+  ship.ais!.navStatus = null;
+  assert.equal(watchStatus(ship), "underway");
+  for (const speed of [null, 0, 0.4, 102.3, NaN]) {
+    ship.ais!.position!.sogKn = speed;
+    assert.equal(watchStatus(ship), "unknown");
+  }
+  assert.equal(watchStatus(ship, { ...etaVoyage, state: "planned" }), "planned");
+  ship.ais!.navStatus = 8;
+  assert.equal(watchStatus(ship, { ...etaVoyage, state: "planned" }), "underway");
+  assert.equal(watchStatus({ ...ship, source: "demo" }, { ...etaVoyage, state: "planned" }), "planned");
+});
 
 test("AIS destination filtering is independent of current location and ship name", () => {
   const base = {

@@ -1,5 +1,6 @@
-.vessel-workflow {
+.tower-page.vessel-workflow {
   min-width: 0;
+  row-gap: 8px;
 }
 /* Match the shell's 34px scope selector and compact horizon controls. */
 :is(.vessel-workflow, .vessel-workflow-dialog) {
@@ -7,7 +8,10 @@
   --vessel-control-font: 12px;
   --vessel-control-radius: 7px;
 }
-:is(.vessel-workflow, .vessel-workflow-dialog) button[data-variant][data-size]:not(:where(.vessel-map-controls button)) {
+:is(.vessel-workflow, .vessel-workflow-dialog)
+  button[data-variant][data-size]:not(
+    :where(.vessel-map-controls button, .vessel-map-tool-button)
+  ) {
   height: var(--vessel-control-height);
   min-height: var(--vessel-control-height);
   padding: 5px 11px;
@@ -18,11 +22,16 @@
   font-weight: 500;
   box-shadow: none;
 }
-:is(.vessel-workflow, .vessel-workflow-dialog) button[data-variant][data-size^="icon"]:not(:where(.vessel-map-controls button)) {
+:is(.vessel-workflow, .vessel-workflow-dialog)
+  button[data-variant][data-size^="icon"]:not(
+    :where(.vessel-map-controls button, .vessel-map-tool-button)
+  ) {
   width: var(--vessel-control-height);
   padding: 0;
 }
-:is(.vessel-workflow, .vessel-workflow-dialog) button[data-variant][data-size] > svg {
+:is(.vessel-workflow, .vessel-workflow-dialog)
+  button[data-variant][data-size]
+  > svg {
   width: 14px;
   height: 14px;
 }
@@ -37,7 +46,11 @@
   box-shadow: none;
 }
 :is(.vessel-workflow, .vessel-workflow-dialog)
-  :is(.vessel-workflow-filters, .vessel-discovery-scopes, [data-slot="tabs-list"])
+  :is(
+    .vessel-workflow-filters,
+    .vessel-discovery-scopes,
+    [data-slot="tabs-list"]
+  )
   button[data-variant][data-size] {
   height: auto;
   min-height: 0;
@@ -51,15 +64,26 @@
   background: transparent;
 }
 :is(.vessel-workflow, .vessel-workflow-dialog)
-  :is(.vessel-workflow-filters, .vessel-discovery-scopes, [data-slot="tabs-list"])
-  button:is([aria-pressed="true"], [data-state="active"])[data-variant][data-size] {
+  :is(
+    .vessel-workflow-filters,
+    .vessel-discovery-scopes,
+    [data-slot="tabs-list"]
+  )
+  button:is(
+    [aria-pressed="true"],
+    [data-state="active"]
+  )[data-variant][data-size] {
   color: var(--foreground);
   background: var(--card);
   box-shadow: 0 1px 3px #0000000c;
   font-weight: 550;
 }
 :is(.vessel-workflow, .vessel-workflow-dialog)
-  :is(.vessel-workflow-filters, .vessel-discovery-scopes, [data-slot="tabs-list"])
+  :is(
+    .vessel-workflow-filters,
+    .vessel-discovery-scopes,
+    [data-slot="tabs-list"]
+  )
   button[data-variant][data-size]:hover {
   color: var(--foreground);
   background: var(--accent);
@@ -162,6 +186,18 @@
   font-size: 11px;
   color: var(--muted-foreground);
 }
+.vessel-route-gap-notice {
+  order: 1;
+  flex-basis: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--muted);
+  overflow-wrap: anywhere;
+}
+.vessel-route-gap-notice p {
+  color: var(--foreground);
+}
 .vessel-route-explanation summary {
   cursor: pointer;
   padding: 2px 0;
@@ -212,7 +248,7 @@
 .vessel-workspace-header {
   display: grid;
   gap: 16px;
-  padding-top: 20px;
+  padding-top: 0;
   min-width: 0;
 }
 .vessel-workflow-actions,
@@ -273,25 +309,28 @@
 }
 .vessel-eta-workspace {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
 }
 .vessel-watchlist-panel {
   min-width: 0;
-  padding: 0 10px 10px;
-  border-radius: 8px;
+  padding: 0 8px 8px;
+  border-radius: 7px;
   background: color-mix(in srgb, var(--muted) 75%, var(--background));
 }
 .vessel-watchlist-panel .vessel-workflow-filters {
   flex-wrap: nowrap;
   gap: 2px;
-  margin: 12px 0;
+  margin: 8px 0;
   padding: 2px;
   border-radius: 5px;
   background: var(--muted);
 }
-.vessel-workflow .vessel-watchlist-panel .vessel-workflow-filters button[data-variant][data-size] {
+.vessel-workflow
+  .vessel-watchlist-panel
+  .vessel-workflow-filters
+  button[data-variant][data-size] {
   padding-inline: 6px;
   font-size: 11px;
 }
@@ -299,27 +338,12 @@
   display: none;
 }
 .vessel-map-command-bar {
-  display: grid;
-  gap: 10px;
-  padding: 16px 0 12px;
-  min-width: 0;
-}
-.vessel-selection-header {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  min-height: 24px;
-}
-.vessel-selection-header h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.vessel-selection-observed {
-  font-size: 11px;
-  color: var(--muted-foreground);
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 16px;
+  min-width: 0;
 }
 .vessel-workflow .vessel-map-embedded {
   border: 0;
@@ -351,7 +375,7 @@
   border-top: 0;
 }
 .vessel-eta-map-column .vessel-eta-detail {
-  padding-top: 12px;
+  padding-top: 0;
 }
 .vessel-eta-map-column .vessel-eta-detail .tower-section {
   border: 0;
@@ -378,8 +402,8 @@
   width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  padding: 16px 12px;
+  gap: 6px;
+  padding: 12px 8px;
   text-align: left;
   border: 0;
   border-radius: 6px;
@@ -404,20 +428,11 @@
   font-weight: 550;
   overflow-wrap: anywhere;
 }
-.vessel-watchlist .shipment-card b {
-  font-size: 15px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
 .vessel-watchlist .shipment-card > span,
 .vessel-watchlist .shipment-card small {
   font-size: 11px;
   color: var(--muted-foreground);
   font-weight: 400;
-}
-.vessel-watchlist .shipment-card .vessel-watchlist-speed {
-  color: var(--foreground);
-  font-variant-numeric: tabular-nums;
 }
 .vessel-workflow-empty {
   padding: 24px 12px;
@@ -428,7 +443,17 @@
 .vessel-eta-map-column {
   min-width: 0;
   display: grid;
-  gap: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 0 16px;
+}
+.vessel-map-stage,
+.vessel-arrival-panel,
+.vessel-supporting-details {
+  min-width: 0;
+}
+.vessel-eta-map-column:not(:has(.vessel-arrival-panel)) {
+  grid-template-columns: minmax(0, 1fr);
 }
 .vessel-workflow .vessel-map {
   grid-template-columns: minmax(0, 1fr);
@@ -448,6 +473,220 @@
 }
 .vessel-workflow .vessel-map-canvas {
   min-height: clamp(360px, 45vh, 560px);
+}
+.vessel-arrival-panel {
+  margin-bottom: 12px;
+  min-width: 0;
+}
+.vessel-arrival-metrics {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 20px;
+}
+.vessel-arrival-metrics .tower-metric {
+  padding: 0;
+  border: 0;
+}
+.vessel-arrival-metrics .tower-metric strong,
+.vessel-arrival-metrics .vessel-eta-primary {
+  font-size: 27px;
+  font-weight: 550;
+  letter-spacing: -0.6px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.vessel-arrival-metrics .tower-metric p {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.vessel-arrival-metrics .vessel-weather-eta-delay {
+  color: var(--primary);
+}
+.vessel-arrival-facts {
+  min-width: 0;
+}
+.vessel-arrival-insight {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--muted-foreground);
+}
+.vessel-arrival-insight[data-warning="true"] {
+  color: var(--amber);
+}
+.vessel-arrival-insight > svg {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.vessel-arrival-insight p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.vessel-workflow .vessel-arrival-insight button[data-variant][data-size] {
+  height: auto;
+  min-height: 0;
+  padding: 2px 0 2px 8px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.vessel-arrival-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 8px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.vessel-demo-destination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.vessel-demo-destination strong {
+  font-size: 12px;
+  color: var(--foreground);
+  font-weight: 500;
+}
+.vessel-data-details {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.vessel-data-details > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  padding: 14px 0;
+  cursor: pointer;
+  font-weight: 500;
+}
+.vessel-data-details > summary::-webkit-details-marker {
+  display: none;
+}
+.vessel-data-details[open] > summary > svg {
+  transform: rotate(90deg);
+}
+.vessel-data-details > summary small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 400;
+}
+.vessel-data-details [data-slot="tabs-list"] {
+  gap: 16px;
+  flex-wrap: wrap;
+  height: auto;
+  justify-content: start;
+  padding: 0 0 5px;
+}
+.vessel-data-details [data-slot="tabs-trigger"] {
+  flex: initial;
+  padding: 6px 0;
+  font-size: 12px;
+  box-shadow: none;
+  border-radius: 0;
+}
+.vessel-data-details [data-slot="tabs-content"][data-state="inactive"] {
+  display: none;
+}
+.vessel-data-details [data-slot="tabs-content"] {
+  min-width: 0;
+  padding: 12px 0;
+}
+.vessel-data-details .vessel-observation-details {
+  margin-top: 0;
+}
+.vessel-data-details .vessel-eta-inputs {
+  margin-top: 12px;
+}
+.vessel-data-context {
+  color: var(--muted-foreground);
+  margin: 0;
+}
+.vessel-data-details .vessel-eta-inputs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.vessel-settings-dialog {
+  max-width: 480px;
+}
+.vessel-settings-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+.vessel-workflow .vessel-map-weather-panel {
+  padding: 12px 0 0;
+}
+.vessel-map-weather-title {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--foreground);
+}
+.vessel-map-weather-row .vessel-map-weather-value {
+  margin-right: auto;
+}
+.vessel-map-weather-guide {
+  color: var(--muted-foreground);
+}
+.vessel-weather-alert {
+  color: var(--amber);
+}
+@media (max-width: 1100px) {
+  .vessel-arrival-metrics {
+    grid-template-columns: 1.3fr 1fr;
+    gap: 12px;
+  }
+  .vessel-arrival-facts {
+    grid-column: 1 / -1;
+  }
+  .vessel-arrival-facts .tower-metric {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+  .vessel-arrival-facts .tower-metric strong {
+    font-size: 15px;
+  }
+  .vessel-arrival-metrics .vessel-eta-primary {
+    font-size: 24px;
+  }
+  .vessel-data-details .vessel-eta-inputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 650px) {
+  .vessel-map-command-bar {
+    flex-wrap: wrap;
+    padding-top: 12px;
+  }
+  .vessel-arrival-insight {
+    flex-wrap: wrap;
+  }
+  .vessel-arrival-insight p {
+    flex-basis: calc(100% - 24px);
+  }
+  .vessel-data-details > summary small {
+    display: none;
+  }
+  .vessel-data-details .vessel-eta-inputs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vessel-arrival-metrics .tower-metric strong,
+  .vessel-arrival-metrics .vessel-eta-primary {
+    font-size: 21px;
+  }
 }
 .vessel-eta-headline {
   display: flex;
@@ -864,6 +1103,28 @@
 .vessel-discovery-table td:not(:first-child) {
   white-space: nowrap;
 }
+.vessel-discovery-table .vessel-observed-position {
+  display: block;
+  margin-top: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: help;
+  text-decoration: underline dotted var(--muted-foreground);
+  text-underline-offset: 3px;
+}
+.vessel-observed-position:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.vessel-observed-position-tooltip {
+  max-width: min(340px, calc(100vw - 32px));
+  line-height: 1.6;
+}
 .vessel-discovery-pagination {
   justify-content: flex-end;
 }
@@ -1267,9 +1528,6 @@
   gap: 5px;
   font-size: 16px;
   font-variant-numeric: tabular-nums;
-}
-.vessel-watchlist-weather {
-  font-size: 10px;
 }
 @media (max-width: 650px) {
   .vessel-forecast-values {

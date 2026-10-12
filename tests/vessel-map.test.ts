@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
+import { fleetBounds, decodeFleet } from '../src/features/vessels/fleet-map.ts';
 import test from "node:test";
+import { filterDiscoveredVessels } from "../src/features/vessels/vessel-discovery.ts";
 import {
   landBackdropProgress,
   dotRadius,
@@ -10,14 +12,14 @@ import { projectStarField } from "../src/features/vessels/globe-stars.ts";
 import { shipments } from "../src/domain/operations.ts";
 import { voyages } from "../src/data/control-tower.ts";
 import assert from "node:assert/strict";
-import { decodeCyclones, nearbyCyclones, cycloneAt, windFootprints, weatherAttention } from "../src/features/vessels/vessel-weather-layers.ts";
-import { estimateBasicEta } from "../src/features/vessels/vessel-basic-eta.ts";
+import { decodeCyclones, nearbyCyclones, cycloneAt, windFootprints, weatherAttention, weatherRouteFeatures } from "../src/features/vessels/vessel-weather-layers.ts";
+import { canReuseVesselRoute, estimateBasicEta } from "../src/features/vessels/vessel-basic-eta.ts";
 import { estimateWeatherEta } from "../src/features/vessels/vessel-weather-eta.ts";
 import type { VesselForecast } from "../src/features/vessels/vessel-weather.ts";
-import { decodeForecast, forecastUsable } from "../src/features/vessels/vessel-weather.ts";
+import { decodeForecast, forecastUsable, forecastRange } from "../src/features/vessels/vessel-weather.ts";
 import type { TrackingVessel } from "../src/domain/vessel-workflow.ts";
 import { vesselCourse, projectedCourse } from "../src/features/vessels/vessel-symbol.ts";
-import { mapFleet, decodeRoute, decodeHistory, vesselNavigationRoutes } from "../src/features/vessels/vessel-navigation.ts";
+import { mapFleet, decodeRoute, decodeHistory, vesselNavigationRoutes, remainingRoute } from "../src/features/vessels/vessel-navigation.ts";
 import {
   unwrapRoute,
   morphProgress,
@@ -34,6 +36,47 @@ const etaShip: TrackingVessel = { id: 'eta-test', name: 'ETA TEST', mmsi: '44012
 const etaRoute = decodeRoute({ kind: 'estimated', provider: 'searoute', destinationId: 'dangjin', origin: [0, 0],
   coordinates: [[0, 0], [1, 0], [2, 0]], distanceNm: 120, startOffsetNm: 0, endOffsetNm: 1 });
 const etaInput = { vessel: etaShip, route: etaRoute, destination: 'dangjin', now: etaAt, routeCalculatedAt: etaAt };
+
+test('fleet map requests bounded wrapped viewports and rejects inconsistent feature counts', () => {
+  assert.equal(fleetBounds(170, 190, -90, 90, 20).toString(), 'west=170&east=-170&south=-85&north=85&zoom=18');
+  assert.equal(fleetBounds(-200, 200, -40, 40, 0).get('west'), '-180');
+  const data = { type: 'FeatureCollection' as const, features: [], visibleCount: 0, fetchedAt: new Date(etaAt).toISOString(), lastReceivedAt: null };
+  assert.deepEqual(decodeFleet(data), data);
+  assert.throws(() => decodeFleet({ ...data, visibleCount: 2 }));
+});
+
+test('remaining route trims passed points and uses COG only to resolve nearby opposing segments', () => {
+  const route = { ...etaRoute, coordinates: [[0, 0], [1, 0], [1, .01], [0, .01]] as [number, number][] };
+  const forward = remainingRoute(route, [.5, .004], 270);
+  assert.deepEqual(forward.coordinates, [[.5, .01], [0, .01]]);
+  assert.equal(remainingRoute(route, [.5, .004]).coordinates.length, 4);
+  const geometry = vesselNavigationRoutes('ship', { longitude: .5, latitude: .004, observedAt: new Date(etaAt).toISOString(), cogDeg: 270, sogKn: 12 }, route);
+  assert.deepEqual(geometry.find(x => x.kind === 'estimated')!.coordinates, forward.coordinates);
+  assert.deepEqual(geometry.find(x => x.kind === 'connector')!.coordinates.at(-1), [.5, .01]);
+  const original = JSON.stringify(route);
+  remainingRoute(route, [.6, .004], 270);
+  assert.equal(JSON.stringify(route), original);
+});
+
+test('near Korea discovery uses observed coordinates independently of destination and validates position age', () => {
+  const ship = (id: string, latitude: number, longitude: number, destination = '', observedAt = new Date(etaAt).toISOString()): TrackingVessel => ({
+    ...etaShip, id, name: id, ais: { ...etaShip.ais!, destination,
+      position: { ...etaShip.ais!.position!, latitude, longitude, observedAt } },
+  });
+  const vessels = [ship('busan', 35, 129, 'SGSIN'), ship('jeju', 32, 126),
+    ship('west', 36, 124), ship('east', 37, 132), ship('south-edge', 31, 126), ship('north-edge', 39, 128),
+    ship('overseas', -34, 152, 'KRPUS'), ship('too-west', 35, 123.99), ship('too-east', 35, 132.01),
+    ship('too-south', 30.99, 126), ship('too-north', 39.01, 128), ship('invalid', NaN, 128),
+    ship('stale', 35, 129, '', new Date(etaAt - 2 * 3600000).toISOString()),
+    ship('future', 35, 129, '', new Date(etaAt + 60000).toISOString()), ship('bad-time', 35, 129, '', 'invalid'),
+    { ...etaShip, id: 'missing', ais: { ...etaShip.ais!, position: null } }];
+  const near = (age = '60', destination = '') => filterDiscoveredVessels(vessels, '', 'all', 'all', age, 'name', etaAt,
+    { region: 'korea-nearby', destination }).map(v => v.id);
+  assert.deepEqual(near(), ['busan', 'east', 'jeju', 'north-edge', 'south-edge', 'west']);
+  assert.deepEqual(near('all'), ['busan', 'east', 'jeju', 'north-edge', 'south-edge', 'stale', 'west']);
+  assert.deepEqual(near('60', 'SGSIN'), ['busan']);
+  assert.equal(filterDiscoveredVessels(vessels, 'overseas', 'all', 'all', 'all', 'name', etaAt).length, 1);
+});
 
 const weatherFixture = (waves = [1, 4, 4], winds = [10, 10, 10]): VesselForecast => ({
   source: 'aisstream', mmsi: etaShip.mmsi, destinationId: 'dangjin', status: 'ready', reason: '',
@@ -74,6 +117,50 @@ test('visibility is optional for old servers but zero is valid and missing is ne
   assert.throws(() => decodeForecast(fixture, etaShip, 'dangjin'));
   fixture.points[0].visibilityM = 800; fixture.points[0].airStatus = 'stale';
   assert.equal(weatherAttention(fixture.points[0], 'visibility', etaAt), 'unknown');
+});
+
+test('weekly forecast range clips without mutating cache and ETA accepts a full week', () => {
+  const forecast = weatherFixture([1, 1, 1]);
+  forecast.horizonHours = 168;
+  const hours = [...Array.from({ length: 9 }, (_, i) => i * 3), ...Array.from({ length: 8 }, (_, i) => 30 + i * 6), ...Array.from({ length: 8 }, (_, i) => 84 + i * 12)];
+  forecast.points = hours.map(h => ({ ...forecast.points[0], longitude: h / 12,
+    passageAt: new Date(etaAt + h * 3600000).toISOString(),
+    airForecastAt: new Date(etaAt + h * 3600000).toISOString(), marineForecastAt: new Date(etaAt + h * 3600000).toISOString() }));
+  const before = structuredClone(forecast);
+  assert.equal(decodeForecast(forecast, etaShip, 'dangjin').points.length, 25);
+  const short = forecastRange({ status: 'ready', reason: '', data: forecast }, 72);
+  assert.equal(short.data!.points.length, 17);
+  assert.equal(short.data!.horizonHours, 72);
+  assert.deepEqual(forecast, before);
+  const basic = { ...weatherInput().basic, eta: new Date(etaAt + 168 * 3600000).toISOString(), distanceNm: 2016 };
+  assert.equal(estimateWeatherEta({ ...weatherInput(), basic, forecast }).coveredH, 168);
+  assert.equal(estimateWeatherEta({ ...weatherInput(), basic, forecast: short.data }).uncoveredH, 96);
+  assert.equal(forecastRange({ status: 'ready', reason: '', data: weatherFixture() }, 168).data!.horizonHours, 72);
+});
+
+test('weather route colours follow bends and keep missing and out-of-range legs grey', () => {
+  const route = decodeRoute({ ...etaRoute, coordinates: [[0, 0], [1, 0], [1, 1], [2, 1]], distanceNm: 180 });
+  const fixture = weatherFixture();
+  const coords = [[0, 0], [1, 1]];
+  // Use the actual geometric scaling for the route's first two legs.
+  const total = remainingRoute(route, [0, 0]).networkNm;
+  const geom = 60.0404607 * 2 + 60.031316;
+  const through = total * 120.0809214 / geom;
+  const points = coords.map(([longitude, latitude], i) => ({ ...fixture.points[i], longitude, latitude,
+    passageAt: new Date(etaAt + (i ? through / 12 : 0) * 3600000).toISOString(),
+    airForecastAt: new Date(etaAt + (i ? through / 12 : 0) * 3600000).toISOString(),
+    marineForecastAt: new Date(etaAt + (i ? through / 12 : 0) * 3600000).toISOString() }));
+  const overlay = { points, route, speedKn: 12, index: 0, metric: 'wave' as const, now: etaAt, storms: [], onSelectPoint() {} };
+  const features = weatherRouteFeatures(overlay);
+  assert.equal(features.length, 2);
+  assert.equal(features[0].properties!.status, 'attention');
+  assert.equal(features[1].properties!.status, 'unknown');
+  assert.equal(features[0].geometry.type, 'LineString');
+  if (features[0].geometry.type === 'LineString') assert.ok(features[0].geometry.coordinates.some(([x, y]) => x === 1 && y === 0));
+  points[1].waveM = null;
+  assert.equal(weatherRouteFeatures(overlay)[0].properties!.status, 'unknown');
+  points[1].longitude = 20;
+  assert.deepEqual(weatherRouteFeatures(overlay), []);
 });
 
 test('weather ETA integrates extra segment travel time and leaves the baseline untouched', () => {
@@ -210,8 +297,41 @@ test('basic ETA withholds stale, missing, implausible or stopped AIS rather than
   assert.equal(estimateBasicEta({ ...etaInput, destination: 'hadong' }).eta, null);
 });
 
-test('basic ETA rejects remote route snaps, expired routes, position jumps and passed arrival times', () => {
-  for (const patch of [{ startOffsetNm: 58 }, { endOffsetNm: 21 }, { distanceNm: NaN }]) {
+test('starting network gap adds a connection estimate instead of blocking ETA', () => {
+  const sparse = { ...etaRoute, coordinates: [[0, .44], [2, .44]] as [number, number][], startOffsetNm: 26.54 };
+  const start = estimateBasicEta({ ...etaInput, route: sparse });
+  assert.equal(start.state, 'ready');
+  assert.ok(start.distanceNm! > 146 && start.distanceNm! < 147);
+  assert.match(start.reason, /연결.*직선.*가정/);
+  assert.ok(Date.parse(start.eta!) > etaAt + 12 * 3600000);
+});
+
+test('destination gaps and outdated cross-track routes still explain why recalculation is needed', () => {
+  const end = estimateBasicEta({ ...etaInput, route: { ...etaRoute, endOffsetNm: 21.25 } });
+  assert.equal(end.eta, null);
+  assert.match(end.reason, /목적항 진입.*21\.3.*20\.0/);
+  const moved = structuredClone(etaShip);
+  moved.ais!.position!.latitude = .1; // About 6 nm, below the old 25 nm refresh distance.
+  const deviation = estimateBasicEta({ ...etaInput, vessel: moved });
+  assert.equal(deviation.eta, null);
+  assert.match(deviation.reason, /현재 항로 이탈.*6\.0.*5\.0/);
+  assert.equal(estimateBasicEta({ ...etaInput, route: { ...etaRoute, startOffsetNm: 5, endOffsetNm: 20 } }).state, 'ready');
+});
+
+test('route cache distinguishes cross-track movement from progress and a fresh network gap', () => {
+  assert.equal(canReuseVesselRoute(etaRoute, [.1, 0], etaAt, etaAt + 60000), true);
+  assert.equal(canReuseVesselRoute(etaRoute, [0, .1], etaAt, etaAt + 60000), false);
+  assert.equal(canReuseVesselRoute(etaRoute, [.5, 0], etaAt, etaAt + 60000), false);
+  assert.equal(canReuseVesselRoute(etaRoute, [0, 0], etaAt, etaAt + 6 * 3600000), false);
+  const sparse = { ...etaRoute, startOffsetNm: 26.5, coordinates: [[0, .44], [2, .44]] as [number, number][] };
+  assert.equal(canReuseVesselRoute(sparse, [0, 0], etaAt, etaAt + 60000), true);
+  assert.equal(canReuseVesselRoute(sparse, [0, .1], etaAt, etaAt + 60000), false);
+  const dateline = { ...etaRoute, origin: [179.9, 0] as [number, number], coordinates: [[179.9, 0], [-179, 0]] as [number, number][] };
+  assert.equal(canReuseVesselRoute(dateline, [-179.99, 0], etaAt, etaAt + 60000), true);
+});
+
+test('basic ETA rejects destination gaps, expired routes, position jumps and passed arrival times', () => {
+  for (const patch of [{ endOffsetNm: 21 }, { distanceNm: NaN }]) {
     assert.equal(estimateBasicEta({ ...etaInput, route: { ...etaRoute, ...patch } }).eta, null);
   }
   const offRoute = structuredClone(etaShip);
@@ -275,8 +395,10 @@ test("route connection follows actual AIS even when the cached sea route starts 
     coordinates: [[125.57373, 34.152727], [126, 36]], distanceNm: 100, startOffsetNm: 58, endOffsetNm: 11 });
   const original = structuredClone(route);
   const result = vesselNavigationRoutes("real", current, route);
-  assert.deepEqual(result.find(r => r.kind === "connector")!.coordinates, [[125, 35], route.coordinates[0]]);
-  assert.deepEqual(result.find(r => r.kind === "estimated")!.coordinates, route.coordinates);
+  const remaining = result.find(r => r.kind === "estimated")!.coordinates;
+  assert.ok(remaining[0][1] > 34.8, 'passed southern start is trimmed');
+  assert.deepEqual(remaining.at(-1), route.coordinates.at(-1));
+  assert.deepEqual(result.find(r => r.kind === "connector")!.coordinates, [[125, 35], remaining[0]]);
   const moved = vesselNavigationRoutes("real", { ...current, longitude: 125.01 }, route);
   assert.deepEqual(moved.find(r => r.kind === "connector")!.coordinates[0], [125.01, 35]);
   assert.deepEqual(route, original, "never move actual coordinates or mutate the calculated route");
