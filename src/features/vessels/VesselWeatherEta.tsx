@@ -1,29 +1,13 @@
-import { useState } from "react";
-import type { TrackingVessel } from "@/domain/vessel-workflow";
 import { date as dateLabel } from "@/lib/format";
-import type { BasicEta } from "./vessel-basic-eta";
-import type { ForecastState } from "./vessel-weather";
-import { estimateWeatherEta } from "./vessel-weather-eta";
+import type { WeatherEta } from "./vessel-weather-eta";
 
 export function VesselWeatherEta({
-  vessel,
-  basic,
-  forecast,
-  now,
+  result,
+  sensitivity,
 }: {
-  vessel: TrackingVessel;
-  basic: BasicEta;
-  forecast?: ForecastState;
-  now: number;
+  result: WeatherEta;
+  sensitivity: number;
 }) {
-  const [sensitivity, setSensitivity] = useState(1);
-  const result = estimateWeatherEta({
-    vessel,
-    basic,
-    forecast: forecast?.data,
-    now,
-    sensitivity,
-  });
   return (
     <section className="vessel-weather-eta" aria-label="기상 보정 ETA 비교">
       <div className="vessel-weather-eta-summary" aria-live="polite">
@@ -46,36 +30,29 @@ export function VesselWeatherEta({
             </strong>
           </div>
         )}
-        {result.eta && (
-          <div>
-            <span className="vessel-eta-label">
-              보정 / 미보정 구간 · 기본 소요시간
-            </span>
-            <strong>
-              {result.coveredH.toFixed(1)} / {result.uncoveredH.toFixed(1)} h
-            </strong>
-          </div>
-        )}
       </div>
-      <p className="vessel-forecast-note">{result.reason}</p>
-      <p className="vessel-forecast-note">
-        실제 예보 + 미검증 감속 가정 · 기본 통과 시각의 예보를 고정한 1회
-        계산입니다.
-      </p>
+      {result.state !== "ready" && (
+        <p className="vessel-forecast-note" role="status">
+          {result.reason}
+        </p>
+      )}
       <details>
         <summary>보정 가정 및 구간별 영향</summary>
-        <label className="vessel-weather-eta-sensitivity">
-          감속 민감도 <output>{sensitivity.toFixed(1)}배</output>
-          <input
-            aria-label="기상 보정 민감도"
-            type="range"
-            min="0"
-            max="1.5"
-            step="0.5"
-            value={sensitivity}
-            onChange={(event) => setSensitivity(Number(event.target.value))}
-          />
-        </label>
+        {result.state === "ready" && <p>{result.reason}</p>}
+        <p>
+          실제 예보 + 미검증 감속 가정 · 기본 통과 시각의 예보를 고정한 1회
+          계산입니다.
+        </p>
+        {result.eta && (
+          <p>
+            보정 / 미보정 구간 · 기본 소요시간 {result.coveredH.toFixed(1)} /{" "}
+            {result.uncoveredH.toFixed(1)} h
+          </p>
+        )}
+        <p>
+          감속 민감도 {sensitivity.toFixed(1)}배 · 항로·계산 설정에서
+          변경합니다.
+        </p>
         <p>
           0배는 감속 미적용, 1배는 기본 가정입니다. 설정은 현재 선택 화면에만
           적용됩니다.
@@ -101,7 +78,7 @@ export function VesselWeatherEta({
           </li>
           <li>
             파고 8m·풍속 50kn·돌풍 65kn 초과는 시연 모델 범위 밖으로 제외합니다.
-            이는 항해 안전 기준이 아닙니다. 누락·오래된 예보와 72시간 이후도
+            이는 항해 안전 기준이 아닙니다. 누락·오래된 예보와 선택 기간 이후도
             보정하지 않습니다.
           </li>
           <li>

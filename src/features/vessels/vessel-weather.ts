@@ -99,14 +99,14 @@ export function decodeForecast(
     !date(data.fetchedAt) ||
     !(data.observedAt === null || date(data.observedAt)) ||
     typeof data.reason !== "string" ||
-    data.horizonHours !== 72 ||
+    ![72, 168].includes(data.horizonHours) ||
     (data.speedKn != null &&
       (typeof data.speedKn !== "number" ||
         !Number.isFinite(data.speedKn) ||
         data.speedKn < 0.5 ||
         data.speedKn > 60)) ||
     !Array.isArray(data.points) ||
-    data.points.length > 12
+    data.points.length > 25
   )
     throw new Error("기상 응답의 선박·목적항을 확인해 주세요.");
   for (const p of data.points) {
@@ -148,4 +148,15 @@ export function decodeForecast(
     }
   }
   return data;
+}
+
+/** Presentation range uses the same cached forecast; never invent extra samples. */
+export function forecastRange(state: ForecastState, hours: 72 | 168): ForecastState {
+  if (!state.data) return state;
+  const data = state.data;
+  const horizonHours = Math.min(hours, data.horizonHours);
+  const end = Date.parse(data.observedAt ?? "") + horizonHours * 3600000;
+  return { ...state, data: { ...data, horizonHours,
+    points: data.points.filter(p => Date.parse(p.passageAt) <= end),
+  } };
 }

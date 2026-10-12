@@ -11,11 +11,12 @@ import {
   metricText,
   overlayFeatures,
   weatherAttention,
+  forecastLabelIndices,
   type WeatherOverlay,
 } from "./vessel-weather-layers";
 import { date as formatDate } from "@/lib/format";
 import { Minus, Plus, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { MapToolButton } from "./MapToolButton";
 import { WorldMap } from "@/components/ui/world-map";
 import type { VesselMapProps } from "./VesselMap";
 import { OfflineVesselSymbol } from "./OfflineVesselSymbol";
@@ -37,6 +38,7 @@ export type MapCanvasProps = Pick<
   | "weatherOverlay"
   | "weatherToolbar"
   | "weatherBusy"
+  | "fleetDiscovery"
 > & {
   visible: VesselMapProps["shipments"];
   positions: NonNullable<VesselMapProps["positions"]>;
@@ -180,34 +182,28 @@ export function OfflineVesselCanvas({
         </ZoomableGroup>
       </ComposableMap>
       <MapDrawingOrb busy={!!weatherBusy} theme={theme} />
-      <div className="vessel-map-controls" aria-label="지도 조작">
+      <div className="vessel-map-toolbar" role="toolbar" aria-label="지도 도구">
         {weatherToolbar}
-        <Button
-          variant="outline"
-          size="icon-sm"
-          aria-label="지도 확대"
+        <MapToolButton
+          label="지도 확대"
           disabled={view.zoom >= 5}
           onClick={() => changeZoom(1.4)}
         >
           <Plus />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          aria-label="지도 축소"
+        </MapToolButton>
+        <MapToolButton
+          label="지도 축소"
           disabled={view.zoom <= 1}
           onClick={() => changeZoom(1 / 1.4)}
         >
           <Minus />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          aria-label="전체 세계지도 보기"
+        </MapToolButton>
+        <MapToolButton
+          label="전체 세계지도 보기"
           onClick={() => setView(fullWorld)}
         >
           <RotateCcw />
-        </Button>
+        </MapToolButton>
       </div>
     </>
   );
@@ -220,7 +216,11 @@ function OfflineWeather({
   overlay: WeatherOverlay;
   zoom: number;
 }) {
-  const { path } = useMapContext();
+  const { path, projection } = useMapContext();
+  const labels = forecastLabelIndices(overlay.points, overlay.index, p => {
+    const xy = projection([p.longitude, p.latitude]) ?? [0, 0];
+    return [xy[0] * zoom, xy[1] * zoom];
+  });
   const passage =
     overlay.points[Math.min(overlay.index, overlay.points.length - 1)];
   return (
@@ -233,14 +233,17 @@ function OfflineWeather({
             d={path(f.geometry) ?? ""}
             fill={f.geometry.type === "Polygon" ? "#dc824d" : "none"}
             fillOpacity={0.18}
-            stroke="#c86b34"
-            strokeWidth={1.5}
+            stroke={f.properties?.kind === "forecast-route" ? f.properties.status === "attention" ? "#dca350" : f.properties.status === "normal" ? "#9c95e8" : "#7b818b" : "#c86b34"}
+            strokeWidth={f.properties?.kind === "forecast-route" ? 3 : 1.5}
             strokeDasharray={
-              f.geometry.type === "LineString" ? "2 3" : undefined
+              f.properties?.kind === "cyclone-track" ? "2 3" : undefined
             }
             vectorEffect="non-scaling-stroke"
           />
         ))}
+      {overlay.points.length > 0 && <Marker coordinates={[overlay.points.at(-1)!.longitude, overlay.points.at(-1)!.latitude]}>
+        <circle r={5 / zoom} fill="#9c95e8" stroke="#fff" strokeWidth={2 / zoom}><title>예보 조회 구간 끝</title></circle>
+      </Marker>}
       {passage && (
         <Marker coordinates={[passage.longitude, passage.latitude]}>
           <circle
@@ -255,7 +258,7 @@ function OfflineWeather({
         <Marker key={i} coordinates={[p.longitude, p.latitude]}>
           <g
             className={`vessel-weather-marker vessel-weather-value is-${weatherAttention(p, overlay.metric, overlay.now)}`}
-            transform={`scale(${1 / zoom}) translate(0 -20)`}
+            transform={`scale(${1 / zoom}) translate(0 ${labels.has(i) ? -20 : 0})`}
             role="button"
             tabIndex={0}
             aria-label={`통과 ${formatDate(p.passageAt, true)} KST · ${metricText(p, overlay.metric)}`}
@@ -269,10 +272,10 @@ function OfflineWeather({
             }}
           >
             <title>{`파고 ${metricText(p, "wave")} · 바람 ${metricText(p, "wind")} · 시정 ${metricText(p, "visibility")}`}</title>
-            <rect x={-30} y={-10} width={60} height={20} rx={4} />
-            <text textAnchor="middle" y={4}>
-              {metricText(p, overlay.metric)}
-            </text>
+            {labels.has(i) ? <>
+              <rect x={-30} y={-10} width={60} height={20} rx={4} />
+              <text textAnchor="middle" y={4}>{metricText(p, overlay.metric)}</text>
+            </> : <><circle r={10} fill="transparent" /><circle r={3} fill="currentColor" /></>}
           </g>
         </Marker>
       ))}

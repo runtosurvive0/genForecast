@@ -12,14 +12,16 @@ import {
 import workerCode from "maplibre-gl/dist/maplibre-gl-worker.mjs?raw";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Globe2, Map as MapIcon, Minus, Plus, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { MapToolButton } from "./MapToolButton";
 import { GlobeStars } from "./GlobeStars";
 import { MapDrawingOrb } from "./MapDrawingOrb";
+import { FleetDiscoveryLayer } from './FleetDiscoveryLayer';
 import {
   cycloneAt,
   metricText,
   overlayFeatures,
   weatherAttention,
+  forecastLabelIndices,
 } from "./vessel-weather-layers";
 import { date as formatDate } from "@/lib/format";
 import type { MapCanvasProps } from "./OfflineVesselCanvas";
@@ -65,13 +67,14 @@ function prepareWorker() {
 }
 
 export function OnlineVesselCanvas(
-  props: MapCanvasProps & { onUnavailable: (reason: string) => void },
+  props: MapCanvasProps & { onUnavailable: (reason: string) => void; fleetStatusTarget?: HTMLElement | null },
 ) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const latest = useRef(props);
   latest.current = props;
   const [revision, setRevision] = useState(0);
+  const [fleetToolsTarget, setFleetToolsTarget] = useState<HTMLDivElement | null>(null);
   const [view, setView] = useState<MapView>("globe");
   const viewRef = useRef<MapView>("globe");
   const [tileFailure, setTileFailure] = useState(false);
@@ -452,6 +455,24 @@ export function OnlineVesselCanvas(
         "vessel-routes",
       );
       map.addLayer({
+        id: "vessel-weather-route",
+        source: "vessel-weather-exposure",
+        type: "line",
+        filter: ["==", ["get", "kind"], "forecast-route"],
+        paint: {
+          "line-color": ["match", ["get", "status"], "attention", "#dca350", "normal", "#9c95e8", "#7b818b"],
+          "line-width": 3,
+          "line-opacity": 0.85,
+        },
+      });
+      map.addLayer({
+        id: "vessel-weather-end",
+        source: "vessel-weather-exposure",
+        type: "circle",
+        filter: ["==", ["get", "kind"], "forecast-end"],
+        paint: { "circle-radius": 5, "circle-color": "#9c95e8", "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
+      });
+      map.addLayer({
         id: "vessel-weather-cyclone-track",
         source: "vessel-weather-exposure",
         type: "line",
@@ -502,6 +523,19 @@ export function OnlineVesselCanvas(
           .addTo(map),
       );
     });
+    const updateLabels = () => {
+      if (!overlay) return;
+      const labels = forecastLabelIndices(overlay.points, overlay.index, p => {
+        const xy = map.project([p.longitude, p.latitude]);
+        return [xy.x, xy.y];
+      });
+      overlay.points.forEach((_, i) => {
+        markers[i].getElement().classList.toggle('is-compact', !labels.has(i));
+        markers[i].setOffset([0, labels.has(i) ? i === overlay.index ? -40 : -20 : 0]);
+      });
+    };
+    updateLabels();
+    map.on('move', updateLabels);
     const passage =
       overlay?.points[Math.min(overlay.index, overlay.points.length - 1)];
     if (passage && overlay)
@@ -530,6 +564,7 @@ export function OnlineVesselCanvas(
       focusedWeather.current = null;
     }
     return () => {
+      map.off('move', updateLabels);
       focusedWeather.current =
         document.activeElement?.getAttribute("data-weather-point") ?? null;
       markers.forEach((marker) => marker.remove());
@@ -584,6 +619,8 @@ export function OnlineVesselCanvas(
       }
     >
       <div ref={host} className="vessel-map-webgl" />
+      {ready && mapRef.current && props.fleetDiscovery && <FleetDiscoveryLayer
+        map={mapRef.current} revision={revision} theme={props.theme} options={props.fleetDiscovery} statusTarget={props.fleetStatusTarget} toolsTarget={fleetToolsTarget} />}
       <GlobeStars
         map={mapRef.current}
         active={ready && props.theme === "dark" && view === "globe"}
@@ -593,12 +630,11 @@ export function OnlineVesselCanvas(
         theme={props.theme}
       />
       <div className="vessel-map-toolbar" role="toolbar" aria-label="지도 도구">
+        <div className="vessel-map-fleet-toggle" ref={setFleetToolsTarget} />
         {props.weatherToolbar}
         <div className="vessel-map-controls" aria-label="지도 조작">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="지도 확대"
+          <MapToolButton
+            label="지도 확대"
             disabled={!ready || zoom >= MAX_ZOOM}
             onClick={() =>
               mapRef.current?.zoomTo(Math.min(MAX_ZOOM, zoom + 1), {
@@ -607,11 +643,9 @@ export function OnlineVesselCanvas(
             }
           >
             <Plus />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="지도 축소"
+          </MapToolButton>
+          <MapToolButton
+            label="지도 축소"
             disabled={!ready || zoom <= minZoom + 0.01}
             onClick={() =>
               mapRef.current?.zoomTo(Math.max(minZoom, zoom - 1), {
@@ -620,42 +654,36 @@ export function OnlineVesselCanvas(
             }
           >
             <Minus />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="전체 세계지도 보기"
+          </MapToolButton>
+          <MapToolButton
+            label="전체 세계지도 보기"
             disabled={!ready}
             onClick={() => resetRef.current()}
           >
             <RotateCcw />
-          </Button>
+          </MapToolButton>
         </div>
         <div
           className="vessel-map-view-switch"
           role="group"
           aria-label="지도 보기 방식"
         >
-          <button
-            type="button"
-            aria-label="지구본 보기"
+          <MapToolButton
+            label="지구본 보기"
             aria-pressed={view === "globe"}
             disabled={!ready}
             onClick={() => changeView("globe")}
           >
             <Globe2 size={13} />
-            지구본
-          </button>
-          <button
-            type="button"
-            aria-label="평면 보기"
+          </MapToolButton>
+          <MapToolButton
+            label="평면 보기"
             aria-pressed={view === "mercator"}
             disabled={!ready}
             onClick={() => changeView("mercator")}
           >
             <MapIcon size={13} />
-            평면
-          </button>
+          </MapToolButton>
         </div>
       </div>
       {status && !isDrawing && (

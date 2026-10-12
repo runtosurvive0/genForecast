@@ -4,6 +4,7 @@
 
 ## 시작과 작업 범위
 
+- 운영 서버는 사용자에게 **ZGX**라고 부른다. 기존 배포 경로·파일명에 남은 `hp`는 호환성을 위해 임의 변경하지 않는다.
 - 먼저 `git status --short --branch`, `git remote -v`를 확인한다. 원격은 https://github.com/runtosurvive0/genForecast.git 이다. 같은 저장소의 SSH 주소도 가능하다.
 - main에서 수정하거나 직접 push하지 않는다. 깨끗한 상태에서 최신 main을 반영하고 작업별 브랜치를 만든다. 이미 해당 작업 브랜치면 이어서 사용한다.
 - 사용자 변경·다른 작업의 파일을 보존한다. 변경이 있으면 누구의 작업인지 확인하고 임의 stash/reset/checkout으로 숨기거나 폐기하지 않는다. 브랜치 전환을 서두르지 않는다.

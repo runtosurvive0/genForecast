@@ -2,7 +2,7 @@
 from copy import deepcopy
 from datetime import datetime, timezone
 from functools import lru_cache
-from math import asin, cos, isfinite, radians, sin, sqrt
+from math import asin, atan2, cos, degrees, isfinite, radians, sin, sqrt
 from pathlib import Path
 import json
 import sqlite3
@@ -11,6 +11,7 @@ import time
 
 PORTS = {"dangjin": [126.45, 36.98], "boryeong": [126.47, 36.4],
          "hadong": [127.79, 34.95], "donghae": [129.15, 37.49]}
+MAX_TRACKED_VESSELS = 1000
 
 
 def epoch(at):
@@ -24,6 +25,30 @@ def distance_nm(a, b):
     lon1, lat1, lon2, lat2 = map(radians, [*a, *b])
     h = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
     return 3440.065 * 2 * asin(sqrt(min(1, max(0, h))))
+
+
+def remaining_route(route, current, course=None):
+    """Trim passed segments; COG resolves only nearby (within 1 nm) opposing legs."""
+    def wrap(n):
+        return (n + 180) % 360 - 180
+    total, candidates = 0, []
+    for index, (a, b) in enumerate(zip(route['coordinates'], route['coordinates'][1:])):
+        length = distance_nm(a, b)
+        scale = cos(radians((a[1] + b[1]) / 2))
+        x, y = wrap(b[0] - a[0]) * scale, b[1] - a[1]
+        px, py = wrap(current[0] - a[0]) * scale, current[1] - a[1]
+        t = max(0, min(1, (px*x + py*y) / (x*x+y*y))) if x*x+y*y else 0
+        point = [wrap(a[0] + wrap(b[0]-a[0])*t), a[1] + y*t]
+        aligned = isinstance(course, (int, float)) and not isinstance(course, bool) and isfinite(course) and 0 <= course < 360 and length > .001 and abs(wrap(degrees(atan2(x, y)) - course)) <= 90
+        candidates.append(dict(index=index, point=point, offset=distance_nm(current, point), along=total+length*t, aligned=aligned))
+        total += length
+    candidates.sort(key=lambda c: c['offset'])
+    nearest = candidates[0]
+    best = next((c for c in candidates if c['aligned'] and c['offset'] <= nearest['offset'] + 1), nearest)
+    network = route['distanceNm'] * max(0, 1-best['along']/total) if total else 0
+    return dict(coordinates=[best['point'], *route['coordinates'][best['index']+1:]],
+                offsetNm=nearest['offset'], connectionNm=best['offset'], networkNm=network,
+                distanceNm=network+best['offset'])
 
 
 class TrackStore:
@@ -48,12 +73,29 @@ class TrackStore:
         keys = {(m["source"], m["mmsi"]) for m in members}
         with self.lock:
             others = set(self.db.execute("SELECT source,mmsi FROM members WHERE owner != ?", (owner,)))
-            if len(others | keys) > 1000:
+            if len(others | keys) > MAX_TRACKED_VESSELS:
                 raise ValueError("서버 추적 한도(1,000척)에 도달했습니다.")
             with self.db:
                 self.db.execute("DELETE FROM members WHERE owner=?", (owner,))
                 self.db.executemany("INSERT INTO members VALUES(?,?,?)", [(owner, *key) for key in keys])
             self.active = others | keys
+
+    def reconcile(self, members_by_owner):
+        """Preserve legacy registrations in an archive; collect only active accounts."""
+        rows = {(owner, m['source'], m['mmsi']) for owner, members in members_by_owner.items() for m in members}
+        keys = {(source, mmsi) for _, source, mmsi in rows}
+        if len(keys) > MAX_TRACKED_VESSELS:
+            raise ValueError('Account tracking union exceeds 1,000 vessels')
+        with self.lock:
+            old = set(self.db.execute('SELECT owner,source,mmsi FROM members'))
+            if old == rows:
+                return
+            with self.db:
+                self.db.execute('CREATE TABLE IF NOT EXISTS archived_members(owner TEXT,source TEXT,mmsi TEXT,PRIMARY KEY(owner,source,mmsi))')
+                self.db.executemany('INSERT OR IGNORE INTO archived_members VALUES(?,?,?)', old - rows)
+                self.db.execute('DELETE FROM members')
+                self.db.executemany('INSERT INTO members VALUES(?,?,?)', rows)
+            self.active = keys
 
     def active_observation(self, source, mmsi):
         """Return a copy for cache restoration without reviving removed subscriptions."""

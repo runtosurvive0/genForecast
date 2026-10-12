@@ -1,4 +1,4 @@
-"""One server-side AISstream subscription, bounded in-memory discovery cache."""
+"""One server-side AISstream subscription with bounded, persistent discovery."""
 from __future__ import annotations
 
 import asyncio
@@ -13,9 +13,27 @@ import re
 from midterm.vessels.korean_destinations import korean_destination
 
 DEFAULT_BOXES = [[[-90, -180], [90, 180]]]
-MAX_VESSELS = 20_000
+MAX_VESSELS = 40_000
 MAX_KOREA_CANDIDATES = 1000
 KOREA_RETENTION_HOURS = 72
+POSITION_TYPES = ("PositionReport", "StandardClassBPositionReport", "ExtendedClassBPositionReport")
+MESSAGE_TYPES = (*POSITION_TYPES, "ShipStaticData", "StaticDataReport")
+
+
+def merge_static_fields(row, fields, observed_at):
+    """Message 24 parts have independent clocks, retained in the existing JSON record."""
+    ais = row['ais']
+    # Backfill clocks for legacy records before advancing the aggregate timestamp.
+    ais.setdefault('nameObservedAt', ais.get('staticObservedAt') if not row['name'].startswith('MMSI ') else None)
+    ais.setdefault('shipTypeObservedAt', ais.get('staticObservedAt') if ais.get('shipType') is not None else None)
+    for key, value, target, clock in (
+        ('name', clean(fields.get('Name')), row, 'nameObservedAt'),
+        ('shipType', number(fields.get('Type'), 1, 99), ais, 'shipTypeObservedAt'),
+    ):
+        if value and (ais[clock] is None or epoch(observed_at) >= epoch(ais[clock])):
+            target[key] = value
+            ais[clock] = observed_at
+    ais['staticObservedAt'] = max(ais.get('staticObservedAt', observed_at), observed_at, key=epoch)
 
 
 def utc_now():
@@ -50,7 +68,13 @@ def observed_time(meta, fallback):
 
 
 class AisCatalog:
-    def __init__(self, api_key=None, on_observation=None, lookup_observation=None):
+    def __init__(self, api_key=None, on_observation=None, lookup_observation=None, store=None):
+        self.store = store
+        self._dirty = set()
+        self._rank = {}
+        self._korea_rank = {}
+        self._sequence = 0
+        self._flush_lock = asyncio.Lock()
         self.on_observation = on_observation
         self.lookup_observation = lookup_observation
         self._key = os.getenv("AISSTREAM_API_KEY", "").strip() if api_key is None else api_key
@@ -93,11 +117,77 @@ class AisCatalog:
                 await self._task
             self._task = None
 
+    async def restore(self):
+        if self.store is None:
+            return
+        records, self.last_received_at = await asyncio.to_thread(self.store.load)
+        for mmsi, raw, rank, korea_rank, metadata in records:
+            vessel = json.loads(raw)
+            self._sequence = max(self._sequence, rank or 0, korea_rank or 0)
+            if rank is not None:
+                self._rows[mmsi] = vessel
+                self._rank[mmsi] = rank
+            if metadata is not None:
+                self._korea[mmsi] = {'vessel': vessel, **json.loads(metadata)}
+                self._korea_rank[mmsi] = korea_rank
+            for field, times in (('staticObservedAt', self._static_at),
+                                 ('destinationObservedAt', self._destination_at)):
+                if vessel['ais'].get(field):
+                    times[mmsi] = vessel['ais'][field]
+        self._rows = OrderedDict(sorted(self._rows.items(), key=lambda item: self._rank[item[0]]))
+        self._korea = OrderedDict(sorted(self._korea.items(), key=lambda item: self._korea_rank[item[0]]))
+        for rows, limit in ((self._rows, MAX_VESSELS), (self._korea, MAX_KOREA_CANDIDATES)):
+            while len(rows) > limit:
+                mmsi, _ = rows.popitem(last=False)
+                self._forget_static_if_unused(mmsi)
+        self._prune_candidates(utc_now())
+        await self.flush()
+
+    async def flush(self):
+        if self.store is None:
+            return
+        async with self._flush_lock:
+            self._prune_candidates(utc_now())
+            if not self._dirty:
+                return
+            dirty, self._dirty = self._dirty, set()
+            changes = {}
+            for mmsi in dirty:
+                candidate = self._korea.get(mmsi)
+                vessel = self._rows.get(mmsi) or (candidate['vessel'] if candidate else None)
+                changes[mmsi] = None if vessel is None else (
+                    json.dumps(vessel, ensure_ascii=False),
+                    self._rank.get(mmsi) if mmsi in self._rows else None,
+                    self._korea_rank.get(mmsi) if candidate else None,
+                    json.dumps({k: v for k, v in candidate.items() if k != 'vessel'}, ensure_ascii=False) if candidate else None)
+            # Detach immutable values before leaving the event loop. Ingestion continues
+            # during disk I/O and queues subsequent changes for the next transaction.
+            task = asyncio.create_task(asyncio.to_thread(self.store.save, changes, self.last_received_at))
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                try:
+                    await task  # Never close SQLite while its write thread is running.
+                except Exception:
+                    self._dirty.update(dirty)
+                raise
+            except Exception:
+                self._dirty.update(dirty)
+                raise
+
+    async def committed_snapshot(self):
+        if self.store is None:
+            return self.snapshot()
+        now = utc_now()
+        saved = await asyncio.to_thread(self.store.snapshot, now)
+        return {'provider': 'aisstream', 'status': self.status, 'coverage': self.coverage,
+                'fetchedAt': now, **saved}
+
     def ingest(self, payload, received_at):
         if not isinstance(payload, dict):
             return
         kind = payload.get("MessageType")
-        if kind not in ("PositionReport", "ShipStaticData"):
+        if kind not in MESSAGE_TYPES:
             return
         meta, messages = payload.get("MetaData"), payload.get("Message")
         if not isinstance(meta, dict) or not isinstance(messages, dict):
@@ -105,6 +195,17 @@ class AisCatalog:
         report = messages.get(kind)
         if not isinstance(report, dict) or report.get("Valid") is False:
             return
+        static_fields = None
+        if kind in ("ShipStaticData", "ExtendedClassBPositionReport"):
+            static_fields = report
+        elif kind == "StaticDataReport":
+            part = report.get("PartNumber")
+            if not isinstance(part, (bool, int)) or part not in (0, 1):
+                return
+            data = report.get("ReportB" if part else "ReportA")
+            if not isinstance(data, dict) or data.get("Valid") is not True:
+                return
+            static_fields = {"Type": data.get("ShipType")} if part else {"Name": data.get("Name")}
         mmsi = str(meta.get("MMSI", report.get("UserID", "")))
         if not re.fullmatch(r"[1-9]\d{8}", mmsi):
             return
@@ -130,7 +231,7 @@ class AisCatalog:
                       "source": "aisstream", "ais": {"updatedAt": observed_at, "shipType": None,
                       "navStatus": None, "destination": "", "position": None}}
         ais = row["ais"]
-        if kind == "PositionReport":
+        if kind in POSITION_TYPES:
             latitude = number(report.get("Latitude"), -90, 90)
             longitude = number(report.get("Longitude"), -180, 180)
             if latitude is None or longitude is None:
@@ -139,17 +240,16 @@ class AisCatalog:
                 return
             ais["position"] = {"latitude": latitude, "longitude": longitude, "observedAt": observed_at,
                                "sogKn": number(report.get("Sog"), 0, 102.2), "cogDeg": number(report.get("Cog"), 0, 359.9)}
-            ais["navStatus"] = number(report.get("NavigationalStatus"), 0, 14)
-        else:
+            if kind == "PositionReport":
+                ais["navStatus"] = number(report.get("NavigationalStatus"), 0, 14)
+        if static_fields is not None:
+            merge_static_fields(row, static_fields, observed_at)
+            self._static_at[mmsi] = ais['staticObservedAt']
+        if kind == "ShipStaticData":
             if static_fresh:
-                self._static_at[mmsi] = observed_at
-                ais["staticObservedAt"] = observed_at
                 imo = str(report.get("ImoNumber", ""))
                 if re.fullmatch(r"[1-9]\d{6}", imo):
                     row["imo"] = imo
-                ship_type = number(report.get("Type"), 1, 99)
-                if ship_type is not None:
-                    ais["shipType"] = ship_type
             if destination_fresh:
                 self._destination_at[mmsi] = observed_at
                 ais["destinationObservedAt"] = observed_at
@@ -159,14 +259,21 @@ class AisCatalog:
                 if match and epoch(received_at) - epoch(observed_at) < KOREA_RETENTION_HOURS * 3600:
                     self._korea[mmsi] = {"vessel": row, **match, "destinationObservedAt": observed_at}
                     self._korea.move_to_end(mmsi)
+                    self._korea_rank[mmsi] = self._sequence + 1
                 else:
                     self._korea.pop(mmsi, None)
+                    self._korea_rank.pop(mmsi, None)
         name = clean(report.get("Name")) or clean(meta.get("ShipName"))
-        if name and (kind == "PositionReport" or static_fresh):
+        if name and (kind == "PositionReport" or kind == "ShipStaticData" and static_fresh
+                     or kind in POSITION_TYPES and row['name'] == f'MMSI {mmsi}'):
             row["name"] = name
         ais["updatedAt"] = max(ais["updatedAt"], observed_at, key=epoch)
         self._rows[mmsi] = row
         self._rows.move_to_end(mmsi)
+        self._sequence += 1
+        self._rank[mmsi] = self._sequence
+        if self.store is not None:
+            self._dirty.add(mmsi)
         while len(self._rows) > MAX_VESSELS:
             removed, _ = self._rows.popitem(last=False)
             self._forget_static_if_unused(removed)
@@ -178,6 +285,12 @@ class AisCatalog:
             self.on_observation(row)
 
     def _forget_static_if_unused(self, mmsi):
+        if self.store is not None:
+            self._dirty.add(mmsi)
+        if mmsi not in self._rows:
+            self._rank.pop(mmsi, None)
+        if mmsi not in self._korea:
+            self._korea_rank.pop(mmsi, None)
         if mmsi not in self._rows and mmsi not in self._korea:
             self._static_at.pop(mmsi, None)
             self._destination_at.pop(mmsi, None)
@@ -214,7 +327,7 @@ class AisCatalog:
                 async with connect("wss://stream.aisstream.io/v0/stream", compression="deflate",
                                    open_timeout=15, close_timeout=5, max_size=1048576) as socket:
                     await socket.send(json.dumps({"APIKey": self._key, "BoundingBoxes": self.boxes,
-                                                  "FilterMessageTypes": ["PositionReport", "ShipStaticData"]}))
+                                                  "FilterMessageTypes": list(MESSAGE_TYPES)}))
                     self.status = "waiting"
                     async for frame in socket:
                         try:

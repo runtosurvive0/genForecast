@@ -1,0 +1,42 @@
+.gf-auth-page { min-height: 100dvh; background: var(--background); color: var(--foreground); padding: 28px; }
+.gf-auth-top { max-width: 1080px; margin: auto; display: flex; align-items: center; justify-content: space-between; font-weight: 650; }
+.gf-auth-card { width: min(100%, 440px); margin: 7vh auto 0; padding: 30px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+.gf-auth-eyebrow { color: var(--muted-foreground); font-size: 11px; }
+.gf-auth-card h1 { font-size: 24px; line-height: 1.45; letter-spacing: -.04em; margin: 12px 0; font-weight: 650; }
+.gf-auth-card h2 { font-size: 16px; font-weight: 600; margin: 18px 0 8px; }
+.gf-auth-card p, .gf-auth-card small, .gf-auth-account p { color: var(--muted-foreground); font-size: 12px; line-height: 1.7; }
+.gf-auth-card > small { display: block; margin-top: 22px; }
+.gf-auth-tabs { display: flex; gap: 4px; flex-wrap: wrap; width: fit-content; padding: 3px; border-radius: 6px; background: var(--muted); margin: 22px 0; }
+.gf-auth-tabs button { padding: 6px 12px; border-radius: 4px; color: var(--muted-foreground); font-size: 12px; }
+.gf-auth-tabs button[aria-selected="true"] { background: var(--card); color: var(--foreground); }
+.gf-auth-form { display: grid; gap: 16px; }
+.gf-auth-form label, .gf-member-search { display: grid; gap: 7px; font-size: 12px; }
+.gf-auth-form input, .gf-member-search input { background: var(--background); color: var(--foreground); border: 1px solid var(--border); border-radius: 6px; height: 38px; min-width: 0; width: 100%; padding: 0 10px; }
+.gf-auth-form input:focus, .gf-member-search input:focus { outline: 2px solid var(--ring); outline-offset: 2px; }
+.gf-auth-password { display: flex; position: relative; }
+.gf-auth-password input { padding-right: 38px; }
+.gf-auth-password button { position: absolute; right: 0; top: 0; height: 38px; width: 38px; display: grid; place-items: center; }
+.gf-auth-setup, .gf-auth-notice, .gf-auth-error { margin-top: 18px; padding: 12px; background: var(--muted); border-radius: 6px; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.gf-auth-account { max-width: 440px; max-height: 90dvh; overflow-y: auto; }
+.gf-auth-account details { margin-top: 16px; font-size: 12px; }
+.gf-auth-account summary { margin-bottom: 16px; cursor: pointer; }
+.gf-account-status:empty { display: none; }
+.gf-account-status { margin: 12px 0; font-size: 12px; line-height: 1.7; }
+.gf-account-status aside, .gf-account-status [role="alert"] { padding: 12px; background: var(--muted); border-radius: 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gf-account-status p { margin: 0; }
+.gf-members { margin-bottom: 24px; padding: 20px; border: 1px solid var(--border); border-radius: 8px; }
+.gf-members header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.gf-members h2 { font-size: 16px; font-weight: 600; }
+.gf-members p { font-size: 12px; color: var(--muted-foreground); margin: 8px 0; }
+.gf-member-search { max-width: 360px; margin-bottom: 16px; }
+.gf-member-list article { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 0; border-top: 1px solid var(--border); }
+.gf-member-list strong, .gf-member-list span, .gf-member-list small { display: block; font-size: 12px; overflow-wrap: anywhere; }
+.gf-member-list span, .gf-member-list small { color: var(--muted-foreground); margin-top: 5px; }
+.gf-member-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .gf-auth-page { padding: 16px; }
+  .gf-auth-card { margin-top: 24px; padding: 20px; }
+  .gf-auth-card h1 { font-size: 21px; }
+  .gf-members { padding: 14px; }
+  .gf-member-list article { align-items: flex-start; flex-direction: column; }
+}

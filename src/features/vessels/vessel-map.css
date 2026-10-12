@@ -80,10 +80,33 @@
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
 }
+.vessel-map-fleet-toggle { display:flex; }
+.vessel-map-fleet-toggle:empty { display:none; }
+.vessel-map-toolbar .vessel-map-tool-button {
+  position:relative;
+  width:28px;
+  height:28px;
+  padding:0;
+  border:0;
+  border-radius:4px;
+  color:var(--muted-foreground);
+  background:transparent;
+}
+.vessel-map-toolbar .vessel-map-tool-button svg { width:15px; height:15px; }
+.vessel-map-toolbar .vessel-map-tool-button:hover,
+.vessel-map-toolbar .vessel-map-tool-button[aria-pressed="true"] { color:var(--foreground); background:var(--secondary); }
 .vessel-map-toolbar .vessel-map-controls {
   position: static;
+  gap:2px;
+  margin-left:3px;
+  padding-left:5px;
+  border-left:1px solid var(--border);
 }
 .vessel-map-online .maplibregl-ctrl-scale {
   margin: 0 8px 8px 0;
@@ -556,11 +579,10 @@
 
 .vessel-map-view-switch {
   display: flex;
-  padding: 3px;
+  padding: 0 0 0 5px;
+  margin-left:3px;
   gap: 2px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--card);
+  border-left: 1px solid var(--border);
 }
 .vessel-map-view-switch button {
   display: inline-flex;
@@ -681,6 +703,24 @@
   outline: 1px solid var(--primary);
   outline-offset: 2px;
   z-index: 2;
+}
+.vessel-map button.vessel-weather-value.is-compact {
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  padding: 0;
+  font-size: 0;
+  border: 0;
+  background: transparent;
+}
+.vessel-map button.vessel-weather-value.is-compact::after {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  margin: auto;
+  border-radius: 50%;
+  background: currentColor;
 }
 .vessel-map .vessel-weather-value rect {
   stroke: var(--border);

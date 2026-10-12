@@ -22,8 +22,8 @@ class Router:
 
 def test_sampling_uses_observation_and_limits_horizon_without_wrapping_dateline_wrongly():
     route = Router().route(125, 35, "dangjin")
-    points = sample_route(route, [125, 35], 12, NOW)
-    assert len(points) == 12
+    points = sample_route(route, [125, 35], 12, NOW, horizon=72)
+    assert len(points) == 17
     assert points[0]["passageAt"] == NOW
     assert points[-1]["passageAt"] == NOW + 72 * 3600
     assert points[-1]["longitude"] < 126
@@ -40,6 +40,104 @@ def test_hour_match_preserves_missing_and_does_not_extrapolate():
     assert match_hour(series, NOW + 3601, "wave_height") is None
 
 
+def test_week_request_leaves_short_provider_forecasts_missing():
+    async def fetch(kind, grids):
+        fields = {"wave_height": (2, "m"), "wave_direction": (90, "°"), "wave_period": (8, "s")} if kind == "marine" else {
+            "wind_speed_10m": (15, "kn"), "wind_gusts_10m": (20, "kn"), "wind_direction_10m": (90, "°"), "visibility": (20000, "m")}
+        return [{"hourly_units": {k: unit for k, (_, unit) in fields.items()},
+                 "hourly": {"time": [NOW+h*3600 for h in range(73)], **{k: [v]*73 for k, (v, _) in fields.items()}}} for _ in grids]
+    result = asyncio.run(WeatherService(Router(), fetch=fetch, clock=lambda: NOW).forecast(ship(), "dangjin"))
+    assert result["horizonHours"] == 168
+    assert result["status"] == "partial"
+    assert result["points"][0]["waveM"] == 2
+    assert result["points"][-1]["waveM"] is None
+    assert result["points"][-1]["marineForecastAt"] is None
+
+
+def test_passage_forecast_uses_forward_remaining_route_and_retimes_from_current_fix():
+    from midterm.vessels.navigation import remaining_route
+    route = {**Router().route(0, 0, "dangjin"), "coordinates": [[0, 0], [1, 0], [1, .01], [0, .01]], "distanceNm": 120}
+    current = [.5, .004]
+    progress = remaining_route(route, current, 270)
+    assert progress["coordinates"] == [[.5, .01], [0, .01]]
+    points = sample_route(route, current, 12, NOW, 270)
+    assert points[0]["longitude"] == current[0]
+    assert points[0]["latitude"] == current[1]
+    assert all(p["longitude"] <= .5 for p in points)
+    assert points[-1]["passageAt"] == pytest.approx(NOW + progress["distanceNm"] / 12 * 3600)
+
+
+@pytest.mark.parametrize("patch,current,expected", [
+    ({"endOffsetNm": 21.26}, [125, 35], r"목적항 진입.*21\.3.*20\.0"),
+    ({}, [125, 35.1], r"현재 항로 이탈.*6\.0.*5\.0"),
+])
+def test_weather_retains_measured_route_gap_reason_without_calling_forecast(patch, current, expected):
+    import re
+    class GapRouter(Router):
+        def route(self, *args):
+            return {**super().route(125, 35, "dangjin"), **patch}
+    async def fetch(*args):
+        pytest.fail("unverified connection must not request forecast")
+    value = ship()
+    value["ais"]["position"].update(longitude=current[0], latitude=current[1])
+    result = asyncio.run(WeatherService(GapRouter(), fetch=fetch, clock=lambda: NOW).forecast(value, "dangjin"))
+    assert result["status"] == "blocked"
+    assert re.search(expected, result["reason"])
+
+
+def test_sparse_connection_is_cached_until_movement_without_repeated_route_calculations():
+    class GapRouter(Router):
+        calls = 0
+        def route(self, *args):
+            self.calls += 1
+            lon, lat, _ = args
+            return {**super().route(*args), "coordinates": [[lon, lat + .44], [126, lat + .44]], "startOffsetNm": 26.5}
+    async def fetch(*args):
+        raise OSError("offline forecast provider")
+    async def check():
+        router = GapRouter()
+        service = WeatherService(router, fetch=fetch, clock=lambda: NOW)
+        for _ in range(3):
+            result = await service.forecast(ship(), "dangjin")
+            assert result["status"] == "unavailable"
+            assert result["points"]
+            assert "직선" in result["reason"]
+        assert router.calls == 1
+        moved = ship()
+        moved["ais"]["position"]["latitude"] = 35.1
+        assert (await service.forecast(moved, "dangjin"))["status"] == "unavailable"
+        assert router.calls == 2
+    asyncio.run(check())
+
+
+def test_sparse_route_samples_start_at_actual_ais_and_include_connection_time():
+    from midterm.vessels.navigation import distance_nm
+    route = {**Router().route(125, 35, "dangjin"), "coordinates": [[125, 35.44], [126, 35.44]],
+             "distanceNm": 120, "startOffsetNm": 26.5}
+    original = deepcopy(route)
+    points = sample_route(route, [125, 35], 12, NOW)
+    assert points[0] == {"longitude": 125, "latitude": 35, "passageAt": NOW}
+    assert points[-1]["passageAt"] == pytest.approx(NOW + (120 + distance_nm([125, 35], [125, 35.44])) / 12 * 3600)
+    assert points[-1]["longitude"] == pytest.approx(126)
+    assert points[-1]["latitude"] == pytest.approx(35.44)
+    assert route == original
+    long_gap = {**route, "origin": [179, 0], "coordinates": [[-179, 0], [-178, 0]], "startOffsetNm": 120}
+    points = sample_route(long_gap, [179, 0], 1, NOW, horizon=72)
+    assert points[-1]["passageAt"] == NOW + 72 * 3600
+    assert all(abs(p["longitude"]) >= 179 for p in points)
+
+
+def test_week_forecast_samples_nearby_often_and_stops_at_arrival():
+    route = {**Router().route(125, 35, "dangjin"), "distanceNm": 4000}
+    points = sample_route(route, [125, 35], 12, NOW)
+    hours = [(p["passageAt"] - NOW) / 3600 for p in points]
+    assert hours == list(range(0, 25, 3)) + list(range(30, 73, 6)) + list(range(84, 169, 12))
+    assert len(points) == 25
+    short = sample_route({**route, "distanceNm": 30}, [125, 35], 12, NOW)
+    assert short[-1]["passageAt"] == NOW + 2.5 * 3600
+    assert short[-1]["longitude"] == pytest.approx(126)
+
+
 def test_provider_cache_is_shared_and_failure_marks_stale_then_missing():
     calls = []
     fail = False
@@ -51,7 +149,7 @@ def test_provider_cache_is_shared_and_failure_marks_stale_then_missing():
             "wind_speed_10m": 15, "wind_gusts_10m": 22, "wind_direction_10m": 90, "visibility": 800}
         return [{"latitude": lat, "longitude": lon, "hourly_units": {
             "wave_height": "m", "wave_direction": "°", "wave_period": "s", "wind_speed_10m": "kn", "wind_gusts_10m": "kn", "wind_direction_10m": "°", "visibility": "m"},
-            "hourly": {"time": [NOW + h * 3600 for h in range(80)], **{v: [x] * 80 for v, x in variables.items()}}} for lon, lat in coordinates]
+            "hourly": {"time": [NOW + h * 3600 for h in range(192)], **{v: [x] * 192 for v, x in variables.items()}}} for lon, lat in coordinates]
     async def check():
         nonlocal fail
         clock = [NOW]
@@ -167,7 +265,7 @@ def test_missing_or_wrong_visibility_units_preserve_valid_wind_and_zero_visibili
                 if kind == "air" and mode != "missing":
                     fields["visibility"] = (0, "km" if mode == "wrong" else "m")
                 return [{"hourly_units": {k: unit for k, (_, unit) in fields.items()},
-                         "hourly": {"time": [NOW+h*3600 for h in range(80)], **{k: [v]*80 for k, (v, _) in fields.items()}}} for _ in grids]
+                         "hourly": {"time": [NOW+h*3600 for h in range(192)], **{k: [v]*192 for k, (v, _) in fields.items()}}} for _ in grids]
             data = await WeatherService(Router(), fetch=fetch, clock=lambda: NOW).forecast(ship(), "dangjin")
             assert data["points"][0]["windKn"] == 15
             assert data["points"][0]["visibilityM"] == (0 if mode == "zero" else None)

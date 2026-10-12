@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import type { TrackingVessel } from "@/domain/vessel-workflow";
 import { navigationJson } from "./vessel-navigation";
 
-export const plantDestinations = ["dangjin", "boryeong", "hadong", "donghae"];
+// The vessel workspace offers these power-plant ports; AIS-resolved global ports remain available.
+export const plantDestinations = ["dangjin", "donghae"];
+// Keep earlier saved choices usable; only the two current plants can be newly selected.
+export const supportedPlantDestinations = [
+  ...plantDestinations,
+  "boryeong",
+  "hadong",
+];
 interface Resolution {
   raw: string;
   status: "resolved" | "missing" | "ambiguous" | "unresolved";
@@ -85,7 +92,7 @@ export function useAisDestinations(
   for (const vessel of vessels) {
     const choice = preferences[vessel.id];
     const match = results[vessel.ais?.destination ?? ""];
-    destinations[vessel.id] = plantDestinations.includes(choice)
+    destinations[vessel.id] = supportedPlantDestinations.includes(choice)
       ? choice
       : choice === "ais" && match?.status === "resolved"
         ? match.destinationId!

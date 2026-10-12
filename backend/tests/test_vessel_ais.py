@@ -22,21 +22,21 @@ def message(kind, report, name="TEST CARGO"):
             "Message": {kind: {"UserID": 440123456, "Valid": True, **report}}}
 
 
-def test_catalog_keeps_20000_vessels_and_evicts_least_recently_received():
+def test_catalog_keeps_40000_vessels_and_evicts_least_recently_received():
     catalog = AisCatalog(api_key="")
     def receive(index):
         payload = message("PositionReport", {"Latitude": 35, "Longitude": 125})
         payload["MetaData"]["MMSI"] = 440000000 + index
         catalog.ingest(payload, "2026-10-09T00:00:00Z")
-    for index in range(20000):
+    for index in range(40000):
         receive(index)
-    assert catalog.snapshot()["capacity"] == 20000
-    assert len(catalog.snapshot()["vessels"]) == 20000
+    assert catalog.snapshot()["capacity"] == 40000
+    assert len(catalog.snapshot()["vessels"]) == 40000
     receive(0)
-    receive(20000)
+    receive(40000)
     rows = catalog.snapshot()["vessels"]
-    assert len(rows) == 20000
-    assert rows[0]["mmsi"] == "440020000"
+    assert len(rows) == 40000
+    assert rows[0]["mmsi"] == "440040000"
     assert any(row["mmsi"] == "440000000" for row in rows)
     assert not any(row["mmsi"] == "440000001" for row in rows)
 

@@ -10,7 +10,7 @@ const devPort = localEnv.MIDTERM_DEV_PORT || "5173";
 const baseURL = `http://127.0.0.1:${devPort}`;
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "ui.spec.ts",
+  testMatch: ["ui.spec.ts", "auth-ui.spec.ts", "fleet-map-ui.spec.ts"],
   fullyParallel: false,
   workers: 1,
   timeout: 30000,
@@ -28,10 +28,15 @@ export default defineConfig({
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
-  webServer: {
+  webServer: [{
     command: `npm run dev -- --port ${devPort} --strictPort`,
     url: baseURL,
     reuseExistingServer: true,
     timeout: 30000,
-  },
+  }, {
+    command: "node scripts/start-auth-test-server.mjs",
+    url: "http://127.0.0.1:8097/api/auth/bootstrap-status",
+    reuseExistingServer: false,
+    timeout: 30000,
+  }],
 });

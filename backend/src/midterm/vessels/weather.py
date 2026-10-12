@@ -3,12 +3,12 @@ import asyncio
 from collections import OrderedDict, deque
 from datetime import datetime, timezone
 import json
-from math import ceil, cos, isfinite, radians
+from math import cos, isfinite, radians
 import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from midterm.vessels.navigation import distance_nm, epoch
+from midterm.vessels.navigation import distance_nm, epoch, remaining_route
 
 VARIABLES = {
     "air": {"wind_speed_10m": ("windKn", "kn"), "wind_gusts_10m": ("gustKn", "kn"), "wind_direction_10m": ("windFromDeg", "°"), "visibility": ("visibilityM", "m")},
@@ -16,6 +16,15 @@ VARIABLES = {
 }
 HOUR = 3600
 TTL = 3 * HOUR
+ROUTE_OFFSET_LIMIT_NM = 5
+PORT_OFFSET_LIMIT_NM = 20
+
+
+class RouteGapError(ValueError):
+    """Only these controlled diagnostic messages may reach the API response."""
+    def __init__(self, reason, *, deviation=False):
+        super().__init__(reason)
+        self.deviation = deviation
 
 
 def iso(at):
@@ -30,36 +39,44 @@ def wrap(lon):
     return (lon + 180) % 360 - 180
 
 
-def sample_route(route, current, speed, observed):
-    """Sample the remaining polyline, carrying observed-time distances across the dateline."""
-    coords = route["coordinates"]
+def sample_route(route, current, speed, observed, course=None, horizon=168):
+    """Use the same forward remaining route as the map and ETA."""
+    remaining = remaining_route(route, current, course)
+    coords = remaining['coordinates']
     lengths = [distance_nm(a, b) for a, b in zip(coords, coords[1:])]
     total = sum(lengths)
-    if total <= 0 or not finite(route["distanceNm"]) or route["distanceNm"] <= 0:
-        raise ValueError("예상 항로 거리를 확인해 주세요.")
-    nearest, progress, traversed = float("inf"), 0, 0
-    for a, b, length in zip(coords, coords[1:], lengths):
-        scale = cos(radians((a[1] + b[1]) / 2))
-        x, y = wrap(b[0] - a[0]) * scale, b[1] - a[1]
-        px, py = wrap(current[0] - a[0]) * scale, current[1] - a[1]
-        t = max(0, min(1, (px*x + py*y) / (x*x+y*y))) if x*x+y*y else 0
-        separation = distance_nm(current, [wrap(a[0] + wrap(b[0]-a[0])*t), a[1]+y*t])
-        if separation < nearest:
-            nearest, progress = separation, traversed + length*t
-        traversed += length
-    if nearest > 5 or route["startOffsetNm"] > 5 or route["endOffsetNm"] > 20:
-        raise ValueError("관측 위치·목적항과 항로망의 차이가 커서 통과 예보를 보류합니다.")
-    if distance_nm(current, route["origin"]) < .1:
-        progress = 0
-    remaining = route["distanceNm"] * (1-progress/total)
-    hours = min(72, remaining / speed)
+    nearest = remaining['offsetNm']
+    if not finite(route['distanceNm']) or route['distanceNm'] <= 0:
+        raise ValueError('Invalid route distance')
+    gaps = []
+    if route["endOffsetNm"] > PORT_OFFSET_LIMIT_NM:
+        gaps.append(f"목적항 진입 구간 미확인: 항로 끝점 → 목적항 {route['endOffsetNm']:.1f} nm (보류 기준 {PORT_OFFSET_LIMIT_NM:.1f} nm 초과). 상세 항만 진입 경로가 필요합니다.")
+    deviation = route["startOffsetNm"] <= ROUTE_OFFSET_LIMIT_NM and nearest > ROUTE_OFFSET_LIMIT_NM
+    if deviation:
+        gaps.append(f"현재 항로 이탈: 현재 위치 → 계산된 항로 {nearest:.1f} nm (보류 기준 {ROUTE_OFFSET_LIMIT_NM:.1f} nm 초과). 예상 항로를 재계산한 뒤 확인해 주세요. 실제 운항계획 이탈을 뜻하지 않습니다.")
+    if gaps:
+        raise RouteGapError(" ".join(gaps), deviation=deviation)
+    junction = coords[0]
+    connection = remaining['connectionNm']
+    network = remaining['networkNm']
+    remaining = remaining['distanceNm']
+    hours = min(horizon, remaining / speed)
     if hours <= 0:
         raise ValueError("입항 여부와 최신 위치를 확인해 주세요.")
-    count = min(12, max(2, ceil(hours/6)+1))
+    # Dense near-term exposure, coarser distant outlook; always include arrival/end.
+    schedule = list(range(0, 25, 3)) + list(range(30, 73, 6)) + list(range(84, 169, 12))
+    times = [float(h) for h in schedule if h < hours] + [hours]
     points = []
-    for i in range(count):
-        elapsed = hours*i/(count-1)
-        target = progress + elapsed*speed/route["distanceNm"]*total
+    for elapsed in times:
+        travelled = elapsed*speed
+        if connection > 0 and travelled < connection:
+            # Explicit approximation; this segment is not verified navigable geometry.
+            t = travelled / connection
+            points.append({"longitude": wrap(current[0] + wrap(junction[0]-current[0])*t),
+                           "latitude": current[1] + (junction[1]-current[1])*t,
+                           "passageAt": observed + elapsed*HOUR})
+            continue
+        target = max(0, travelled-connection)/network*total if network > 0 else 0
         before = 0
         for a, b, length in zip(coords, coords[1:], lengths):
             if target <= before + length + 1e-8:
@@ -85,7 +102,8 @@ def match_hour(series, at, field):
 def fetch_provider(kind, coordinates):
     host = "marine-api.open-meteo.com/v1/marine" if kind == "marine" else "api.open-meteo.com/v1/forecast"
     params = {"longitude": ",".join(str(p[0]) for p in coordinates), "latitude": ",".join(str(p[1]) for p in coordinates),
-              "hourly": ",".join(VARIABLES[kind]), "timezone": "GMT", "timeformat": "unixtime", "forecast_days": 7, "past_days": 1}
+              # Calendar days start at midnight; day 8 covers a full rolling 168h.
+              "hourly": ",".join(VARIABLES[kind]), "timezone": "GMT", "timeformat": "unixtime", "forecast_days": 8, "past_days": 1}
     if kind == "air":
         params.update(wind_speed_unit="kn", cell_selection="nearest")
     else:
@@ -159,7 +177,7 @@ class WeatherService:
     async def forecast(self, vessel, destination):
         now = self.clock()
         base = {"source": vessel["source"], "mmsi": vessel["mmsi"], "destinationId": destination,
-                "status": "blocked", "reason": "", "fetchedAt": iso(now), "observedAt": None, "speedKn": None, "horizonHours": 72, "points": []}
+                "status": "blocked", "reason": "", "fetchedAt": iso(now), "observedAt": None, "speedKn": None, "horizonHours": 168, "points": []}
         try:
             ais = vessel.get("ais", {})
             p = ais.get("position") or {}
@@ -176,7 +194,8 @@ class WeatherService:
                 raise ValueError("최근 1시간 이내 AIS 위치가 있어야 통과 예보를 계산합니다.")
             key = (vessel["source"], vessel["mmsi"], destination)
             previous = self.routes.get(key)
-            cached_route = previous and now-previous[0] < 6*HOUR and distance_nm(current, previous[1]["origin"]) < 25
+            movement_limit = ROUTE_OFFSET_LIMIT_NM if previous and previous[1]["startOffsetNm"] > ROUTE_OFFSET_LIMIT_NM else 25
+            cached_route = previous and now-previous[0] < 6*HOUR and distance_nm(current, previous[1]["origin"]) < movement_limit
             if cached_route:
                 route = previous[1]
             else:
@@ -186,13 +205,16 @@ class WeatherService:
                 while len(self.routes) > 200:
                     self.routes.popitem(last=False)
             try:
-                points = sample_route(route, current, speed, observed)
-            except ValueError:
-                if not cached_route:
+                points = sample_route(route, current, speed, observed, p.get("cogDeg"))
+            except RouteGapError as error:
+                if not cached_route or not error.deviation:
                     raise
                 route = await asyncio.to_thread(self.router.route, *current, destination)
                 self.routes[key] = (now, route)
-                points = sample_route(route, current, speed, observed)
+                points = sample_route(route, current, speed, observed, p.get("cogDeg"))
+        except RouteGapError as error:
+            base["reason"] = f"{error} 통과 예보 계산을 보류했습니다."
+            return base
         except (ValueError, KeyError, TypeError, OverflowError):
             base["reason"] = "최신 항해 위치·속도와 목적항/항로를 확인해 주세요. 통과 예보 계산을 보류했습니다."
             return base
@@ -220,4 +242,6 @@ class WeatherService:
                     reason="통과 예정 시각의 격자 예보 · 현재 속도 유지 가정 · ETA 감속 보정 미적용" if complete else "일부 예보가 없거나 이전 캐시입니다. 자료 없음을 안전으로 해석하지 않습니다.")
         if any(p["airStatus"] == "limited" or p["marineStatus"] == "limited" for p in points):
             base["reason"] = "서버의 무료 예보 조회 예산에 도달했습니다. 남은 예보는 대기하며 기본 ETA는 유지합니다."
+        if route["startOffsetNm"] > ROUTE_OFFSET_LIMIT_NM:
+            base["reason"] += " 출발 연결 구간은 직선 거리·현재 속도 가정으로 포함했습니다. 연결 구간의 실제 항해 경로와 통과 시각은 미확인입니다."
         return base

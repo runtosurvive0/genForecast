@@ -94,7 +94,9 @@ export function useVesselWeather(
           if (!controller.signal.aborted) setBusy(false);
         }
       }
-      if (!controller.signal.aborted) timer = setTimeout(cycle, 5 * 60000);
+      // Re-time cached forecast grids against the latest AIS fix/course. The HP
+      // service shares provider grids for 3h; this does not re-download forecasts each cycle.
+      if (!controller.signal.aborted) timer = setTimeout(cycle, 30000);
     }
     void cycle();
     return () => {

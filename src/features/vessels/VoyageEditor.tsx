@@ -9,6 +9,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { plants } from "@/domain/operations";
+import { plantDestinations } from "./useAisDestinations";
 import {
   validateVoyage,
   type TrackingVessel,
@@ -64,7 +65,21 @@ export function VoyageEditor({
             const date = (key: string) =>
               s(key) ? `${s(key)}:00+09:00` : null;
             try {
-              const plantId = s("plantId");
+              // A disabled legacy option preserves an existing voyage without making
+              // that plant available for new selections; FormData omits that option.
+              const plantId = (
+                event.currentTarget.elements.namedItem(
+                  "plantId",
+                ) as HTMLSelectElement
+              ).value;
+              if (
+                !plantDestinations.includes(plantId) &&
+                plantId !== voyage?.plantId
+              ) {
+                throw new Error(
+                  "새 목적 발전소는 당진 또는 동해로 선택해 주세요.",
+                );
+              }
               onSave(
                 validateVoyage({
                   ...voyage,
@@ -108,11 +123,18 @@ export function VoyageEditor({
                 name="plantId"
                 defaultValue={voyage?.plantId ?? "dangjin"}
               >
-                {plants.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
+                {voyage && !plantDestinations.includes(voyage.plantId) && (
+                  <option value={voyage.plantId} disabled>
+                    {voyage.destination} · 이전 등록
                   </option>
-                ))}
+                )}
+                {plants
+                  .filter((p) => plantDestinations.includes(p.id))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
               </select>
             </label>
           </div>
@@ -229,7 +251,11 @@ export function VoyageEditor({
               {error}
             </p>
           )}
-          <Button type="submit">이 브라우저에 항차 저장</Button>
+          <Button type="submit">
+            {location.protocol === "file:"
+              ? "이 브라우저에 항차 저장"
+              : "계정에 항차 저장"}
+          </Button>
         </form>
       </DialogContent>
     </Dialog>
