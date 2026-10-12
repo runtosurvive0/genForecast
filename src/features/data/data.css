@@ -18,3 +18,67 @@
   overflow-wrap: anywhere;
   font-size: 10px;
 }
+.milp-admin-tabs,
+.milp-admin-actions {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.milp-admin-tabs button {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--foreground);
+}
+.milp-admin-tabs button[aria-selected="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.milp-admin {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.milp-upload-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.milp-admin label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+}
+.milp-admin input,
+.milp-admin select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--background);
+  color: var(--foreground);
+}
+.milp-stock-form {
+  display: grid;
+  gap: 16px;
+}
+.milp-admin progress {
+  width: 100%;
+}
+.milp-admin td small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 650px) {
+  .milp-upload-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .milp-admin-actions label {
+    width: 100%;
+  }
+}

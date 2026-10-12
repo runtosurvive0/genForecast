@@ -1,8 +1,10 @@
-export const number = (value: number, digits = 0) =>
-  new Intl.NumberFormat("ko-KR", {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: digits,
-  }).format(Math.abs(value) < 0.5 * 10 ** -digits ? 0 : value);
+export const number = (value: number | null | undefined, digits = 0) =>
+  value == null
+    ? "미확정"
+    : new Intl.NumberFormat("ko-KR", {
+        maximumFractionDigits: digits,
+        minimumFractionDigits: digits,
+      }).format(Math.abs(value) < 0.5 * 10 ** -digits ? 0 : value);
 export const date = (value: string | null, time = false) =>
   value
     ? new Intl.DateTimeFormat("ko-KR", {

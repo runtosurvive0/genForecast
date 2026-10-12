@@ -254,6 +254,7 @@ export function waitingVessels(voyages: Voyage[]): WaitingVesselRow[] {
 }
 
 export const BERTHS = ["BD-1", "BD-2", "BD-3"] as const;
+export const DEFAULT_UNLOAD_TPD = 7000;
 
 export interface SiteVessel extends WaitingVesselRow {
   /** 부두 접안 하역중 또는 해상(묘박지) 대기. */
@@ -262,6 +263,7 @@ export interface SiteVessel extends WaitingVesselRow {
   berth_id: string;
   /** 사용자가 접안 지정한 부두인지. */
   assigned: boolean;
+  ledgerState?: string;
 }
 
 /**
@@ -580,6 +582,12 @@ export const YARD_GROUP_IDS = {
   P3: "g910",
 } as const;
 export type SupplyGroupId = (typeof YARD_GROUP_IDS)[keyof typeof YARD_GROUP_IDS];
+/** 가로(열) × 세로(행). */
+export const YARD_LAYOUT = {
+  P1: { columns: 5, rows: 4 },
+  P2: { columns: 5, rows: 4 },
+  P3: { columns: 10, rows: 2 },
+} as const;
 
 /** 재고일수 상태 기준 (SPEC §13: 20일 미만 위험, 30일 미만 주의). 설정값으로 교체 가능. */
 export const DAYS_THRESHOLDS = { danger: 20, normal: 30 } as const;
@@ -823,14 +831,14 @@ export function groupForecasts(
 // ── 입하·하역 타임라인 ────────────────────────────────────────────
 
 export interface TimelineRow {
-  voyage: Voyage;
+  voyage: Pick<Voyage, "voyage_id" | "vessel_name" | "cargo_t" | "coal_type" | "calorific_value_kcal_kg">;
   eta: string;
-  berthAt: string;
-  unloadEnd: string;
+  berthAt: string | null;
+  unloadEnd: string | null;
   /** 기간 [기준시각, 기준시각 + horizon] 대비 0~1 위치. */
   wait: [number, number] | null;
-  unload: [number, number];
-  reflect: number;
+  unload: [number, number] | null;
+  reflect: number | null;
 }
 
 /** 하역 완료가 기간 안인 항차의 대기·하역 구간 (취소 제외, 하역 완료 순). */
@@ -1111,6 +1119,9 @@ export interface SupplyVesselRecord {
   name: string;
   cargo: number;
   arrival_at: string;
+  berth_id?: string;
+  run_id?: string;
+  classification?: "planned" | "simulation";
   points: {
     at: string;
     cumulative: number;
@@ -1129,20 +1140,22 @@ export function supplyCumulative(vessel: SupplyVesselRecord, at: string) {
   return Math.min(vessel.cargo, last.cumulative + last.rate * hours);
 }
 
-/** 화면 항차 → `POST /api/supply/vessels` 본문. 하역속도는 접안~하역 완료 평균. */
-export function toSupplyVessel(voyage: Voyage, berthId: string) {
+/** 하역 기준 7,000 t/일. 가상 항차는 선택한 MILP 날짜에 맞춰 별도 원장으로 저장. */
+export function toSupplyVessel(voyage: Voyage, berthId: string, context?: { runId: string; start: string }) {
   const timing = voyageTiming(voyage);
-  const start = Date.parse(timing.berth);
-  const end = Date.parse(voyage.forecast_unload_end);
-  const hours = (end - start) / HOUR;
+  const viewAt = context ? Date.parse(`${context.start}T00:00:00+09:00`) : Date.parse(BASE_TIME);
+  const shift = context ? viewAt - Date.parse(BASE_TIME) : 0;
+  const start = Math.max(Date.parse(timing.berth) + shift, context ? viewAt : -Infinity);
   const yard = berthMap[berthId];
   return {
     name: voyage.vessel_name,
     cargo: voyage.cargo_t,
     incoming_cv: voyage.calorific_value_kcal_kg,
-    arrival_at: timing.eta,
-    start_at: timing.berth,
-    rate: hours > 0 ? voyage.cargo_t / hours : 0,
+    arrival_at: new Date(Date.parse(timing.eta) + shift).toISOString(),
+    start_at: new Date(start).toISOString(),
+    rate: DEFAULT_UNLOAD_TPD / 24,
+    berth_id: berthId,
+    ...(context ? { run_id: context.runId, classification: "simulation" } : {}),
     allocations: Object.fromEntries(
       Object.entries(YARD_GROUP_IDS).map(([y, g]) => [g, y === yard ? 1 : 0]),
     ) as Record<SupplyGroupId, number>,
@@ -1274,6 +1287,9 @@ export function normalizeSupplyRecords(body: unknown): {
             id: v.id,
             name: v.name,
             cargo: v.cargo,
+            berth_id: typeof v.berth_id === "string" ? v.berth_id : undefined,
+            run_id: typeof v.run_id === "string" ? v.run_id : undefined,
+            classification: v.classification === "simulation" || v.classification === "planned" ? v.classification : undefined,
             arrival_at: isTime(v.arrival_at) ? v.arrival_at : "",
             points: (Array.isArray(v.points) ? v.points : []).flatMap((p) =>
               isRecord(p) && isTime(p.at) && isNum(p.cumulative) && isNum(p.rate)

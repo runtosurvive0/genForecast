@@ -52,6 +52,7 @@ def snapshot(run_id: str, start: date | None = None, horizon: int = Query(defaul
         day_key = day.date().isoformat()
         daily.append({"date": day_key,
             "generation_mwh": complete_sum([energy[u][-1] for u in UNITS]),
+            "unit_generation_mwh": {"dj-" + u.removeprefix("당진"): energy[u][-1] for u in UNITS},
             "fuel_tonnes": complete_sum(list(fuel_days[day_key].values()))})
     for u in UNITS:
         mwh = complete_sum(energy[u])
@@ -88,6 +89,6 @@ def snapshot(run_id: str, start: date | None = None, horizon: int = Query(defaul
         "units": units, "daily": daily, "monthly": monthly, "outages": periods,
         "models": data["models"], "model_info": source["model_info"],
         "inventory": {"groups": data["groups"], "daily": data["forecast"],
-                      "kpis": data["kpis"], "plan_stale": data["plan_stale"],
+                      "kpis": data["kpis"], "plan_stale": data["plan_stale"], "initial_lots": data.get("stock_lots", []),
                       "thresholds": {key: data["config"][key] for key in ("danger_days", "normal_days")}},
         "vessels": data["vessels"], "issues": issues}

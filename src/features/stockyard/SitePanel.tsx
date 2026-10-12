@@ -6,6 +6,7 @@ import { BASE_TIME } from "@/domain/operations";
 import { date as fmtDate, number as n } from "@/lib/format";
 import { PileDetail } from "./PileDetail";
 import type { LinkState, SupplyRecords } from "./integrations";
+import { inventoryStatusLabel, type InventoryGroup } from "./supply-view";
 import {
   BERTHS,
   DAYS_STATUS_LABEL,
@@ -15,7 +16,6 @@ import {
   yardShortName,
   type BerthRecommendation,
   type BerthStatus,
-  type GroupForecast,
   type HistoryEntry,
   type SimTransfer,
   type SiteVessel,
@@ -46,9 +46,11 @@ export function SitePanel(props: {
   onAssign: (voyageId: string, berthId: string) => void;
   onUnassign: (voyageId: string) => void;
   supply: LinkState<SupplyRecords> & { refresh: () => Promise<void> };
+  readAt?: string;
+  runId?: string;
   onRegisterVessel: (vessel: SiteVessel) => Promise<void>;
   onCorrectUnloading: (record: SupplyVesselRecord, cumulative: number) => Promise<void>;
-  yardForecasts: GroupForecast[];
+  yardForecasts: InventoryGroup[];
   activeYard: string;
   onSelectYard: (yard: string) => void;
   transfers: SimTransfer[];
@@ -114,6 +116,8 @@ function VesselTab({
   onAssign,
   onUnassign,
   supply,
+  readAt,
+  runId,
   onRegisterVessel,
   onCorrectUnloading,
 }: Parameters<typeof SitePanel>[0]) {
@@ -125,7 +129,9 @@ function VesselTab({
   const draft = active ? (draftBerth[active.voyage.voyage_id] ?? active.berth_id) : "BD-1";
   const record =
     active && supply.data
-      ? (supply.data.vessels.find((v) => v.name === active.voyage.vessel_name) ?? null)
+      ? (supply.data.vessels.find((v) => v.name === active.voyage.vessel_name && v.run_id === runId)
+        ?? supply.data.vessels.find((v) => v.name === active.voyage.vessel_name && !v.run_id &&
+          (!runId || supplyCumulative(v, readAt ?? new Date().toISOString()) < v.cargo)) ?? null)
       : null;
   const run = async (action: () => Promise<void>, done: string) => {
     setBusy(true);
@@ -163,7 +169,7 @@ function VesselTab({
           <div className="site-ship-detail-name">
             <strong>{active.voyage.vessel_name}</strong>
             <span>
-              {active.state === "unloading" ? "하역중" : "해상 대기"} · {active.berth_id} →{" "}
+              {active.ledgerState ?? (active.state === "unloading" ? "하역중" : "해상 대기")} · {active.berth_id} →{" "}
               {YARD_NAMES[berths.find((b) => b.berth_id === active.berth_id)?.plant_yard ?? ""] ?? "-"}
             </span>
           </div>
@@ -232,10 +238,10 @@ function VesselTab({
             ) : record ? (
               <>
                 <b>
-                  원장 #{record.id} · 누적 {n(supplyCumulative(record, new Date().toISOString()))} /{" "}
+                  원장 #{record.id} · {record.classification === "simulation" ? "계획 " : ""}누적 {n(supplyCumulative(record, readAt ?? new Date().toISOString()))} /{" "}
                   {n(record.cargo)} t
                 </b>
-                <div className="site-ship-assign">
+                {record.classification === "simulation" ? <small>가상 하역 원장 · 실제 계측 미연계 · 조회일 기준</small> : <div className="site-ship-assign">
                   <input
                     aria-label="누적 하역량 보정"
                     type="number"
@@ -252,7 +258,7 @@ function VesselTab({
                   >
                     보정 저장
                   </button>
-                </div>
+                </div>}
               </>
             ) : (
               <>
@@ -318,7 +324,7 @@ function YardTab({
           <div className="site-ship-detail-name">
             <strong>
               {YARD_NAMES[activeYard]}{" "}
-              <span className={`days-pill is-${forecast.status}`}>{DAYS_STATUS_LABEL[forecast.status]}</span>
+              <span className={`days-pill is-${forecast.status}`}>{inventoryStatusLabel(forecast)}</span>
             </strong>
             <span>
               {berth?.berth_id ?? "-"} 연결 ·{" "}
@@ -335,16 +341,16 @@ function YardTab({
             <span>가중 열량</span>
             <b>
               {n(
-                weightedCalorific(
+                forecast.source === "db" ? forecast.cv : weightedCalorific(
                   piles.map((p) => ({ tons: p.on_hand_t, cv: p.calorific_value_kcal_kg })),
-                ) ?? 0,
+                ),
               )}{" "}
               kcal/kg
             </b>
           </div>
           <div>
             <span>재고일수 (현재)</span>
-            <b>{forecast.currentDays === null ? "소비 없음" : `${n(forecast.currentDays, 1)}일`}</b>
+            <b>{forecast.currentDays === null ? forecast.source === "db" ? "미확정" : "소비 없음" : `${n(forecast.currentDays, 1)}일`}</b>
           </div>
           <div>
             <span>기간 최저 일수</span>
@@ -356,7 +362,7 @@ function YardTab({
           </div>
           <div>
             <span>소진 예상</span>
-            <b>{forecast.firstShortageDate?.slice(5).replace("-", "/") ?? "기간 내 없음"}</b>
+            <b>{forecast.firstShortageDate?.slice(5).replace("-", "/") ?? (forecast.source === "db" && (!forecast.daily.length || forecast.daily.some((d) => d.stockTons === null)) ? "미확정" : "기간 내 없음")}</b>
           </div>
           <div>
             <span>Pile · 고위험</span>

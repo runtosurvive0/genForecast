@@ -79,6 +79,9 @@ import { DataPage } from "@/features/data/DataPage";
 import { AccountControls, AccountWorkspaceStatus } from "@/features/auth/AccountControls";
 import { MemberManagement } from "@/features/auth/MemberManagement";
 import { forecastTask } from "@/lib/forecast-task";
+import { PlanningWorkspace } from "@/components/PlanningWorkspace";
+import { usePlanning, initialPlanningQuery } from "@/domain/use-planning";
+import type { SupplyTarget } from "@/domain/supply";
 import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
 import { number as n, date as fmtDate, shiftDate } from "@/lib/format";
 
@@ -193,7 +196,10 @@ function App() {
         : "milp",
   );
   const [page, setPage] = useState<Page>("overview");
+  const isBackendSupplyView = (page === "overview" || page === "fuel") && overviewSource === "milp";
   const isMilpOverview = page === "overview" && overviewSource === "milp";
+  const planning = usePlanning(isBackendSupplyView);
+  const [supplyTarget, setSupplyTarget] = useState<SupplyTarget | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
   );
@@ -399,15 +405,15 @@ function App() {
         <div className="sidebar-note">
           <div>
             <span className="online-dot" />
-            {isMilpOverview ? "Python MILP 조회" : page === "vessels" ? "선박 관측 조회" : "오프라인 데모"}
+            {isBackendSupplyView ? "Python MILP 조회" : page === "vessels" ? "선박 관측 조회" : "오프라인 데모"}
           </div>
           <p>
-            {isMilpOverview
+            {isBackendSupplyView
               ? "당진 1~10호기 · 저장된 계획"
               : page === "vessels" ? "선박별 출처·관측시각 확인" : "운영·정비계획 샘플 데이터"}
           </p>
           <span>
-            {isMilpOverview
+            {isBackendSupplyView
               ? "계산별 기간 · KST 일 단위"
               : page === "vessels" ? "시각 표기 KST" : "시연 기준 2026.10.06 09:00 KST"}
           </span>
@@ -613,7 +619,7 @@ function App() {
           <div className="top-actions">
             <span className="demo-label">
               <span />
-              {isMilpOverview ? "MILP 계획 조회" : page === "vessels" ? "선박별 데이터" : "샘플 데이터"}
+              {isBackendSupplyView ? "MILP 계획 조회" : page === "vessels" ? "선박별 데이터" : "샘플 데이터"}
             </span>
             <Button
               variant="ghost"
@@ -631,7 +637,7 @@ function App() {
               size="icon"
               className="notification-button"
               aria-label="운영 알림 보기"
-              disabled={isMilpOverview}
+              disabled={isBackendSupplyView}
               onClick={() => setAlertsOpen(true)}
             >
               <Bell />
@@ -658,7 +664,7 @@ function App() {
             <div>
               <h1>{currentPage.label}</h1>
               <p>
-                {isMilpOverview
+                {isBackendSupplyView
                   ? "저장된 Python MILP 결과와 DB 수급 원장을 확인합니다."
                   : currentPage.sub}
               </p>
@@ -668,7 +674,7 @@ function App() {
                 variant="outline"
                 className="export-button"
                 onClick={exportCsv}
-                disabled={busy || isMilpOverview}
+                disabled={busy || isBackendSupplyView}
               >
                 <ArrowDownToLine />
                 CSV 내보내기
@@ -676,7 +682,7 @@ function App() {
               <Button
                 onClick={() => navigate("scenario")}
                 className="scenario-shortcut"
-                disabled={isMilpOverview}
+                disabled={isBackendSupplyView}
               >
                 <Settings2 />
                 시나리오 분석
@@ -711,7 +717,7 @@ function App() {
                 </button>
               </div>
               <span className="context-caption">
-                {isMilpOverview
+                {isBackendSupplyView
                   ? "당진 저장계획 · 실적과 구분"
                   : "기존 합성 데이터 시뮬레이션"}
               </span>
@@ -751,9 +757,14 @@ function App() {
                     <button
                       disabled={busy}
                       key={d}
-                      aria-pressed={horizon === d}
-                      className={horizon === d ? "selected" : ""}
-                      onClick={() => calculate(applied, scope, d)}
+                      aria-pressed={(page === "fuel" && overviewSource === "milp" ? planning.query?.horizon : horizon) === d}
+                      className={(page === "fuel" && overviewSource === "milp" ? planning.query?.horizon : horizon) === d ? "selected" : ""}
+                      onClick={() => {
+                        if (page === "fuel" && overviewSource === "milp" && planning.query) {
+                          planning.setQuery({ ...planning.query, horizon: d });
+                          setHorizon(d);
+                        } else void calculate(applied, scope, d);
+                      }}
                     >
                       {d}일
                     </button>
@@ -768,12 +779,12 @@ function App() {
                 )}
                 <Clock3 size={13} />
                 <span>
-                  시연 기준 2026.10.06 09:00 <b>KST</b>
+                  {page === "fuel" && overviewSource === "milp" && planning.query ? `${planning.query.start} 00:00 · ${planning.query.horizon}일` : "시연 기준 2026.10.06 09:00"} <b>KST</b>
                 </span>
               </div>
             </div>
           )}
-          {!isMilpOverview && busy && (
+          {!isBackendSupplyView && busy && (
             <div className="processing-strip">
               <ProcessingOrb
                 theme={theme}
@@ -785,7 +796,7 @@ function App() {
               </span>
             </div>
           )}
-          {!isMilpOverview && error && (
+          {!isBackendSupplyView && error && (
             <div className="error-banner" role="alert">
               <TriangleAlert size={18} />
               {error}
@@ -794,20 +805,25 @@ function App() {
               </Button>
             </div>
           )}
-          {page === "overview" &&
-            (overviewSource === "milp" ? (
-              <MidtermDashboard theme={theme} />
-            ) : (
-              <PlantOverview
-                summary={tower}
-                plants={selectedPlants}
-                models={models}
-                theme={theme}
-                onSchedule={() => navigate("schedule")}
-                onScenario={() => navigate("scenario")}
-                onPlant={(plantId) => setDetail({ plantId })}
-              />
-            ))}
+          {isMilpOverview && (
+            <PlanningWorkspace state={planning}>
+              {(snapshot) => <MidtermDashboard snapshot={snapshot} theme={theme} onSupplyTarget={(target) => {
+                setSupplyTarget(target);
+                navigate("fuel");
+              }} />}
+            </PlanningWorkspace>
+          )}
+          {page === "overview" && overviewSource === "synthetic" && (
+            <PlantOverview
+              summary={tower}
+              plants={selectedPlants}
+              models={models}
+              theme={theme}
+              onSchedule={() => navigate("schedule")}
+              onScenario={() => navigate("scenario")}
+              onPlant={(plantId) => setDetail({ plantId })}
+            />
+          )}
 
           {page === "schedule" && (
             <>
@@ -945,7 +961,10 @@ function App() {
             <Stockyard
               plants={selectedPlants}
               theme={theme}
-              horizon={horizon}
+              horizon={overviewSource === "milp" ? planning.query?.horizon ?? horizon : horizon}
+              planning={overviewSource === "milp" ? planning : undefined}
+              supplyTarget={supplyTarget}
+              onSupplyChanged={planning.refresh}
             />
           )}
 
@@ -962,7 +981,10 @@ function App() {
           {page === "models" && (
             <ModelsPage models={models} onModels={setModels} theme={theme} />
           )}
-          {page === "data" && <><MemberManagement /><DataPage plants={selectedPlants} /></>}
+          {page === "data" && <><MemberManagement /><DataPage plants={selectedPlants} onResult={(run) => {
+            planning.setQuery(initialPlanningQuery({ ...run, name: "", period: `${run.start} ~ ${run.end}` }));
+            planning.refresh(); setOverviewSource("milp"); navigate("overview");
+          }} /></>}
 
           {page === "scenario" && (
             <>
@@ -1174,10 +1196,10 @@ function App() {
             <footer className="page-footer">
               <span>
                 <Layers3 size={13} />
-                {page === "vessels" ? "선박별 관측·예보 기준 · KST" : "샘플 데이터 기반 운영 시뮬레이션"}
+                {isBackendSupplyView ? "DB 수급 · Pile 표본" : page === "vessels" ? "선박별 관측·예보 기준 · KST" : "샘플 데이터 기반 운영 시뮬레이션"}
               </span>
               <span>
-                {page === "vessels" ? "시연 표본은 별도 표시" : "시연 기준시각 고정 · 실제 운전 및 정지계획과 다를 수 있습니다."}
+                {isBackendSupplyView ? "계획 시점의 DB 수급과 SIMULATED Pile을 구분합니다." : page === "vessels" ? "시연 표본은 별도 표시" : "시연 기준시각 고정 · 실제 운전 및 정지계획과 다를 수 있습니다."}
               </span>
               <button onClick={() => setHelpOpen(true)}>
                 산정 기준
@@ -1319,7 +1341,7 @@ function App() {
             <DialogHeader>
               <DialogTitle>데이터와 계산 기준</DialogTitle>
               <DialogDescription>
-                {isMilpOverview
+                {isBackendSupplyView
                   ? "선택한 저장 계산의 기간 · KST 00시~24시입니다."
                   : page === "vessels"
                     ? "모든 시각은 KST로 표시하며, 관측·예보·시연 기준을 구분합니다."
@@ -1335,7 +1357,7 @@ function App() {
                 <h3>시연 표본의 고정 날짜</h3>
                 <p>시연 표본은 2026.10.06 09:00 KST 기준의 합성 데이터입니다. 실제 관측으로 갱신하지 않으며, 선박별 출처에서 구분합니다.</p>
               </div>
-            ) : isMilpOverview ? (
+            ) : isBackendSupplyView ? (
               <div className="help-copy">
                 <h3>저장된 MILP 계획</h3>
                 <p>
@@ -1353,7 +1375,7 @@ function App() {
                 <p>
                   선택한 계산에 등록된 계획정지를 표시합니다. 재고 부족은 계획상
                   부족량이며 발전계획을 자동으로 축소하지 않습니다.
-                  저탄장·선박추적·모델 상세 메뉴는 기존 화면을 유지합니다.
+                  저탄장 현황의 기존 약도·패널에 같은 DB 재고·전망을 연결합니다. Pile 원장·탄질·센서 표본은 SIMULATED로 구분합니다.
                 </p>
               </div>
             ) : (

@@ -1,3 +1,67 @@
+import { supplyFeeds, supplyUnloads, supplySiteVessels, supplyInventory, supplyTimeline, sumKnownInventory } from "../src/features/stockyard/supply-view.ts";
+import { suppliedPlanningFixture } from "./planning-fixture.ts";
+
+test("yard feed uses the selected MILP day and sums units 1–4, 5–8 and 9–10", () => {
+  const snapshot = suppliedPlanningFixture();
+  snapshot.daily[0].unit_generation_mwh = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`dj-${i + 1}`, (i + 1) * 1000]));
+  const daily = snapshot.inventory.daily[0].groups;
+  daily.g14.burn = 2400; daily.g58.burn = 0; daily.g910.burn = null;
+  const feeds = supplyFeeds(snapshot);
+  assert.deepEqual(feeds, [
+    { yard: "P1", generationMwh: 10000, tonnesPerDay: 2400, tonnesPerHour: 100 },
+    { yard: "P2", generationMwh: 26000, tonnesPerDay: 0, tonnesPerHour: 0 },
+    { yard: "P3", generationMwh: 19000, tonnesPerDay: null, tonnesPerHour: null },
+  ]);
+  snapshot.daily[0].unit_generation_mwh["dj-2"] = null;
+  assert.equal(supplyFeeds(snapshot)[0].generationMwh, null);
+  snapshot.start = "2027-02-01";
+  assert.ok(supplyFeeds(snapshot).every((f) => f.tonnesPerDay === null));
+  assert.ok(supplyFeeds(null).every((f) => f.generationMwh === null && f.tonnesPerHour === null));
+});
+
+test("unloading displays DB partial receipts and zero rates without substituting the default for missing data", () => {
+  const s = suppliedPlanningFixture();
+  s.vessels = [{ id: 1, name: "Pacific Horizon", cargo: 80000, incoming_cv: 5900,
+    arrival_at: "2027-01-01T00:00:00+09:00", remaining: 80000, state: "하역중",
+    berth_id: "BD-1", unloading_rate_tpd: 7000, today_receipts: 875 }];
+  assert.deepEqual(supplyUnloads(s), [
+    { berth: "BD-1", rateTpd: 7000, receipts: 875 },
+    { berth: "BD-2", rateTpd: 0, receipts: 0 },
+    { berth: "BD-3", rateTpd: 0, receipts: 0 },
+  ]);
+  delete s.vessels[0].unloading_rate_tpd;
+  assert.equal(supplyUnloads(s)[0].rateTpd, null);
+  assert.ok(supplyUnloads(null).every((v) => v.rateTpd === null && v.receipts === null));
+  s.vessels[0].berth_id = null;
+  assert.ok(supplyUnloads(s).every((v) => v.rateTpd === null && v.receipts === null));
+  const scope = yardScope("dangjin");
+  const arrived = arrivalWaiting(scope.incoming);
+  const samples = siteVessels(arrived, [], {});
+  s.vessels[0].state = "하역중단";
+  const paused = supplySiteVessels(s, samples);
+  assert.equal(paused[0].state, "unloading");
+  assert.equal(paused[0].ledgerState, "하역중단");
+  s.vessels[0].run_id = s.run_id;
+  s.vessels.unshift({ ...s.vessels[0], id: 2, run_id: null, state: "완료" });
+  assert.equal(supplySiteVessels(s, samples)[0].ledgerState, "하역중단");
+  s.vessels[1].state = "완료";
+  assert.equal(supplySiteVessels(s, samples).length, 0);
+});
+
+test("DB timeline uses supplied berth and unloading fields without inventing missing schedules", () => {
+  const snapshot = suppliedPlanningFixture();
+  snapshot.vessels = [{ id: 10, name: "DB SHIP", cargo: 50000, incoming_cv: 6000, arrival_at: "2027-01-02T00:00:00+09:00", remaining: 50000, state: "입항예정", coal_grade: "high", berth_at: "2027-01-03T00:00:00+09:00", unload_end: "2027-01-05T00:00:00+09:00" }];
+  const [row] = supplyTimeline(snapshot);
+  assert.equal(row.voyage.coal_type, "고열량탄");
+  assert.equal(row.berthAt, snapshot.vessels[0].berth_at);
+  assert.equal(row.unloadEnd, snapshot.vessels[0].unload_end);
+  assert.deepEqual(row.wait, [1 / 30, 2 / 30]);
+  assert.deepEqual(row.unload, [2 / 30, 4 / 30]);
+  assert.equal(row.reflect, 4 / 30);
+  delete snapshot.vessels[0].unload_end;
+  assert.equal(supplyTimeline(snapshot)[0].unload, null);
+  assert.equal(supplyTimeline(snapshot)[0].reflect, null);
+});
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE_TIME } from "../src/domain/operations.ts";
@@ -682,6 +746,13 @@ test("supply vessel body and cumulative unloading follow the backend rules", () 
   assert.deepEqual(body.allocations, { g14: 0, g58: 0, g910: 1 });
   assert.ok(Date.parse(body.start_at) >= Date.parse(body.arrival_at));
   assert.ok(body.rate > 0);
+  assert.equal(body.rate, 7000 / 24);
+  assert.equal(body.berth_id, "BD-3");
+  const simulated = toSupplyVessel(voyage, "BD-1", { runId: "가상 계획", start: "2027-01-01" });
+  assert.equal(simulated.run_id, "가상 계획");
+  assert.equal(simulated.classification, "simulation");
+  assert.ok(Date.parse(simulated.start_at) >= Date.parse("2027-01-01T00:00:00+09:00"));
+  assert.equal(simulated.rate * 24, 7000);
   const record = {
     id: 1,
     name: voyage.vessel_name,
@@ -797,4 +868,35 @@ test("link responses keep only valid records so odd payloads cannot crash the pa
     { stockpile_id: 7, measured_at: BASE_TIME },
   ]);
   assert.deepEqual(sensors.map((r) => [r.stockpile_id, r.temperature_c, r.co_ppm]), [["DA-01", null, 4]]);
+});
+
+
+test("DB inventory maps to existing yard views without using sample Pile totals", () => {
+  const p = plantInputs.find((p) => p.id === "dangjin")!;
+  const groups = stockGroups([p], stockpiles.filter((pile) => pile.plant_id === "dangjin"));
+  const snapshot = suppliedPlanningFixture("검증", "2027-01-01", 7);
+  const mapped = supplyInventory(snapshot, groups);
+  assert.deepEqual(mapped.map((g) => g.currentTons), [130000, 90000, 70000]);
+  assert.equal(mapped[1].currentDays, 18);
+  assert.deepEqual(mapped[1].minDays, { days: 5, date: "2027-01-04" });
+  assert.equal(mapped[1].status, "danger");
+  snapshot.inventory.kpis.min_days = null;
+  snapshot.inventory.groups[1].min_days = null;
+  snapshot.inventory.groups[1].stock = null;
+  const incomplete = supplyInventory(snapshot, groups);
+  assert.equal(incomplete[1].currentTons, null);
+  assert.equal(incomplete[1].minDays, null);
+  assert.equal(sumKnownInventory(incomplete.map((g) => g.currentTons)), null);
+  assert.ok(supplyInventory(null, groups).every((g) => g.currentTons === null && g.status === "unknown"));
+});
+
+test("DB inventory preserves zero and negative forecasts without inventing missing timelines", () => {
+  assert.equal(sumKnownInventory([0, 0, 0]), 0);
+  assert.equal(sumKnownInventory([100, -200]), -100);
+  assert.equal(sumKnownInventory([100, null]), null);
+  assert.equal(sumKnownInventory([]), null);
+  const rows = supplyTimeline(suppliedPlanningFixture("검증", "2027-01-01", 7));
+  assert.equal(rows.length, 3);
+  assert.ok(rows.every((row) => row.unloadEnd === null && row.unload === null && row.reflect === null));
+  assert.equal(rows.find((row) => row.voyage.voyage_id === "supply:2")?.voyage.cargo_t, 60000);
 });

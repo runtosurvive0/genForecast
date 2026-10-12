@@ -20,7 +20,9 @@ LIMITED = {'/api/auth/password'}
 READ_POST = {'/api/vessels/destinations/resolve', '/api/supply/forecast', '/api/outages/parse'}
 ADMIN_WRITES = {('/api/settings', 'PUT'), ('/api/fuel-settings', 'PUT'), ('/api/run', 'POST'), ('/api/preview', 'POST'),
                 ('/api/supply/baselines', 'POST'), ('/api/supply/vessels', 'POST'), ('/api/supply/transfers', 'POST'),
-                ('/api/supply/config', 'PUT'), ('/api/supply/plans', 'POST')}
+                ('/api/supply/config', 'PUT'), ('/api/supply/plans', 'POST'),
+                ('/api/planning/inputs/upload', 'POST'), ('/api/supply/simulation-stock', 'POST'),
+                ('/api/supply/port-visits', 'POST')}
 
 
 def get_store(request):

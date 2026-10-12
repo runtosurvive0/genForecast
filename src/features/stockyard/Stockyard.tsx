@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import { Search } from "lucide-react";
 import { Section } from "@/components/tower/primitives";
 import type { Voyage } from "@/data/control-tower";
@@ -8,6 +8,10 @@ import {
   incomingVoyages,
 } from "@/domain/control-tower";
 import { BASE_TIME, type Plant } from "@/domain/operations";
+import type { PlanningState } from "@/domain/use-planning";
+import { minimumInventoryPoint, type SupplyTarget } from "@/domain/supply";
+import { supplyFeeds, supplyUnloads, supplySiteVessels, supplyInventory, supplyTimeline, sumKnownInventory, inventoryStatus, type InventoryGroup } from "./supply-view";
+import { YARD_GROUP_IDS, BERTHS, DEFAULT_UNLOAD_TPD } from "./stockyard-domain";
 import { number as n } from "@/lib/format";
 import {
   arrivalWaiting,
@@ -33,6 +37,7 @@ import {
   stockGroups,
   stockyardAlerts,
   transferTons,
+  unitDailyMwh,
   waitingVessels,
   weeklyBurnShares,
   yardScope,
@@ -74,11 +79,17 @@ export function Stockyard({
   plants,
   theme,
   horizon = FORECAST_HORIZON,
+  onSupplyChanged,
+  planning,
+  supplyTarget,
 }: {
   plants: Plant[];
   theme: string;
   /** 앱 공통 전망 기간 (30/60/90일). */
   horizon?: number;
+  onSupplyChanged?: () => void;
+  planning?: PlanningState;
+  supplyTarget?: SupplyTarget | null;
 }) {
   // ── 범위: 앱 공통 조회 범위가 원천, 탭 칩은 그 안의 하위 선택 ──
   const scopeIds = plants.map((p) => p.id);
@@ -132,8 +143,8 @@ export function Stockyard({
   const outOfScope = () =>
     Promise.reject(new IntegrationError("당진 범위 아님"));
   const supply = useLink(
-    () => (dangjinInView ? fetchSupplyRecords() : outOfScope()),
-    [dangjinInView],
+    () => (dangjinInView ? fetchSupplyRecords(planning?.query?.runId) : outOfScope()),
+    [dangjinInView, planning?.query?.runId],
   );
   const ais = useLink(
     () => (dangjinInView ? fetchAisPositions("dangjin") : outOfScope()),
@@ -169,12 +180,12 @@ export function Stockyard({
   );
   const vessels = useMemo(
     () =>
-      siteVessels(
+      supplySiteVessels(planning?.current ?? null, siteVessels(
         unloading,
         waiting.map((r) => r.voyage),
         assignedBerths,
-      ),
-    [unloading, waiting, assignedBerths],
+      )),
+    [unloading, waiting, assignedBerths, planning?.current],
   );
   const berths = useMemo(() => berthOccupancy(vessels), [vessels]);
   const recommendFor = (voyageId: string) =>
@@ -232,7 +243,10 @@ export function Stockyard({
         : forecasts,
     [groups, scope, berthOf, allTransfers.length, forecasts],
   );
-  const yardForecasts = forecasts.filter(
+  const inventory: InventoryGroup[] = planning ? supplyInventory(planning.current, groups) : forecasts;
+  const dbScope = groups.length > 0 && groups.every((g) => g.plantId === "dangjin");
+  const dbSnapshot = dbScope ? planning?.current : null;
+  const yardForecasts = inventory.filter(
     (f) => f.group.plantId === "dangjin" && f.group.yard,
   );
 
@@ -251,10 +265,13 @@ export function Stockyard({
   );
   const blend = useMemo(() => pileBlend(piles, burned), [piles, burned]);
 
-  const dangjinGauge = useMemo(
-    () => (dangjinPlant ? gaugeValue([dangjinPlant]) : 0),
-    [dangjinPlant],
-  );
+  const sampleMwh = !planning && dangjinPlant ? unitDailyMwh(dangjinPlant, 1) : {};
+  const siteFeeds = planning ? supplyFeeds(planning.current) : Object.keys(YARD_GROUP_IDS).map((yard) => {
+    const group = forecasts.find((f) => f.group.yard === yard);
+    const generationMwh = group ? group.group.unitIds.reduce((s, id) => s + (sampleMwh[id]?.[0] ?? 0), 0) : null;
+    const tonnesPerDay = group?.daily[0]?.useTons ?? null;
+    return { yard, generationMwh, tonnesPerDay, tonnesPerHour: tonnesPerDay === null ? null : tonnesPerDay / 24 };
+  });
   const otherPlants = viewPlants.filter((p) => p.id !== "dangjin");
   const otherGauge = useMemo(
     () => gaugeValue(viewPlants.filter((p) => p.id !== "dangjin")),
@@ -266,7 +283,7 @@ export function Stockyard({
     selection?.kind === "pile"
       ? (piles.find((p) => p.stockpile_id === selection.id) ?? null)
       : null;
-  const activeVessel =
+  const activeVessel = planning && selection?.kind === "vessel" && selection.id.startsWith("supply:") ? null :
     (selection?.kind === "vessel" &&
       vessels.find((v) => v.voyage.voyage_id === selection.id)) ||
     vessels[0] ||
@@ -301,7 +318,16 @@ export function Stockyard({
     else scrollToRef(siteRef);
   };
 
-  const total = piles.reduce((s, p) => s + p.on_hand_t, 0);
+  useEffect(() => {
+    if (!planning || !supplyTarget) return;
+    const yard = Object.entries(YARD_GROUP_IDS).find(([, id]) => id === supplyTarget.groupId)?.[0];
+    if (yard) { setSelection({ kind: "yard", id: yard }); setPanelTab("yard"); }
+    if (supplyTarget.section === "forecast" || supplyTarget.section === "arrivals") scrollToRef(forecastRef);
+    else if (supplyTarget.section === "inventory") scrollToRef(ledgerRef);
+    else { setPanelTab("vessel"); scrollToRef(siteRef); }
+  }, [supplyTarget, planning?.current]);
+
+  const total = planning ? dbSnapshot?.inventory.kpis.stock ?? null : piles.reduce((s, p) => s + p.on_hand_t, 0);
   const incoming = incomingVoyages(
     scope.incoming,
     plantFilter ? [plantFilter] : scopeIds,
@@ -314,15 +340,21 @@ export function Stockyard({
   const oldest = [...piles].sort((a, b) => pileRisk(b).age - pileRisk(a).age)[0];
   const highCount = piles.filter((p) => pileRisk(p).label === "높음").length;
   const sensed = piles.some((p) => pileRisk(p).source === "SENSOR");
-  const lowest = forecasts
-    .filter((f) => f.currentDays !== null)
-    .sort((a, b) => a.currentDays! - b.currentDays!)[0];
+  const lowest = inventory
+    .filter((f) => planning ? f.minDays !== null : f.currentDays !== null)
+    .sort((a, b) => planning ? a.minDays!.days - b.minDays!.days : a.currentDays! - b.currentDays!)[0];
+  const minimum = dbSnapshot ? minimumInventoryPoint(dbSnapshot) : null;
+  const dbCv = inventory.every((g) => g.currentTons != null && g.currentTons >= 0 && g.cv != null)
+    ? weightedCalorific(inventory.map((g) => ({ tons: g.currentTons!, cv: g.cv! }))) : null;
   const transferOver = transfers.some(
     (t) => !t.savedId && transferTons(t.tons, transferCapacity).overCapacity,
   );
   const alerts = useMemo(
-    () => stockyardAlerts({ forecasts, piles, vessels, transferOver }),
-    [forecasts, piles, vessels, transferOver],
+    () => [
+      ...stockyardAlerts({ forecasts: planning ? [] : forecasts, piles, vessels, transferOver }),
+      ...(planning ? [{ level: "info" as const, text: planning.failed || (planning.loading || planning.listLoading ? "DB 수급 조회 중" : planning.current ? `DB 수급 ${planning.current.start} · ${planning.current.horizon_days}일 · Pile 표본 미연계` : "DB 수급 미연계"), target: null }] : []),
+    ],
+    [forecasts, piles, vessels, transferOver, planning?.current, planning?.failed, planning?.loading, planning?.listLoading],
   );
 
   const kpis: KpiItem[] = [
@@ -330,18 +362,19 @@ export function Stockyard({
       label: "총 저탄량",
       value: n(total),
       unit: "t",
-      note: `${piles.length}개 Pile 합계`,
+      note: planning ? "DB 처별 재고 · Pile 원장 미연계" : `${piles.length}개 Pile 합계`,
       action: "원장으로 이동",
       onClick: () => scrollToRef(ledgerRef),
     },
     {
       label: "최저 재고일수",
-      value: lowest ? n(lowest.currentDays!, 1) : "-",
+      value: planning ? n(dbSnapshot?.inventory.kpis.min_days, 1) : lowest ? n(lowest.currentDays!, 1) : "-",
       unit: "일",
-      note: lowest
+      note: planning ? `${minimum?.day ?? "기간 최소 미확정"} · DB 전망`
+        : lowest
         ? `${lowest.group.label} · ${DAYS_STATUS_LABEL[daysStatus(lowest.currentDays)]}`
         : "소비 계획 없음",
-      tone: daysStatus(lowest?.currentDays ?? null),
+      tone: planning ? inventoryStatus(dbSnapshot?.inventory.kpis.risk ?? "unknown") : daysStatus(lowest?.currentDays ?? null),
       action: "해당 처·발전소 보기",
       onClick: () =>
         lowest?.group.yard
@@ -352,19 +385,19 @@ export function Stockyard({
       label: "운영 Pile",
       value: piles.length,
       unit: "개",
-      note: `${groups.length}개 처·발전소`,
+      note: `${groups.length}개 처·발전소${planning ? " · Pile 표본" : ""}`,
       action: "원장으로 이동",
       onClick: () => scrollToRef(ledgerRef),
     },
     {
       label: "가중평균 열량",
       value: n(
-        weightedCalorific(
+        planning ? dbCv : weightedCalorific(
           piles.map((p) => ({ tons: p.on_hand_t, cv: p.calorific_value_kcal_kg })),
-        ) ?? 0,
+        ),
       ),
       unit: "kcal/kg",
-      note: "Pile 재고 가중",
+      note: planning ? "DB 처별 재고 가중" : "Pile 재고 가중",
       action: "탄종 구성 보기",
       onClick: () => {
         setAnalysisTab("mix");
@@ -373,9 +406,9 @@ export function Stockyard({
     },
     {
       label: `입하 예정 (${horizon}일)`,
-      value: n(incomingTons),
+      value: n(planning ? dbSnapshot ? sumKnownInventory(dbSnapshot.inventory.groups.map((g) => g.expected_receipts)) : null : incomingTons),
       unit: "t",
-      note: `${incoming.length}척 · 가중 ${incomingCv ? n(incomingCv) : "-"} kcal/kg`,
+      note: planning ? `DB 하역 배분 · 입항 ${n(dbSnapshot?.inventory.kpis.arrivals)} t / ${n(dbSnapshot?.inventory.kpis.arrival_count)}척` : `${incoming.length}척 · 가중 ${incomingCv ? n(incomingCv) : "-"} kcal/kg`,
       action: "입하 타임라인으로 이동",
       onClick: () => scrollToRef(forecastRef),
     },
@@ -425,10 +458,11 @@ export function Stockyard({
     {
       label: supply.status === "online" ? "수급 원장" : "수급 원장 미연결",
       status: supply.status,
-      detail: `/api/supply · ${supply.status === "online" ? "이탄·하역 저장 가능" : supply.error || "확인 중"}`,
+      detail: `${planning?.current ? `DB 수급 ${planning.current.start} · ${planning.current.horizon_days}일 · 하역 잔량 ${n(planning.current.inventory.kpis.unloading_remaining)} t · ` : ""}/api/supply · ${supply.status === "online" ? "이탄·하역 저장 가능" : supply.error || "확인 중"}`,
     },
   ];
   const refreshLinks = () => {
+    planning?.refresh();
     void supply.refresh();
     void ais.refresh();
     void sensors.refresh();
@@ -577,16 +611,12 @@ export function Stockyard({
             sort={sort}
             riskFilter={riskFilter}
             unitCount={dangjinPlant?.units.length ?? 0}
-            unitLabel={
-              dangjinPlant
-                ? dangjinPlant.units
-                    .map((u) =>
-                      u.name.replace(/^당진\s*/, "").replace("호기", ""),
-                    )
-                    .join("·") + "호기"
-                : "발전호기"
-            }
-            gauge={dangjinGauge}
+            feeds={siteFeeds}
+            unloads={planning ? supplyUnloads(planning.current) : BERTHS.map((berth) => ({
+              berth, rateTpd: berths.find((b) => b.berth_id === berth)?.state === "unloading" ? DEFAULT_UNLOAD_TPD : 0,
+              receipts: null }))}
+            feedDate={planning?.query?.start ?? BASE_TIME.slice(0, 10)}
+            feedSource={planning ? "MILP 일별 계획" : "샘플 일별 계획"}
             yardDeltas={yardDeltas}
             yardForecasts={yardForecasts}
             showSample={showSampleWaiting(live.source)}
@@ -615,9 +645,13 @@ export function Stockyard({
                   })
                 }
                 supply={supply}
+                readAt={planning?.query?.start ? `${planning.query.start}T00:00:00+09:00` : undefined}
+                runId={planning?.query?.runId}
                 onRegisterVessel={async (v) => {
-                  await registerSupplyVessel(v.voyage, v.berth_id);
+                  await registerSupplyVessel(v.voyage, v.berth_id, planning?.query ? {
+                    runId: planning.query.runId, start: planning.query.start } : undefined);
                   await supply.refresh();
+                  onSupplyChanged?.();
                 }}
                 onCorrectUnloading={async (record, cumulative) => {
                   await correctSupplyUnloading(
@@ -626,6 +660,7 @@ export function Stockyard({
                     cumulative,
                   );
                   await supply.refresh();
+                  onSupplyChanged?.();
                 }}
                 yardForecasts={yardForecasts}
                 activeYard={activeYard}
@@ -651,6 +686,7 @@ export function Stockyard({
                     ),
                   );
                   await supply.refresh();
+                  onSupplyChanged?.();
                 }}
                 unitNames={unitNames}
                 activePile={activePile}
@@ -734,9 +770,11 @@ export function Stockyard({
           horizon={horizon}
           forecast={scope.forecast}
           requested={contrastLine(scope.forecast).map((c) => c.requested)}
-          groups={forecasts}
+          groups={inventory}
           baseline={baseline}
-          transfersActive={allTransfers.length > 0}
+          planning={planning ? planning.current : undefined}
+          db={Boolean(planning)}
+          transfersActive={!planning && allTransfers.length > 0}
           onSelectGroup={(g) =>
             g.yard
               ? select({ kind: "yard", id: g.yard }, true)
@@ -744,7 +782,8 @@ export function Stockyard({
           }
         />
         <IncomingTimeline
-          rows={incomingSchedule(scope.incoming, horizon)}
+          rows={planning ? supplyTimeline(planning.current) : incomingSchedule(scope.incoming, horizon)}
+          db={Boolean(planning)}
           horizon={horizon}
           selectedId={selection?.kind === "vessel" ? selection.id : null}
           onSelect={(id) =>

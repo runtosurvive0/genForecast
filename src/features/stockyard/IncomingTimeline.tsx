@@ -9,11 +9,13 @@ export function IncomingTimeline({
   horizon,
   selectedId,
   onSelect,
+  db = false,
 }: {
   rows: TimelineRow[];
   horizon: number;
   selectedId: string | null;
   onSelect: (voyageId: string) => void;
+  db?: boolean;
 }) {
   const span = (range: [number, number]) =>
     ({
@@ -23,7 +25,7 @@ export function IncomingTimeline({
   return (
     <Section
       title="입하 예정"
-      note={`취소 항차 제외 · 하역 완료 순 · 재고 반영은 하역 완료 시점 · 기준시각부터 ${horizon}일`}
+      note={db ? `DB 등록 미완료 화물 · ${horizon}일 · 접안·하역 일정 반영 · 실제 입항 관측과 예정 구분` : `취소 항차 제외 · 하역 완료 순 · 재고 반영은 하역 완료 시점 · 기준시각부터 ${horizon}일`}
     >
       <div className="tower-table-wrap">
         <table className="tower-table stockyard-incoming">
@@ -54,14 +56,14 @@ export function IncomingTimeline({
                   <div
                     className="timeline-track"
                     role="img"
-                    aria-label={`${r.voyage.vessel_name}: ETA ${fmtDate(r.eta, true)}, 접안 ${fmtDate(r.berthAt, true)}, 하역 완료 ${fmtDate(r.unloadEnd, true)}`}
+                    aria-label={`${r.voyage.vessel_name}: ETA ${fmtDate(r.eta, true)}, 접안 ${r.berthAt ? fmtDate(r.berthAt, true) : "미연계"}, 하역 완료 ${r.unloadEnd ? fmtDate(r.unloadEnd, true) : "미연계"}`}
                   >
                     {r.wait && <i className="timeline-wait" style={span(r.wait)} />}
-                    <i className="timeline-unload" style={span(r.unload)} />
-                    <i className="timeline-reflect" style={{ left: `${r.reflect * 100}%` }} />
+                    {r.unload && <i className="timeline-unload" style={span(r.unload)} />}
+                    {r.reflect !== null && <i className="timeline-reflect" style={{ left: `${r.reflect * 100}%` }} />}
                   </div>
                 </td>
-                <td>{fmtDate(r.unloadEnd, true)}</td>
+                <td>{r.unloadEnd ? fmtDate(r.unloadEnd, true) : "미연계"}</td>
               </tr>
             ))}
             {!rows.length && (
