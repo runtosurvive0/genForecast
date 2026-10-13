@@ -27,11 +27,11 @@ def test_viewport_wraps_dateline_excludes_missing_positions_and_preserves_stalen
 
 def test_full_catalog_is_aggregated_without_dropping_ships(tmp_path):
     store = DiscoveryStore(tmp_path/'map.sqlite3')
-    store.save({str(440000000+i): record(str(440000000+i), (i*13.1)%358-179, (i*7.1)%160-80) for i in range(40000)}, NOW)
+    store.save({str(440000000+i): record(str(440000000+i), (i*13.1)%358-179, (i*7.1)%160-80) for i in range(120000)}, NOW)
     result = fleet_map(store, -180, 180, -85, 85, 4, NOW)
-    assert result['visibleCount'] == 40000
+    assert result['visibleCount'] == 120000
     assert len(result['features']) <= 1200
-    assert sum(f['properties']['count'] for f in result['features']) == 40000
+    assert sum(f['properties']['count'] for f in result['features']) == 120000
     assert len(json.dumps(result)) < 500000
     store.close()
 

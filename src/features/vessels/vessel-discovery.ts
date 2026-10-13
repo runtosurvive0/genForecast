@@ -3,7 +3,7 @@ import {
   type TrackingVessel,
 } from "../../domain/vessel-workflow.ts";
 
-export const DISCOVERY_CAPACITY = 40_000;
+export const DISCOVERY_CAPACITY = 120_000;
 // Broad discovery rectangle, not territorial waters or a destination classifier.
 export const KOREA_NEARBY_BOUNDS = { south: 31, north: 39, west: 124, east: 132 } as const;
 

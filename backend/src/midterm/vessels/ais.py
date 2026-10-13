@@ -13,7 +13,7 @@ import re
 from midterm.vessels.korean_destinations import korean_destination
 
 DEFAULT_BOXES = [[[-90, -180], [90, 180]]]
-MAX_VESSELS = 40_000
+MAX_VESSELS = 120_000
 MAX_KOREA_CANDIDATES = 1000
 KOREA_RETENTION_HOURS = 72
 POSITION_TYPES = ("PositionReport", "StandardClassBPositionReport", "ExtendedClassBPositionReport")

@@ -7,7 +7,7 @@ from midterm.web.catalog_transport import CatalogCompressionMiddleware
 def test_catalog_compresses_without_changing_json_or_private_cache_policy():
     app = FastAPI()
     app.add_middleware(CatalogCompressionMiddleware)
-    payload = {'vessels': [{'mmsi': str(440000000 + i), 'name': 'TEST CARGO'} for i in range(40000)]}
+    payload = {'vessels': [{'mmsi': str(440000000 + i), 'name': 'TEST CARGO'} for i in range(120000)]}
 
     @app.get('/api/vessels/catalog')
     def catalog():

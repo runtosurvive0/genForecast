@@ -28,12 +28,12 @@ test("position labels do not invent locations for missing, invalid or overseas o
   assert.equal(describeKoreanPosition(position, now + 1)?.stale, true);
 });
 
-test("discovery accepts 40000 vessels and rejects an over-capacity response", async () => {
+test("discovery accepts 120000 vessels and rejects an over-capacity response", async () => {
   const original = globalThis.fetch;
   const at = "2026-10-10T00:00:00Z";
-  let count = 40000;
+  let count = 120000;
   globalThis.fetch = async () => new Response(JSON.stringify({
-    provider: "aisstream", status: "receiving", coverage: "global", fetchedAt: at, capacity: 40000,
+    provider: "aisstream", status: "receiving", coverage: "global", fetchedAt: at, capacity: 120000,
     vessels: Array.from({ length: count }, (_, i) => ({
       id: `ais-${440000000 + i}`, name: `TEST ${i}`, mmsi: String(440000000 + i), imo: "", source: "aisstream",
       ais: { updatedAt: at, destination: "DANGJIN", shipType: 70, navStatus: 0, position: null },
@@ -41,9 +41,9 @@ test("discovery accepts 40000 vessels and rejects an over-capacity response", as
   }));
   try {
     const snapshot = await fetchVesselCatalog();
-    assert.equal(snapshot.vessels.length, 40000);
-    assert.equal(snapshot.vessels[39999].mmsi, "440039999");
-    count = 40001;
+    assert.equal(snapshot.vessels.length, 120000);
+    assert.equal(snapshot.vessels[119999].mmsi, "440119999");
+    count = 120001;
     await assert.rejects(fetchVesselCatalog);
   } finally {
     globalThis.fetch = original;
