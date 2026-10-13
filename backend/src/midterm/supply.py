@@ -109,6 +109,8 @@ def unloading(vessel, at) -> dict:
     allocated = dict.fromkeys(GROUPS, 0.)
     if not points or at < timestamp(points[0]["at"]):
         return {"cumulative": 0., "allocated": allocated}
+    for group, ratio in points[0]["allocations"].items():
+        allocated[group] += points[0]["cumulative"] * ratio
     for i, p in enumerate(points):
         start = timestamp(p["at"])
         if at < start:
@@ -153,11 +155,12 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
         v = {**vessel, "points": [dict(p) for p in vessel["points"]]}
         if visit:
             v["arrival_at"] = visit["arrived_at"]
-            if not visit["berthed_at"] and all(p["cumulative"] == 0 for p in v["points"]):
+            berth_at = visit["berthed_at"] or v.get("projected_berth_at")
+            if not berth_at and all(p["cumulative"] == 0 for p in v["points"]):
                 # 입항·체선 관측을 과거 하역 예정시각만으로 입고 처리하지 않는다.
                 v["points"] = [{**p, "rate": 0 if timestamp(p["at"]) <= as_of else p["rate"]} for p in v["points"]]
-            elif visit["berthed_at"] and v["points"] and all(p["cumulative"] == 0 for p in v["points"]):
-                v["points"][0]["at"] = max(timestamp(v["points"][0]["at"]), timestamp(visit["berthed_at"])).isoformat()
+            elif berth_at and v["points"] and all(p["cumulative"] == 0 for p in v["points"]):
+                v["points"][0]["at"] = max(timestamp(v["points"][0]["at"]), timestamp(berth_at)).isoformat()
                 v["points"].sort(key=lambda p: p["at"])
         vessels.append(v)
     records = {**records, "vessels": vessels}

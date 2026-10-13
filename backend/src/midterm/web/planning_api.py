@@ -20,7 +20,8 @@ def complete_sum(values):
 
 
 @router.get("/runs/{run_id}/snapshot")
-def snapshot(run_id: str, start: date | None = None, horizon: int = Query(default=30)):
+def snapshot(run_id: str, start: date | None = None, horizon: int = Query(default=30),
+             inventory_mode: str = "assigned"):
     if horizon not in (7, 30, 60, 90):
         raise HTTPException(400, "조회 기간은 7, 30, 60, 90일 중 선택하세요")
     try:
@@ -31,7 +32,7 @@ def snapshot(run_id: str, start: date | None = None, horizon: int = Query(defaul
     last = first + timedelta(days=horizon - 1)
     if first.isoformat() < source["start"] or last.isoformat() > source["end"]:
         raise HTTPException(400, "조회 기간이 선택한 MILP 계산 기간을 벗어납니다")
-    data = dashboard(horizon=horizon, at=first.isoformat(), plan_key="mip:" + run_id)
+    data = dashboard(horizon=horizon, at=first.isoformat(), plan_key="mip:" + run_id, inventory_mode=inventory_mode)
     master = {u.name: u for u in load_coal_units() if u.is_dangjin}
     capacities = source.get("unit_capacity_mw") or {u: master[u].installed_mw for u in UNITS}
     calendars = [data["fuel_calendar"] if year == first.year else
@@ -86,6 +87,8 @@ def snapshot(run_id: str, start: date | None = None, horizon: int = Query(defaul
         "run_start": source["start"], "run_end": source["end"], "start": first.isoformat(),
         "end": last.isoformat(), "horizon_days": horizon, "timezone": "Asia/Seoul",
         "fuel": data["fuel"], "fuel_method": data["fuel_calendar"]["method"],
+        "inventory_mode": data["inventory_mode"], "estimated_assignments": data["estimated_assignments"],
+        "berth_schedule": data["berth_schedule"],
         "units": units, "daily": daily, "monthly": monthly, "outages": periods,
         "models": data["models"], "model_info": source["model_info"],
         "inventory": {"groups": data["groups"], "daily": data["forecast"],

@@ -7,6 +7,8 @@ export interface PlanningRun {
   end: string;
 }
 export interface PlanningSnapshot {
+  inventory_mode?: InventoryMode;
+  estimated_assignments?: { vessel_id: number; berth_id: string; start_at: string; end_at: string; reason: string }[];
   schema_version: 1;
   plant_id: "dangjin";
   run_id: string;
@@ -79,6 +81,8 @@ export interface PlanningSnapshot {
     }[];
     daily: {
       day: string;
+      port_remaining?: number;
+      stock_including_port?: number | null;
       groups: Record<
         string,
         { stock: number | null; days: number | null; burn: number | null; receipts?: number }
@@ -94,8 +98,8 @@ export interface PlanningSnapshot {
       arrivals?: number;
       arrival_count?: number;
       incoming_cv?: number | null;
-      waiting_cargo?: number;
-      port_remaining?: number;
+      waiting_cargo?: number | null;
+      port_remaining?: number | null;
       stock_including_port?: number | null;
     };
     thresholds?: { danger_days: number; normal_days: number };
@@ -121,9 +125,12 @@ export interface PlanningSnapshot {
     wait_hours?: number | null;
     demurrage_hours?: number | null;
     port_remaining?: number;
+    berth_occupied?: boolean;
   }[];
   issues: string[];
 }
+
+export type InventoryMode = "assigned" | "include_waiting";
 
 export function addDays(day: string, days: number): string {
   return new Date(Date.parse(day + "T00:00:00Z") + days * 86400000)
@@ -131,8 +138,8 @@ export function addDays(day: string, days: number): string {
     .slice(0, 10);
 }
 
-async function readJson(path: string, signal?: AbortSignal): Promise<unknown> {
-  const response = await fetch(path, { signal });
+export async function readJson(path: string, signal?: AbortSignal, init?: RequestInit): Promise<unknown> {
+  const response = await fetch(path, { ...init, signal });
   let body: unknown;
   try {
     body = await response.json();
@@ -184,12 +191,16 @@ export async function loadPlanningSnapshot(
   start: string,
   horizon: number,
   signal?: AbortSignal,
+  inventoryMode: InventoryMode = "assigned",
 ): Promise<PlanningSnapshot> {
   const query = new URLSearchParams({ start, horizon: String(horizon) });
+  if (inventoryMode !== "assigned") query.set("inventory_mode", inventoryMode);
   const body = (await readJson(
     `/api/planning/runs/${encodeURIComponent(runId)}/snapshot?${query}`,
     signal,
   )) as PlanningSnapshot;
+  if (inventoryMode !== "assigned" && body.inventory_mode !== inventoryMode)
+    throw new Error("체선 포함 전망을 지원하는 백엔드 버전을 확인하세요.");
   const amount = (value: unknown) =>
     value === null || (typeof value === "number" && Number.isFinite(value));
   if (

@@ -8,6 +8,19 @@ import { planningFixture } from "./planning-fixture.ts";
 import { fuelMetrics } from "../src/features/plant/fuel-metrics.ts";
 import { minimumInventoryPoint } from "../src/domain/supply.ts";
 
+test("waiting inventory mode is requested explicitly and an old backend cannot silently return assigned-only", async (t) => {
+  let url = "";
+  const body = planningFixture();
+  t.mock.method(globalThis, "fetch", async (path: string) => {
+    url = path;
+    return new Response(JSON.stringify(body));
+  });
+  await assert.rejects(loadPlanningSnapshot("검증 계산", "2027-01-01", 30, undefined, "include_waiting"), /백엔드 버전/);
+  assert.match(url, /inventory_mode=include_waiting/);
+  body.inventory_mode = "include_waiting";
+  assert.equal((await loadPlanningSnapshot("검증 계산", "2027-01-01", 30, undefined, "include_waiting")).inventory_mode, "include_waiting");
+});
+
 test("snapshot rejects an invalid per-unit daily generation value", async (t) => {
   const body = planningFixture();
   body.daily[0].unit_generation_mwh!["dj-1"] = -1;

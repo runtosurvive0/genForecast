@@ -17,12 +17,14 @@ CSRF_COOKIE = 'gf_csrf'
 DEFAULT_ORIGINS = {f'http://{host}:{port}' for host in ('127.0.0.1', 'localhost') for port in (5173, 4173, 8093, 8090)}
 PUBLIC = {'/api/auth/bootstrap-status', '/api/auth/csrf', '/api/auth/session', '/api/auth/register', '/api/auth/login', '/api/auth/logout'}
 LIMITED = {'/api/auth/password'}
-READ_POST = {'/api/vessels/destinations/resolve', '/api/supply/forecast', '/api/outages/parse'}
+READ_POST = {'/api/vessels/destinations/resolve', '/api/supply/forecast', '/api/outages/parse', '/api/supply/simulations'}
 ADMIN_WRITES = {('/api/settings', 'PUT'), ('/api/fuel-settings', 'PUT'), ('/api/run', 'POST'), ('/api/preview', 'POST'),
                 ('/api/supply/baselines', 'POST'), ('/api/supply/vessels', 'POST'), ('/api/supply/transfers', 'POST'),
                 ('/api/supply/config', 'PUT'), ('/api/supply/plans', 'POST'),
                 ('/api/planning/inputs/upload', 'POST'), ('/api/supply/simulation-stock', 'POST'),
                 ('/api/supply/port-visits', 'POST')}
+ADMIN_WRITES.update({('/api/supply/shipments', 'POST'), ('/api/supply/berth-assignments', 'POST')})
+ADMIN_WRITES.update({(f'/api/supply/berths/BD-{i}', 'PUT') for i in (1, 2, 3)})
 
 
 def get_store(request):

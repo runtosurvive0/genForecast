@@ -158,7 +158,7 @@ export function StockyardSite({
     const label =
       v.state === "unloading"
         ? `${v.ledgerState ?? "하역중"} · ${v.berth_id}`
-        : `대기 ${v.waitH}h${v.assigned ? ` · 지정 ${v.berth_id}` : ""}`;
+        : `${v.waitH == null ? "대기시간 미확정" : `대기 ${v.waitH}h`}${v.assigned ? ` · 지정 ${v.berth_id}` : ""}`;
     return (
       <button
         key={v.voyage.voyage_id}

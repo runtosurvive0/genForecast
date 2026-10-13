@@ -184,10 +184,10 @@ def correct_unloading(vessel_id: int, body: UnloadPoint):
             raise HTTPException(404, "선박이 없습니다")
         points = [{**dict(r), "allocations": json.loads(r["allocations"])} for r in db.execute(
             "SELECT * FROM supply_unload_points WHERE vessel_id=? ORDER BY at", (vessel_id,))]
-        if at <= timestamp(points[-1]["at"]):
+        if points and at <= timestamp(points[-1]["at"]):
             raise HTTPException(400, "최신 보정/배분 시각보다 뒤의 시각을 입력하세요")
         cumulative = unloading({**dict(v), "points": points}, at)["cumulative"] if body.cumulative is None else body.cumulative
-        if not points[-1]["cumulative"] <= cumulative <= v["cargo"]:
+        if not (points[-1]["cumulative"] if points else 0) <= cumulative <= v["cargo"]:
             raise HTTPException(400, "누적 하역량은 이전 확정 누적량 이상, Cargo 이하로 입력하세요")
         if body.cumulative is not None and at > now():
             raise HTTPException(400, "실제 누적량 보정의 시각은 미래일 수 없습니다")
@@ -278,7 +278,8 @@ def forecast(start: str, days: int = Query(default=67, ge=14, le=90)):
 
 
 @router.get("/dashboard")
-def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key: str | None = None):
+def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key: str | None = None,
+              inventory_mode: str = "assigned"):
     if horizon not in (7, 30, 60, 90):
         raise HTTPException(400, "전망 기간은 7일, 30일, 60일, 90일 중 선택하세요")
     as_of = parse_at(at) if at else now()
@@ -291,6 +292,7 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
             "start": summary["scenario"]["start"], "end": summary["scenario"]["end"], "source": "FORECAST"})
     with connect() as db:
         init_supply(db)
+        database_path = db.execute("PRAGMA database_list").fetchone()[2]
         for r in db.execute("SELECT b.*,min(h.at) AS start,max(h.at) AS end FROM supply_plan_batches b JOIN supply_plan_hours h ON b.id=h.batch_id GROUP BY b.id ORDER BY b.id DESC"):
             plans.insert(0, {"key": "db:" + str(r["id"]), "name": r["source_name"], "start": r["start"][:10], "end": r["end"][:10], "source": r["source"]})
     from midterm.milp_store import stored_runs
@@ -313,7 +315,15 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
     selected_run = chosen["key"][4:] if chosen and chosen["key"].startswith("mip:") else None
     data["baselines"] = [b for b in data["baselines"] if b.get("run_id") is None or b.get("run_id") == selected_run]
     data["vessels"] = [v for v in data["vessels"] if v.get("run_id") is None or v.get("run_id") == selected_run]
-    result = simulate(data, plan, as_of, horizon, fallback["calorific_kcal_kg"])
+    from midterm.berth_planning import scope_records
+    data = scope_records(data, selected_run)
+    from midterm.berth_planning import read_berths, project
+    from pathlib import Path
+    try:
+        result = project(data, read_berths(Path(database_path)), plan, as_of, horizon,
+                         inventory_mode, fallback["calorific_kcal_kg"])
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from None
     first, last = as_of.date().isoformat(), (as_of + timedelta(days=horizon - 1)).date().isoformat()
     saved_forecast = latest_forecast()
     if not model_rows and saved_forecast:
@@ -328,6 +338,7 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
         if result["kpis"]["risk"] != "danger":
             result["kpis"]["risk"] = "unknown"
     issues = []
+    issues.extend(result["scheduling_issues"])
     if not all(g["baseline"] for g in result["groups"]):
         issues.append("처별 수기 기준재고 미등록 · 재고와 위험도 판단 보류")
     if not source:

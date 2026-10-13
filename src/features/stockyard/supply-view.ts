@@ -76,6 +76,18 @@ export function supplyUnloads(snapshot: PlanningSnapshot | null): YardUnload[] {
 
 /** 원장에 연결된 표본 하역선은 DB 조회일의 상태·접안·완료시각을 따른다. */
 export function supplySiteVessels(snapshot: PlanningSnapshot | null, samples: SiteVessel[]): SiteVessel[] {
+  if (snapshot?.inventory_mode) {
+    return snapshot.vessels.filter(v => (v.state !== "완료" || v.berth_occupied) && v.state !== "입항예정").map(v => ({
+      dbVesselId: v.id, state: v.state === "하역중" || v.state === "하역중단" || v.berth_occupied ? "unloading" : "waiting",
+      ledgerState: v.state === "완료" && v.berth_occupied ? "하역 완료 · 이안 대기" : v.state, berth_id: v.berth_id ?? "", assigned: !!v.berth_id,
+      waitH: v.wait_hours ?? null, berthAt: v.berth_at ?? null, demurrageUsd: null,
+      freshnessLabel: v.classification === "simulation" ? "가상 하역 계획 · AIS와 구분" : "DB 하역 계획 · AIS와 구분",
+      voyage: { voyage_id: `supply:${v.id}`, vessel_name: v.name, ais_eta: v.arrival_at,
+        forecast_unload_end: v.unload_end ?? "", cargo_t: v.cargo,
+        coal_type: v.coal_grade === "high" ? "고열량" : v.coal_grade === "low" ? "저열량" : v.coal_grade === "blend" ? "혼합탄" : "탄종 미확정",
+        calorific_value_kcal_kg: v.incoming_cv, berth_id: v.berth_id ?? null }
+    }));
+  }
   return samples.flatMap((sample) => {
     const vessel = snapshot?.vessels.find((v) => v.name === sample.voyage.vessel_name && v.run_id === snapshot.run_id)
       ?? snapshot?.vessels.find((v) => v.name === sample.voyage.vessel_name && !v.run_id && v.state !== "완료");

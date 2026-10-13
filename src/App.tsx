@@ -196,7 +196,8 @@ function App() {
         : "milp",
   );
   const [page, setPage] = useState<Page>("overview");
-  const isBackendSupplyView = (page === "overview" || page === "fuel") && overviewSource === "milp";
+  const [manageSupply, setManageSupply] = useState(false);
+  const isBackendSupplyView = ((page === "overview" || page === "fuel") && overviewSource === "milp") || (page === "data" && manageSupply);
   const isMilpOverview = page === "overview" && overviewSource === "milp";
   const planning = usePlanning(isBackendSupplyView);
   const [supplyTarget, setSupplyTarget] = useState<SupplyTarget | null>(null);
@@ -723,7 +724,7 @@ function App() {
               </span>
             </div>
           )}
-          {!isMilpOverview && page !== "vessels" && (
+          {!isMilpOverview && page !== "vessels" && !(page === "data" && manageSupply) && (
             <div className="context-bar">
               <div className="context-left">
                 <span className="context-caption">조회 범위</span>
@@ -981,7 +982,7 @@ function App() {
           {page === "models" && (
             <ModelsPage models={models} onModels={setModels} theme={theme} />
           )}
-          {page === "data" && <><MemberManagement /><DataPage plants={selectedPlants} onResult={(run) => {
+          {page === "data" && <><MemberManagement /><DataPage plants={selectedPlants} planning={planning} onPlanningEnabled={setManageSupply} onResult={(run) => {
             planning.setQuery(initialPlanningQuery({ ...run, name: "", period: `${run.start} ~ ${run.end}` }));
             planning.refresh(); setOverviewSource("milp"); navigate("overview");
           }} /></>}

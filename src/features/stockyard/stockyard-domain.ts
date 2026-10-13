@@ -256,7 +256,12 @@ export function waitingVessels(voyages: Voyage[]): WaitingVesselRow[] {
 export const BERTHS = ["BD-1", "BD-2", "BD-3"] as const;
 export const DEFAULT_UNLOAD_TPD = 7000;
 
-export interface SiteVessel extends WaitingVesselRow {
+export interface SiteVessel extends Omit<WaitingVesselRow, "voyage" | "demurrageUsd" | "berthAt" | "waitH"> {
+  voyage: Pick<Voyage, "voyage_id" | "vessel_name" | "ais_eta" | "forecast_unload_end" | "cargo_t" | "coal_type" | "calorific_value_kcal_kg" | "berth_id">;
+  dbVesselId?: number;
+  demurrageUsd: number | null;
+  berthAt: string | null;
+  waitH: number | null;
   /** 부두 접안 하역중 또는 해상(묘박지) 대기. */
   state: "unloading" | "waiting";
   /** 실효 부두: 접안 지정 > 항차 berth_id > BD-1. */
@@ -1062,7 +1067,7 @@ export function stockyardAlerts({
       });
   }
   for (const v of vessels) {
-    if (v.demurrageUsd > 0)
+    if (v.demurrageUsd != null && v.demurrageUsd > 0)
       out.push({
         level: "warn",
         text: `${v.voyage.vessel_name} 체선료 $${Math.round(v.demurrageUsd).toLocaleString("ko-KR")}`,

@@ -8,6 +8,8 @@ import {
   type PlanningState,
 } from "../domain/use-planning";
 import "./planning-workspace.css";
+import { InventoryPool } from "./InventoryPool";
+import type { InventoryMode } from "../domain/planning";
 
 export function PlanningWorkspace({
   state,
@@ -98,6 +100,24 @@ export function PlanningWorkspace({
           <RefreshCw size={14} />
           새로고침
         </Button>
+        <label>
+          재고 전망 옵션
+          <select
+            aria-label="재고 전망 옵션"
+            value={query?.inventoryMode ?? "assigned"}
+            disabled={!query || loading}
+            onChange={(e) =>
+              query &&
+              setQuery({
+                ...query,
+                inventoryMode: e.target.value as InventoryMode,
+              })
+            }
+          >
+            <option value="assigned">기본 · 확정 배정만</option>
+            <option value="include_waiting">체선 포함 · 가상 접안·하역</option>
+          </select>
+        </label>
       </div>
       {failed ? (
         <div className="error-banner" role="alert">
@@ -146,6 +166,7 @@ export function PlanningWorkspace({
             )}
           </details>
           {children(current)}
+          <InventoryPool snapshot={current} />
           <Section title="자료 확인사항">
             <ul className="midterm-issues">
               {current.issues.map((issue, i) => (

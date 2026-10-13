@@ -5,17 +5,27 @@ import { BASE_TIME, type Plant } from "@/domain/operations";
 import { number as n, date as fmtDate } from "@/lib/format";
 import { Section } from "@/components/tower/primitives";
 import "./data.css";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MilpUpload } from "./MilpUpload";
+import { BerthPlanning } from "./BerthPlanning";
+import type { PlanningState } from "@/domain/use-planning";
 
 export function DataPage({
   plants,
   onResult,
+  planning,
+  onPlanningEnabled,
 }: {
   plants: Plant[];
   onResult: (run: { id: string; start: string; end: string }) => void;
+  planning: PlanningState;
+  onPlanningEnabled: (enabled: boolean) => void;
 }) {
-  const [tab, setTab] = useState<"status" | "upload">("status");
+  const [tab, setTab] = useState<"status" | "upload" | "berths">("status");
+  useEffect(() => {
+    onPlanningEnabled(tab === "berths");
+    return () => onPlanningEnabled(false);
+  }, [tab, onPlanningEnabled]);
   const ids = plants.map((p) => p.id);
   const piles = stockpiles.filter((p) => ids.includes(p.plant_id));
   const cargo = voyages.filter((v) => ids.includes(v.destination_plant_id));
@@ -60,8 +70,17 @@ export function DataPage({
         >
           MILP 업로드
         </button>
+        <button
+          role="tab"
+          aria-selected={tab === "berths"}
+          onClick={() => setTab("berths")}
+        >
+          수급 배정·시뮬레이션
+        </button>
       </div>
-      {tab === "upload" ? (
+      {tab === "berths" ? (
+        <BerthPlanning planning={planning} />
+      ) : tab === "upload" ? (
         <MilpUpload onResult={onResult} />
       ) : (
         <>

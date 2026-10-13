@@ -91,7 +91,11 @@ def client(store):
     @app.post('/api/planning/inputs/upload')
     @app.post('/api/supply/simulation-stock')
     @app.post('/api/supply/port-visits')
+    @app.post('/api/supply/shipments')
+    @app.post('/api/supply/berth-assignments')
     def planning_write(): return {'ok': True}
+    @app.post('/api/supply/simulations')
+    def simulation_write(): return {'ok': True}
     @app.get('/api/vessels/tracking/{owner}')
     def tracking(owner: str): return {'ok': True}
     with TestClient(app, headers={'Origin': 'http://testserver'}) as c:
@@ -111,7 +115,7 @@ def login(client, username='admin'):
     return r
 
 
-@pytest.mark.parametrize('path', ['/api/planning/inputs/upload', '/api/supply/simulation-stock', '/api/supply/port-visits'])
+@pytest.mark.parametrize('path', ['/api/planning/inputs/upload', '/api/supply/simulation-stock', '/api/supply/port-visits', '/api/supply/shipments', '/api/supply/berth-assignments'])
 def test_planning_and_ledger_writes_require_admin_session_and_csrf(client, store, path):
     assert client.post(path, json={}).status_code == 401
     admin = store.init_admin('admin', 'Admin', PASSWORD)
@@ -123,6 +127,17 @@ def test_planning_and_ledger_writes_require_admin_session_and_csrf(client, store
     assert client.post(path, json={}).status_code == 200
     client.headers.pop('X-CSRF-Token')
     assert client.post(path, json={}).status_code == 403
+
+
+def test_approved_member_can_save_simulation_but_csrf_is_still_required(client, store):
+    admin = store.init_admin('admin', 'Admin', PASSWORD)
+    member = store.register('member', 'Member', PASSWORD)
+    store.change_user(admin['id'], member['id'], 'approve', member['version'])
+    login(client, 'member')
+    assert client.post('/api/supply/simulations', json={}).status_code == 200
+    assert client.post('/api/supply/berth-assignments', json={}).status_code == 403
+    client.headers.pop('X-CSRF-Token')
+    assert client.post('/api/supply/simulations', json={}).status_code == 403
 
 def test_http_boundary_csrf_approval_owner_and_roles(client, store):
     admin = store.init_admin('admin', 'Admin', PASSWORD)

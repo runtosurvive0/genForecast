@@ -129,9 +129,9 @@ function VesselTab({
   const draft = active ? (draftBerth[active.voyage.voyage_id] ?? active.berth_id) : "BD-1";
   const record =
     active && supply.data
-      ? (supply.data.vessels.find((v) => v.name === active.voyage.vessel_name && v.run_id === runId)
+      ? (active.dbVesselId ? supply.data.vessels.find(v => v.id === active.dbVesselId) ?? null : (supply.data.vessels.find((v) => v.name === active.voyage.vessel_name && v.run_id === runId)
         ?? supply.data.vessels.find((v) => v.name === active.voyage.vessel_name && !v.run_id &&
-          (!runId || supplyCumulative(v, readAt ?? new Date().toISOString()) < v.cargo)) ?? null)
+          (!runId || supplyCumulative(v, readAt ?? new Date().toISOString()) < v.cargo)) ?? null))
       : null;
   const run = async (action: () => Promise<void>, done: string) => {
     setBusy(true);
@@ -159,7 +159,7 @@ function VesselTab({
           >
             <Ship />
             <span>{v.voyage.vessel_name}</span>
-            <small>{v.state === "unloading" ? `하역 ${v.berth_id}` : `대기 ${v.waitH}h`}</small>
+            <small>{v.state === "unloading" ? `하역 ${v.berth_id}` : v.waitH == null ? "대기시간 미확정" : `대기 ${v.waitH}h`}</small>
           </button>
         ))}
         {!vessels.length && <p>도착한 당진행 선박이 없습니다.</p>}
@@ -185,15 +185,15 @@ function VesselTab({
           </div>
           <div>
             <span>대기 · h</span>
-            <b>{active.waitH}</b>
+            <b>{active.waitH ?? "미확정"}</b>
           </div>
           <div>
             <span>접안 예정 · KST</span>
-            <b>{fmtDate(active.berthAt, true)}</b>
+            <b>{active.berthAt ? fmtDate(active.berthAt, true) : "미배정"}</b>
           </div>
           <div>
             <span>체선료 · $</span>
-            <b>{n(active.demurrageUsd)}</b>
+            <b>{active.demurrageUsd == null ? "미산정" : n(active.demurrageUsd)}</b>
           </div>
           <div>
             <span>AIS 최신성</span>
@@ -202,10 +202,10 @@ function VesselTab({
             </b>
           </div>
           <div className="site-ship-rec">
-            <span className="tower-tag">추천 {rec.berth_id}</span>
+            <span className="tower-tag">{active.dbVesselId ? "DB 배정" : "추천"} {rec.berth_id}</span>
             <small>{rec.reason}</small>
           </div>
-          <div className="site-ship-assign">
+          {!active.dbVesselId && <div className="site-ship-assign">
             <select
               aria-label={`${active.voyage.vessel_name} 접안 부두`}
               value={draft}
@@ -221,8 +221,8 @@ function VesselTab({
               ))}
             </select>
             <button onClick={() => onAssign(active.voyage.voyage_id, draft)}>접안 지정</button>
-          </div>
-          {active.voyage.voyage_id in assignedBerths && (
+          </div>}
+          {!active.dbVesselId && active.voyage.voyage_id in assignedBerths && (
             <div className="site-sim-note">
               <em className="sim-badge">모의 적용</em>
               <small>저장되지 않음 · 하역분 귀속과 처 전망에 반영</small>

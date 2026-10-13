@@ -5,6 +5,7 @@ import {
   loadPlanningSnapshot,
   type PlanningRun,
   type PlanningSnapshot,
+  type InventoryMode,
 } from "./planning";
 
 export const initialPlanningQuery = (run: PlanningRun) => ({
@@ -12,7 +13,9 @@ export const initialPlanningQuery = (run: PlanningRun) => ({
   start: run.start,
   horizon: addDays(run.start, 29) <= run.end ? 30 : 7,
 });
-export type PlanningQuery = ReturnType<typeof initialPlanningQuery>;
+export type PlanningQuery = ReturnType<typeof initialPlanningQuery> & {
+  inventoryMode?: InventoryMode;
+};
 
 /** App owns this state so both supply screens keep the same query and result. */
 export function usePlanning(enabled: boolean) {
@@ -63,6 +66,7 @@ export function usePlanning(enabled: boolean) {
       query.start,
       query.horizon,
       controller.signal,
+      query.inventoryMode ?? "assigned",
     )
       .then((result) => {
         if (!controller.signal.aborted) setSnapshot(result);
@@ -81,7 +85,9 @@ export function usePlanning(enabled: boolean) {
     query &&
     snapshot.run_id === query.runId &&
     snapshot.start === query.start &&
-    snapshot.horizon_days === query.horizon
+    snapshot.horizon_days === query.horizon &&
+    (snapshot.inventory_mode ?? "assigned") ===
+      (query.inventoryMode ?? "assigned")
       ? snapshot
       : null;
   return {

@@ -48,6 +48,24 @@ test("unloading displays DB partial receipts and zero rates without substituting
   assert.equal(supplySiteVessels(s, samples).length, 0);
 });
 
+test("DB site uses cargo IDs, keeps unknown observations and occupied completed ships", () => {
+  const s = suppliedPlanningFixture();
+  s.inventory_mode = "assigned";
+  s.vessels = [{ id: 91, name: "새 DB 선박", cargo: 14000, incoming_cv: 6000,
+    arrival_at: "2027-01-01T00:00:00+09:00", remaining: 14000, state: "하역대기" },
+    { id: 92, name: "이안 대기선", cargo: 14000, incoming_cv: 6000,
+      arrival_at: "2027-01-01T00:00:00+09:00", remaining: 0, state: "완료", berth_id: "BD-2", berth_occupied: true }];
+  const samples = siteVessels(arrivalWaiting(yardScope("dangjin").incoming), [], {});
+  const rows = supplySiteVessels(s, samples);
+  assert.deepEqual(rows.map(v => v.dbVesselId), [91, 92]);
+  assert.equal(rows[0].voyage.voyage_id, "supply:91");
+  assert.equal(rows[0].waitH, null);
+  assert.equal(rows[0].demurrageUsd, null);
+  assert.equal(rows[1].ledgerState, "하역 완료 · 이안 대기");
+  s.vessels[1].berth_occupied = false;
+  assert.equal(supplySiteVessels(s, samples).length, 1);
+});
+
 test("DB timeline uses supplied berth and unloading fields without inventing missing schedules", () => {
   const snapshot = suppliedPlanningFixture();
   snapshot.vessels = [{ id: 10, name: "DB SHIP", cargo: 50000, incoming_cv: 6000, arrival_at: "2027-01-02T00:00:00+09:00", remaining: 50000, state: "입항예정", coal_grade: "high", berth_at: "2027-01-03T00:00:00+09:00", unload_end: "2027-01-05T00:00:00+09:00" }];

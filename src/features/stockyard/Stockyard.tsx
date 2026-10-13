@@ -1,3 +1,4 @@
+import { InventoryPool } from "@/components/InventoryPool";
 import { useEffect, useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import { Search } from "lucide-react";
 import { Section } from "@/components/tower/primitives";
@@ -188,11 +189,14 @@ export function Stockyard({
     [unloading, waiting, assignedBerths, planning?.current],
   );
   const berths = useMemo(() => berthOccupancy(vessels), [vessels]);
-  const recommendFor = (voyageId: string) =>
-    recommendBerth(
+  const recommendFor = (voyageId: string) => {
+    const db = vessels.find(v => v.voyage.voyage_id === voyageId && v.dbVesselId);
+    if (db) return { berth_id: db.berth_id || "미배정", reason: "DB 배정 기준 · 변경은 데이터/관리자 → 수급 배정·시뮬레이션" };
+    return recommendBerth(
       arrived.find((v) => v.voyage_id === voyageId)!,
       waiting.map((r) => r.voyage),
     );
+  };
   const attributions = useMemo(
     () => attributeByCoalType(piles, scope.incoming, berthOf),
     [piles, scope, berthOf],
@@ -283,7 +287,7 @@ export function Stockyard({
     selection?.kind === "pile"
       ? (piles.find((p) => p.stockpile_id === selection.id) ?? null)
       : null;
-  const activeVessel = planning && selection?.kind === "vessel" && selection.id.startsWith("supply:") ? null :
+  const activeVessel = planning && selection?.kind === "vessel" && selection.id.startsWith("supply:") && !vessels.some(v => v.voyage.voyage_id === selection.id) ? null :
     (selection?.kind === "vessel" &&
       vessels.find((v) => v.voyage.voyage_id === selection.id)) ||
     vessels[0] ||
@@ -589,6 +593,7 @@ export function Stockyard({
       </div>
 
       <StockyardKpis items={kpis} />
+      {planning?.current && <InventoryPool snapshot={planning.current} />}
       <StockyardAlerts alerts={alerts} onTarget={(t) => select(t, true)} />
 
       {dangjinInView && (
@@ -648,7 +653,9 @@ export function Stockyard({
                 readAt={planning?.query?.start ? `${planning.query.start}T00:00:00+09:00` : undefined}
                 runId={planning?.query?.runId}
                 onRegisterVessel={async (v) => {
-                  await registerSupplyVessel(v.voyage, v.berth_id, planning?.query ? {
+                  const sample = live.voyages.find(s => s.voyage_id === v.voyage.voyage_id);
+                  if (v.dbVesselId || !sample) throw new IntegrationError("이미 등록된 DB 항차입니다. 수급 배정 탭에서 관리하세요.");
+                  await registerSupplyVessel(sample, v.berth_id, planning?.query ? {
                     runId: planning.query.runId, start: planning.query.start } : undefined);
                   await supply.refresh();
                   onSupplyChanged?.();
