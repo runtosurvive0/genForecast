@@ -66,6 +66,8 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     admin = sub.add_parser("admin", help="관리자 초기화 및 비밀번호 복구")
     admin.add_argument("action", choices=["init", "reset-password"])
+    seed = sub.add_parser("seed-demo", help="가상 MILP 결과·재고·하역 초기자료 등록 (중복·덮어쓰기 방지)")
+    seed.add_argument("--database", type=Path, help="작업 SQLite 경로 (기본: MIDTERM_PLANNING_DB 또는 planning-local.sqlite3)")
     snap = sub.add_parser("snapshot")
     snap.add_argument("--dsn", default=None)
     sub.add_parser("train")
@@ -89,6 +91,14 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "admin":
         from midterm.auth.cli import run as admin_run
         admin_run(args.action)
+    elif args.command == "seed-demo":
+        import json
+        from midterm.seed_demo import seed_demo
+        try:
+            result = seed_demo(args.database) if args.database else seed_demo()
+        except ValueError as error:
+            parser.error(str(error))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "snapshot":
         from midterm.history import snapshot
         try:

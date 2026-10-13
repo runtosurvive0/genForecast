@@ -2,14 +2,14 @@
   "schema_version": 1,
   "repository": "https://github.com/runtosurvive0/genForecast",
   "publication_approved_on": "2026-10-08",
-  "publication_scope": "User explicitly authorized public sharing of these 17 existing actual data, model, SQLite and saved-run files.",
+  "publication_scope": "User authorized the original 17 execution assets on 2026-10-08 and the synthetic MILP/fuel-integration seed on 2026-10-13.",
   "limitations": [
     "The saved 2027 run is a functional_demo; its planned-outage inputs are incomplete.",
     "Coal conversion uses a provisional 5500 kcal/kg setting; settings can be updated through the planning DB/API.",
     "The net-demand metadata includes observed temperature and solar arrays; solar uses historical weather patterns, not a separate trained solar model.",
     "This is a fixed publication snapshot. Local DB updates and new results require review before a later publication."
   ],
-  "total_bytes": 14228522,
+  "total_bytes": 14887978,
   "files": [
     {
       "path": "data/coal_units.csv.json",
@@ -95,6 +95,18 @@
       "path": "runs/20261004-111057-2027기본/summary.json",
       "bytes": 269365,
       "sha256": "23995137af2274c66558f339cd9609fe9be20a29ee9262df4ccde96771900f8d"
+    },
+    {
+      "path": "seeds/fuel-integration-2027.sqlite3",
+      "bytes": 659456,
+      "sha256": "74e0a5f84b1bdd7df726f162b891269303f252da0621cba65a8574500db9fe39"
+    }
+  ],
+  "additional_publications": [
+    {
+      "approved_on": "2026-10-13",
+      "path": "seeds/fuel-integration-2027.sqlite3",
+      "scope": "Synthetic 2027 MILP input/result, six initial stock lots and one run-scoped unloading simulation for data integration verification; excludes accounts, sessions, AIS observations and unrelated operational records."
     }
   ]
 }

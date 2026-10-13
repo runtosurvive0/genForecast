@@ -26,7 +26,8 @@ PYTHONPATH는 항상 이 폴더의 `src`로 지정하므로 기존 설치가 다
 ```
 
 clone에는 2026-10-08 공개 승인을 받은 기준자료·실적·두 모델·입력·SQLite DB·저장 결과
-17개가 포함된다. 파일별 크기와 SHA-256은 `shared-assets.json`에 기록했다. 저장 결과 조회와
+17개와 2026-10-13 공유 요청한 가상 연계 초기 DB 1개가 포함된다. 파일별 크기와 SHA-256은
+`shared-assets.json`에 기록했다. 저장 결과 조회와
 모델 예측에는 원천 DB 연결정보가 필요 없다. Python의 연결정보는 프로세스 환경변수로 지정하며
 `.env`를 자동으로 읽지 않는다. 실제 `.env`와 추가 로컬 자료·가상환경·출력은 계속 제외한다.
 
@@ -39,6 +40,7 @@ clone에는 2026-10-08 공개 승인을 받은 기준자료·실적·두 모델�
 | `data/dangjin_actual_hourly.csv` / `.csv.json` | 기존 발전 분석의 실적 추정 자료 |
 | `data/planning.sqlite3` | 가정·열량·정비·재고·하역·이탄·원천계획 DB |
 | `data/planning-local.sqlite3` | 로컬 입력·MILP 실행 결과·가상 시작재고·입항/체선 원장 (Git 제외) |
+| `seeds/fuel-integration-2027.sqlite3` | 재등록 가능한 가상 MILP 결과·64만 톤 초기재고·BD-1 하역 설정 |
 | `models/net-demand.*`, `models/coal-curve.*` | 학습 모델·메타데이터 |
 | `inputs/` | CLI 시나리오·정비 입력(웹 입력은 DB에서 관리) |
 | `inputs/ranking_oh.json` | 배분 백테스트용 월별 과거 정비 가정(`월: 호기명 배열`) |
@@ -47,11 +49,32 @@ clone에는 2026-10-08 공개 승인을 받은 기준자료·실적·두 모델�
 공유한 DB는 해당 시점의 원장 스냅샷이다. 기본 서버는 최초 실행 시 이를 작업 DB로 복사하고
 새 입력·결과를 `planning-local.sqlite3`에 저장한다. `MIDTERM_PLANNING_DB`로 작업 경로를 지정할 수 있다.
 새 실행 결과는 자동으로
-Git에 포함하지 않으며 현재 승인된 저장 결과 한 건만 추적한다. CSV는 포함된 JSON 사본에서
+Git에 포함하지 않으며 승인된 파일 결과와 가상 연계 초기 DB만 추적한다. CSV는 포함된 JSON 사본에서
 자동 복원되며 복원한 CSV는 Git에서 제외된다. 현재 PC의 기존 폴더와 개선 워크트리는 독립 DB를 사용한다.
 LightGBM `.txt` 파일은 LF 줄바꿈을 유지해야 한다. 임의 CRLF 변환은 모델을 손상시킨다.
 실적 DB를 다시 수집할 때만 `MIDTERM_SOURCE_DSN` 환경변수 또는 `snapshot --dsn`을 사용한다.
 기본 서버는 localhost에 바인딩된다.
+
+## 연료수급 연계 초기 DB 등록
+
+새 클론의 작업 DB에는 어제 개발 PC에서 등록한 입력·재고·계산 결과가 자동으로 전달되지 않는다.
+아래 명령으로 포함된 가상 자료를 한 번 등록한다. 재계산 없이 연간 MILP 결과·초기 재고·하역을 조회한다.
+
+```powershell
+.venv\Scripts\python.exe -m midterm seed-demo
+# 별도 격리 DB를 지정할 때
+.venv\Scripts\python.exe -m midterm seed-demo --database data/integration-test.sqlite3
+```
+
+기존 실적·설정·원장은 보존하며 반복 실행해도 중복 등록하지 않는다. 같은 계산 ID/기준재고 시각이
+이미 있으면 전체 등록을 취소한다. 기본 DB는 `MIDTERM_PLANNING_DB` 또는 `data/planning-local.sqlite3`다.
+계정·세션·AIS 데이터는 포함되지 않으며 서버 계정 초기화와 로그인은 별도다.
+로컬 서버에 연결한 화면의 데이터/관리자 → MILP 업로드 → **2027 가상입력 → 발전소 종합에서 보기**를
+선택해 2027-01-01부터 조회한다. 초기 재고 총 640,000t, 고/저열량 6,000/5,000 kcal/kg,
+BD-1 하역 7,000t/일이 연결된다. 가상 미래 재고는 현재 운영재고로 사용하지 않는다.
+자료 범위와 검증 방법은 [초기 DB 안내](seeds/README.md)에 있다.
+공용 ZGX는 코드 배포 후 해당 서버 DB에 이 명령을 별도로 실행해야 한다. GitHub PR 병합만으로
+서버 DB를 변경하지 않으며, ZGX 장애 시 가상 자료로 자동 대체하지 않는다.
 
 ## 화면 · API
 
