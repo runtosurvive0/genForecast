@@ -768,6 +768,11 @@ test("vessel manager keeps a fixed frame and one scroll area across every tab", 
   const dialog = page.getByRole("dialog");
   for (const [width, height] of [[1440, 1200], [1440, 900], [320, 844]]) {
     await page.setViewportSize({ width, height });
+    if (height === 900) {
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
+      await page.getByRole('button', { name: '관심 선박 구성', exact: true }).click();
+    }
     const frame = await dialog.boundingBox();
     const tabs = await dialog.getByRole("tablist").boundingBox();
     const done = dialog.getByRole("button", { name: "완료", exact: true });
@@ -783,6 +788,20 @@ test("vessel manager keeps a fixed frame and one scroll area across every tab", 
       const panel = dialog.getByRole("tabpanel");
       if (name === "실제 AIS 검색") {
         await expect(dialog.locator(".vessel-discovery-table tbody tr")).toHaveCount(20);
+        const search = dialog.getByLabel('실제 선박 검색', { exact: true });
+        await search.focus();
+        const focus = await search.evaluate(input => ({
+          inner: getComputedStyle(input).outlineWidth,
+          style: getComputedStyle(input).outlineStyle,
+          outer: getComputedStyle(input.parentElement!).outlineWidth,
+          radius: parseFloat(getComputedStyle(input.parentElement!).borderRadius),
+        }));
+        expect(focus.inner, JSON.stringify(focus)).toBe('0px');
+        expect(focus.outer).toBe('2px');
+        expect(focus.radius).toBeGreaterThanOrEqual(5);
+        const scrollFrame = await panel.boundingBox();
+        expect(frame!.x + frame!.width - scrollFrame!.x - scrollFrame!.width).toBeLessThanOrEqual(8);
+        await dialog.screenshot({ path: `.tooling-tmp/vessel-search-focus-${width}-${height}.png` });
       }
       // The tab panel owns scrolling; nested results must never add a second scrollbar.
       const scrollAreas = await panel.evaluate(el => [el, ...el.querySelectorAll('*')]
@@ -1152,26 +1171,26 @@ test("AIS discovery filters, sorts, survives errors, and persists provenance wit
   await page.screenshot({ path: ".tooling-tmp/ais-search-mobile.png", fullPage: true });
 });
 
-test("AIS discovery searches all 40000 cached vessels while rendering one page", async ({ page }) => {
+test("AIS discovery searches all 120000 cached vessels while rendering one page", async ({ page }) => {
   const at = new Date().toISOString();
   await page.route('**/api/vessels/catalog*', route => route.fulfill({ json: {
-    provider: 'aisstream', status: 'receiving', coverage: '전 세계 · 테스트 응답', capacity: 40000, fetchedAt: at, lastReceivedAt: at,
-    vessels: Array.from({ length: 40000 }, (_, index) => ({ id: `ais-${440000000 + index}`, name: `CACHE VESSEL ${index}`, mmsi: String(440000000 + index), imo: '', source: 'aisstream',
+    provider: 'aisstream', status: 'receiving', coverage: '전 세계 · 테스트 응답', capacity: 120000, fetchedAt: at, lastReceivedAt: at,
+    vessels: Array.from({ length: 120000 }, (_, index) => ({ id: `ais-${440000000 + index}`, name: `CACHE VESSEL ${index}`, mmsi: String(440000000 + index), imo: '', source: 'aisstream',
       ais: { updatedAt: at, shipType: 70, navStatus: 0, destination: 'DANGJIN', position: { latitude: 35, longitude: 125, observedAt: at, sogKn: 12, cogDeg: 90 } } })),
   } }));
   await openEta(page);
   await page.getByRole('button', { name: '관심 선박 구성', exact: true }).click();
   await page.getByRole('tab', { name: '실제 AIS 검색', exact: true }).click();
   await expect(page.locator('.vessel-discovery-table tbody tr')).toHaveCount(20);
-  await expect(page.locator('.vessel-discovery-pagination')).toContainText('1 / 2000');
+  await expect(page.locator('.vessel-discovery-pagination')).toContainText('1 / 6000');
   await page.getByRole('button', { name: '다음', exact: true }).click();
-  await expect(page.locator('.vessel-discovery-pagination')).toContainText('2 / 2000');
+  await expect(page.locator('.vessel-discovery-pagination')).toContainText('2 / 6000');
   await expect(page.locator('.vessel-discovery-table tbody tr')).toHaveCount(20);
-  await page.getByLabel('실제 선박 검색', { exact: true }).fill('440039999');
+  await page.getByLabel('실제 선박 검색', { exact: true }).fill('440119999');
   await expect(page.locator('.vessel-discovery-table tbody tr')).toHaveCount(1);
-  await expect(page.getByRole('button', { name: 'CACHE VESSEL 39999 관심 등록' })).toBeVisible();
-  await expect(page.locator('.vessel-discovery .tower-footnote').last()).toContainText('40,000척');
-  await page.getByRole('dialog').screenshot({ path: '.tooling-tmp/ais-search-40000.png' });
+  await expect(page.getByRole('button', { name: 'CACHE VESSEL 119999 관심 등록' })).toBeVisible();
+  await expect(page.locator('.vessel-discovery .tower-footnote').last()).toContainText('120,000척');
+  await page.getByRole('dialog').screenshot({ path: '.tooling-tmp/ais-search-120000.png' });
 });
 
 test("underway filter includes AIS interests without voyages and excludes moored or unknown vessels", async ({ page }) => {
@@ -1252,6 +1271,25 @@ test("vessel decision layout puts arrival above the map and groups raw data and 
   await page.getByText('자료·계산 근거', { exact: true }).click();
   await page.getByRole('tab', { name: 'AIS 관측', exact: true }).click();
   await expect(page.getByRole('tabpanel', { name: 'AIS 관측' })).toContainText('KR PUS');
+  const dataDetails = page.locator('.vessel-data-details');
+  for (const dark of [false, true]) {
+    if (dark) await page.getByRole('button', { name: '다크 모드로 전환' }).click();
+    const styles = await dataDetails.evaluate(el => {
+      const active = el.querySelector('[role="tab"][aria-selected="true"]')!;
+      const inactive = el.querySelector('[role="tab"][aria-selected="false"]')!;
+      return { border: getComputedStyle(active).borderTopWidth, padding: parseFloat(getComputedStyle(active).paddingLeft),
+        active: getComputedStyle(active).backgroundColor, inactive: getComputedStyle(inactive).backgroundColor,
+        gridWidth: el.querySelector('.vessel-eta-inputs')!.getBoundingClientRect().width };
+    });
+    expect(styles.border).toBe('0px');
+    expect(styles.padding).toBeGreaterThanOrEqual(10);
+    expect(styles.active).not.toBe(styles.inactive);
+    expect(styles.gridWidth).toBeLessThanOrEqual(840);
+    await dataDetails.screenshot({ path: '.tooling-tmp/vessel-data-' + (dark ? 'dark' : 'light') + '.png' });
+  }
+  await page.getByRole('tab', { name: 'AIS 관측', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: '과거 기항', exact: true })).toBeFocused();
   await page.getByRole('tab', { name: '계산 근거', exact: true }).click();
   await expect(page.getByRole('tabpanel', { name: '계산 근거' })).toContainText('재고');
   await page.getByRole('button', { name: '항로·계산 설정', exact: true }).click();

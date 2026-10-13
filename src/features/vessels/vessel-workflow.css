@@ -579,24 +579,41 @@
 .vessel-data-details[open] > summary > svg {
   transform: rotate(90deg);
 }
-.vessel-data-details > summary small {
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 400;
-}
 .vessel-data-details [data-slot="tabs-list"] {
-  gap: 16px;
+  gap: 2px;
   flex-wrap: wrap;
   height: auto;
   justify-content: start;
-  padding: 0 0 5px;
+  max-width: 100%;
+  padding: 3px;
+  border-radius: 5px;
+  background: var(--muted);
 }
 .vessel-data-details [data-slot="tabs-trigger"] {
   flex: initial;
-  padding: 6px 0;
+  height: 28px;
+  padding: 4px 12px;
+  border: 0;
   font-size: 12px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  background: transparent;
   box-shadow: none;
-  border-radius: 0;
+  border-radius: 4px;
+}
+.vessel-data-details [data-slot="tabs-trigger"]:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+.vessel-data-details [data-slot="tabs-trigger"][data-state="active"] {
+  color: var(--foreground);
+  background: var(--card);
+  font-weight: 550;
+}
+.vessel-data-details [data-slot="tabs-trigger"]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 .vessel-data-details [data-slot="tabs-content"][data-state="inactive"] {
   display: none;
@@ -610,13 +627,13 @@
 }
 .vessel-data-details .vessel-eta-inputs {
   margin-top: 12px;
+  max-width: 840px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 24px;
 }
 .vessel-data-context {
   color: var(--muted-foreground);
   margin: 0;
-}
-.vessel-data-details .vessel-eta-inputs {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .vessel-settings-dialog {
   max-width: 480px;
@@ -676,9 +693,6 @@
   }
   .vessel-arrival-insight p {
     flex-basis: calc(100% - 24px);
-  }
-  .vessel-data-details > summary small {
-    display: none;
   }
   .vessel-data-details .vessel-eta-inputs {
     grid-template-columns: minmax(0, 1fr);
@@ -863,6 +877,8 @@
   box-shadow: none;
 }
 .vessel-discovery-dialog {
+  --vessel-dialog-padding: 24px;
+  padding: var(--vessel-dialog-padding);
   width: min(920px, calc(100vw - 32px));
   max-width: calc(100vw - 20px);
   /* Keep tabs/footer stationary; the active tab panel is the only scroll area. */
@@ -1256,6 +1272,13 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  /* Keep text aligned to the header, with the scroll track at the frame edge. */
+  margin-inline: calc(4px - var(--vessel-dialog-padding));
+  padding: 4px calc(var(--vessel-dialog-padding) - 12px) 16px
+    calc(var(--vessel-dialog-padding) - 4px);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 55%, transparent)
+    transparent;
 }
 .vessel-manager-list-frame {
   border: 1px solid var(--border);
@@ -1385,6 +1408,9 @@
   color: var(--muted-foreground);
 }
 @media (max-width: 650px) {
+  .vessel-discovery-dialog {
+    --vessel-dialog-padding: 16px;
+  }
   .vessel-manager-tabs [data-slot="tabs-list"] {
     gap: 4px;
   }
@@ -1623,10 +1649,19 @@
 }
 .vessel-workflow button:focus-visible,
 .vessel-workflow-dialog input:focus-visible,
-.vessel-workflow-dialog select:focus-visible,
-.vessel-workflow-search:focus-within {
+.vessel-workflow-dialog select:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 3px;
+}
+.vessel-workflow-search:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+}
+.vessel-workflow-search input,
+.vessel-workflow-dialog .vessel-workflow-search input:focus-visible {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
 }
 @media (max-width: 900px) {
   .vessel-eta-workspace {

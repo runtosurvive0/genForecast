@@ -53,7 +53,7 @@ export function AisVesselSearch({
       if (disposed) return;
       const controller = new AbortController();
       request.current = controller;
-      // A full 40,000-vessel snapshot can take longer on a remote connection.
+      // A full catalog snapshot can take longer on a remote connection.
       const timeout = setTimeout(() => controller.abort(), 45000);
       setLoading(true);
       try {

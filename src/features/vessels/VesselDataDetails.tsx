@@ -31,13 +31,12 @@ export function VesselDataDetails({
       <summary>
         <ChevronRight size={14} />
         <span>자료·계산 근거</span>
-        <small>AIS 관측 · 과거 기항 · 예보 · 계산 가정</small>
       </summary>
       <Tabs
         value={tab}
         onValueChange={(value) => onTabChange(value as VesselDataTab)}
       >
-        <TabsList variant="line" aria-label="선박 자료 종류">
+        <TabsList aria-label="선박 자료 종류">
           <TabsTrigger value="ais">AIS 관측</TabsTrigger>
           {ports && <TabsTrigger value="ports">과거 기항</TabsTrigger>}
           <TabsTrigger value="weather">기상 상세</TabsTrigger>
