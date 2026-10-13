@@ -93,6 +93,12 @@
 - 기본 작업 DB는 `backend/data/planning-local.sqlite3`. 최초 실행 시 공개 승인된
   `planning.sqlite3`를 SQLite backup으로 복사하고 이후 원본을 변경하지 않는다.
   `MIDTERM_PLANNING_DB` 환경변수로 경로를 지정할 수 있다. 작업 DB와 새 결과는 Git 제외다.
+- 2026-10-13 사용자 공유 요청으로 `backend/seeds/fuel-integration-2027.sqlite3`를 추가했다.
+  `python -m midterm seed-demo`로 작업 DB에 가상 입력 1건·완료 결과 1건·처별 기준재고 3건·
+  고/저 재고 6건·BD-1 가상 하역 1건을 원자적으로 등록한다. 계정·세션·AIS·실적은 포함하지 않는다.
+  기존 데이터를 덮어쓰지 않으며 내부 ID를 다시 연결한다. 중복은 건너뛰고 시각/계산 ID 충돌은 취소한다.
+  MILP 결과는 `functional_demo`, 원장은 `simulation`이다. 조회 시작일은 2027-01-01 KST다.
+  공용 ZGX에는 별도 명령 실행이 필요하다. 공개 범위·체크섬은 `shared-assets.json`에 추가 기록했다.
 - `POST /api/planning/inputs/upload`는 multipart의 `scenario` JSON, `heat_prices` CSV/XLSX/CSV JSON 사본을
   필수로 받으며 `coal`·`nuclear` 정비 파일은 선택이다. 파일별 최대 4MB, 알려진 호기·정비 날짜·기간·
   12개월 보정·단가의 유한성/양수를 검증하고 전체 검증 통과 후에만 저장한다.

@@ -43,6 +43,10 @@ Thumbs.db
 !/backend/runs/20261004-111057-2027기본/hourly.npz
 !/backend/runs/20261004-111057-2027기본/scenario.json
 /backend/output/
+# 승인된 가상 연계 초기자료만 공유한다. 작업 DB는 계속 제외한다.
+/backend/seeds/*
+!/backend/seeds/fuel-integration-2027.sqlite3
+!/backend/seeds/README.md
 /backend/.venv/
 __pycache__/
 *.pyc
