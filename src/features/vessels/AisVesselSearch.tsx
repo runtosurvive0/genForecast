@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { RefreshCw, Search, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VesselConnectionStatus } from "./VesselConnectionStatus";
+import { vesselSourceLabel } from "./vessel-source";
+import { AisAttribution } from "./AisAttribution";
 import { ObservedPosition } from "./ObservedPosition";
 import type { TrackingVessel } from "@/domain/vessel-workflow";
 import { date } from "@/lib/format";
@@ -190,7 +192,7 @@ export function AisVesselSearch({
                 setDestination("");
               }}
             >
-              <option value="aisstream">AISstream</option>
+              <option value="aisstream">통합 AIS</option>
               <option value="digitraffic">Digitraffic · 핀란드 공개 AIS</option>
             </select>
           </strong>
@@ -412,6 +414,7 @@ export function AisVesselSearch({
                     <strong>{v.name}</strong>
                     <span>
                       IMO {v.imo || "미수신"} · MMSI {v.mmsi}
+                      {vesselSourceLabel(v).startsWith('Open Waters') && ` · ${vesselSourceLabel(v)}`}
                     </span>
                     <small>AIS 목적지 {v.ais?.destination || "미수신"}</small>
                     {activeScope === "nearby" && <ObservedPosition position={v.ais?.position ?? null} />}
@@ -505,6 +508,7 @@ export function AisVesselSearch({
         전 세계 선박 전체 목록은 아닙니다. 화물선 분류만으로 석탄 운반 여부는
         확인할 수 없습니다. 관심 등록 시 마지막 관측을 저장하며, 항차·확정
         목적항은 별도로 연결합니다.
+        {' '}{provider === 'aisstream' && <AisAttribution />}
       </p>
     </div>
   );

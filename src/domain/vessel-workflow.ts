@@ -6,6 +6,7 @@ export interface TrackingVessel {
   mmsi: string;
   source: "demo" | "manual" | "aisstream" | "digitraffic";
   ais?: {
+    metadataFeed?: "aisstream" | "openwaters";
     updatedAt: string;
     shipType: number | null;
     navStatus: number | null;
@@ -31,6 +32,9 @@ export interface TrackingVoyage {
     observedAt: string;
     sogKn: number | null;
     cogDeg: number | null;
+    feed?: "aisstream" | "openwaters";
+    upstream?: string;
+    reencoded?: boolean;
   } | null;
   actualArrivalAt?: string | null;
   portWaitH: number | null;
@@ -192,6 +196,7 @@ export function validateVessel(value: unknown): TrackingVessel {
         observedAt,
         sogKn: nullableNumber(p.sogKn, 0, 102.2),
         cogDeg: nullableNumber(p.cogDeg, 0, 359.9),
+        ...positionProvenance(p),
       };
     }
     ais = {
@@ -203,6 +208,7 @@ export function validateVessel(value: unknown): TrackingVessel {
         typeof a.destination === "string"
           ? a.destination.trim().slice(0, 100)
           : "",
+      ...(a.metadataFeed === undefined ? {} : { metadataFeed: feedName(a.metadataFeed) }),
     };
   }
   if (
@@ -221,6 +227,22 @@ export function validateVessel(value: unknown): TrackingVessel {
       ? { legacyId: text(value.legacyId) }
       : {}),
   };
+}
+function feedName(value: unknown): "aisstream" | "openwaters" {
+  if (value !== 'aisstream' && value !== 'openwaters') throw new Error('AIS 수신 출처가 올바르지 않습니다.');
+  return value;
+}
+function positionProvenance(p: Record<string, unknown>) {
+  if (p.feed === undefined && p.upstream === undefined) return {};
+  const feed = feedName(p.feed);
+  const upstream = p.upstream;
+  if (p.reencoded !== undefined && (feed !== 'openwaters' || typeof p.reencoded !== 'boolean'))
+    throw new Error('AIS 중계 형식이 올바르지 않습니다.');
+  if (upstream !== undefined && (feed !== 'openwaters' || typeof upstream !== 'string' ||
+    !['aishub', 'aisstream', 'digitraffic', 'kystverket', 'barentswatch', 'station', 'udp', 'mmsi', 'other'].includes(upstream)))
+    throw new Error('AIS 원본 출처가 올바르지 않습니다.');
+  return { feed, ...(typeof upstream === 'string' ? { upstream } : {}),
+    ...(typeof p.reencoded === 'boolean' ? { reencoded: p.reencoded } : {}) };
 }
 export function validateVoyage(value: unknown): TrackingVoyage {
   if (!record(value)) throw new Error("항차 형식이 올바르지 않습니다.");
