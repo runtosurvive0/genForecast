@@ -8,6 +8,8 @@ import {
 } from "@/domain/vessel-workflow";
 import { number as n, date as dateLabel } from "@/lib/format";
 import type { BasicEta } from "./vessel-basic-eta";
+import { vesselSourceLabel } from "./vessel-source";
+import { AisAttribution } from "./AisAttribution";
 
 export const etaDate = (value: string | null | undefined) =>
   value ? dateLabel(value, true) : "미확정";
@@ -43,9 +45,10 @@ export function VesselEtaDetail({
           : vessel.source === "digitraffic"
             ? "Digitraffic · 핀란드"
             : vessel.ais
-              ? "AISstream"
+              ? vesselSourceLabel(vessel)
               : "직접 등록"}
       </p>
+      {vesselSourceLabel(vessel).startsWith('Open Waters') && <p className="tower-footnote"><AisAttribution /></p>}
       {vessel.source === "digitraffic" && (
         <p className="tower-footnote">
           출처:{" "}

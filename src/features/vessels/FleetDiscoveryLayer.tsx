@@ -152,7 +152,8 @@ export function FleetDiscoveryLayer({ map, revision, theme, options, statusTarge
         <dl><dt>선종 · 상태</dt><dd>{shipTypeLabel(vessel.ais?.shipType)} · {navStatusLabel(vessel.ais?.navStatus)}</dd>
           <dt>속도 · 방향</dt><dd>{p?.sogKn == null ? '속도 미수신' : `${p.sogKn.toFixed(1)} kn`} · {p?.cogDeg == null ? '방향 미수신' : `${p.cogDeg.toFixed(0)}°`}</dd>
           <dt>AIS 목적지</dt><dd>{vessel.ais?.destination || '미수신'}</dd>
-          <dt>마지막 위치 관측</dt><dd>{p ? `${date(p.observedAt, true)} KST` : '위치 미수신'}</dd></dl>
+          <dt>마지막 위치 관측</dt><dd>{p ? `${date(p.observedAt, true)} KST` : '위치 미수신'}</dd>
+          <dt>관측 출처</dt><dd>{vesselSourceLabel(vessel)}</dd></dl>
         <p>마지막 AIS 관측 위치입니다. 흐린 표식은 1시간 이상 지난 관측입니다.</p>
         <Button size="sm" disabled={options.interests.includes(vessel.mmsi)} onClick={() => {
           try { options.onAdd(vessel); } catch (e) { setDetailError(e instanceof Error ? e.message : '관심 등록 실패'); }
@@ -160,3 +161,4 @@ export function FleetDiscoveryLayer({ map, revision, theme, options, statusTarge
     </section>}
   </>;
 }
+import { vesselSourceLabel } from './vessel-source';

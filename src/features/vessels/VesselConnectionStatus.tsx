@@ -9,8 +9,8 @@ const compactLabels: Record<string, string> = {
   snapshot: "공개 AIS 조회 완료",
   cached_error: "공개 AIS 갱신 실패 · 이전 결과",
   unavailable: "공개 AIS 응답 실패",
-  reconnecting: "AISstream 재연결 대기",
-  provider_error: "AISstream 구독 오류",
+  reconnecting: "AIS 수신원 재연결 대기",
+  provider_error: "AIS 수신원 구독 오류",
 };
 
 export function VesselConnectionStatus({
@@ -86,6 +86,11 @@ export function VesselConnectionStatus({
       {validReceived && (
         <span className="vessel-connection-timestamp">
           마지막 메시지 {date(snapshot!.lastReceivedAt!, true)} KST
+        </span>
+      )}
+      {snapshot?.feeds?.openwaters && snapshot.feeds.openwaters.status !== 'disabled' && (
+        <span className="vessel-connection-timestamp">
+          Open Waters · {discoveryStatus[snapshot.feeds.openwaters.status] ?? '상태 확인 필요'}
         </span>
       )}
     </div>

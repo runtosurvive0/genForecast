@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Minus, Plus, Ship } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { TrackingVessel } from "@/domain/vessel-workflow";
+import { vesselSourceLabel } from "./vessel-source";
 
 export function VesselInterestList({
   catalog,
@@ -77,7 +78,7 @@ export function VesselInterestList({
                   ? "직접 등록"
                   : vessel.source === "digitraffic"
                     ? "Digitraffic"
-                    : "AISstream"}
+                    : vesselSourceLabel(vessel)}
             </span>
           </button>
         ))}
