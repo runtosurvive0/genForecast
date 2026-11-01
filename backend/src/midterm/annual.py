@@ -23,6 +23,7 @@ from midterm.fleet import (NUCLEAR_OUTPUT_FACTOR, coal_inputs, group_constraints
                            load_coal_units, load_heat_prices, load_nuclear_units, nuclear_hourly)
 from midterm.net_demand import forecast_net_demand, load_net_demand_model
 from midterm.scenario import QUALITY, Scenario
+from midterm.uc import RESERVE_SHORTFALL_WON_PER_MW
 
 WINDOW_HOURS = 48
 STEP_HOURS = 24
@@ -57,6 +58,7 @@ class AnnualResult:
     elapsed_seconds: float
     model_info: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    headroom: dict[str, np.ndarray] = field(default_factory=dict)  # absent on legacy runs, never imputed
 
     @property
     def net(self) -> np.ndarray:
@@ -69,7 +71,7 @@ class AnnualResult:
 
 def _solve_window(queue, segment, counter, *args, **kwargs):
     """창 하나. 해가 없으면 시간을 늘리고 간격을 넓혀 두 번 더 시도한다."""
-    from midterm.uc import solve_coal_uc
+    from midterm.headroom_uc import solve_headroom_uc
 
     attempts = [(1.0, kwargs["mip_rel_gap"]), (3.0, max(kwargs["mip_rel_gap"], 0.01)),
                 (6.0, 0.05)]
@@ -78,7 +80,7 @@ def _solve_window(queue, segment, counter, *args, **kwargs):
     for factor, gap in attempts:
         kw = {**kwargs, "time_limit": base * factor, "cost_time_limit": base * factor,
               "mip_rel_gap": gap}
-        result = solve_coal_uc(*args, **kw)
+        result = solve_headroom_uc(*args, **kw)
         if result.get("has_plan"):
             break
     counter[0] += 1
@@ -102,8 +104,12 @@ def _solve_segment(payload: dict) -> dict:
     if not result.get("has_plan"):
         raise RuntimeError(f"구간 {segment} 창 {result.get('rolling', {}).get('failed_window')} "
                            f"해 없음: {result.get('message')}")
-    keys = ("output_mw", "online", "starts", "stops", "shortage_mw", "excess_mw")
+    keys = ("output_mw", "online", "starts", "stops", "shortage_mw", "excess_mw",
+            "up_need_mw", "down_need_mw", "up_headroom_mw", "down_headroom_mw", "up_short_mw",
+            "down_short_mw", "up_hourly_pmax_short_mw", "solver_up_short_mw", "solver_down_short_mw")
     return {"segment": segment, "seconds": time.perf_counter() - began,
+            "solver_stages": result.get("solver_stages", []),
+            "joined_physical_check": result["joined_physical_check"],
             "window_status": result.get("rolling", {}).get("window_status", [result["status"]]),
             **{k: np.asarray(result[k]) for k in keys}}
 
@@ -203,23 +209,28 @@ def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: floa
             "startup_cost": hourly_slice(inputs.startup_cost, h0, h1),
             "ramp_down": hourly_slice(inputs.ramp_down, h0, h1),
             "no_load_won": hourly_slice(inputs.no_load, h0, h1),
-            "reserve_mw": (hourly_slice(target, h0, h1) * scenario.reserve_ratio
-                           if scenario.reserve_ratio > 0 else None),
+            # Annual coal-target basis, NOT the source study's market-demand autumn p50.
+            "up_need": hourly_slice(target, h0, h1) * scenario.reserve_ratio,
+            "down_need": hourly_slice(target, h0, h1) * scenario.reserve_ratio,
+            "reserve_mask": np.ones(len(inputs.names), bool),
+            "pmax_rated": inputs.maximum.max(axis=0),
             "group_caps": group_slice(groups["group_caps"], "maximum_mw", h0, h1),
             "group_online_minimums": group_slice(groups["group_online_minimums"], "minimum_units", h0, h1),
             "group_online_maximums": group_slice(groups["group_online_maximums"], "maximum_units", h0, h1),
-            "allow_approximate": True, "single_stage": True, "slack_penalty_won": SLACK_PENALTY_WON,
+            "allow_approximate": True, "single_stage": False, "slack_penalty_won": SLACK_PENALTY_WON,
             "objective_scale": 1e-3, "time_limit": time_limit, "cost_time_limit": time_limit,
             "mip_rel_gap": gap,
         })
-        if payloads[-1]["reserve_mw"] is None:
-            payloads[-1].pop("reserve_mw")
 
     h = len(prep["hours"]) - WARMUP_DAYS * 24
     n = len(inputs.names)
     output, online = np.zeros((h, n)), np.zeros((h, n), bool)
     starts = np.zeros((h, n), bool)
     shortage, excess = np.zeros(h), np.zeros(h)
+    headroom = {key: np.empty(h) for key in ("up_need_mw", "down_need_mw", "up_headroom_mw",
+        "down_headroom_mw", "up_short_mw", "down_short_mw", "up_hourly_pmax_short_mw",
+        "solver_up_short_mw", "solver_down_short_mw")}
+    diagnostics = {}
     statuses: dict[int, list[str]] = {}
     done = {k: 0 for k in range(len(segments))}
     with ProcessPoolExecutor(max_workers=min(workers, len(segments))) as pool:
@@ -245,6 +256,9 @@ def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: floa
                 starts[rows] = part["starts"][keep]
                 shortage[rows] = part["shortage_mw"][keep]
                 excess[rows] = part["excess_mw"][keep]
+                for key in headroom:
+                    headroom[key][rows] = part[key][keep]
+                diagnostics[k] = {key: part[key] for key in ("solver_stages", "joined_physical_check")}
                 statuses[k] = part["window_status"]
             if pending:
                 time.sleep(0.5)
@@ -275,7 +289,21 @@ def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: floa
                            "kind": prep["coal_model"].model_kind},
             "milp": {"window_h": WINDOW_HOURS, "step_h": STEP_HOURS, "segments": len(segments),
                      "warmup_days": WARMUP_DAYS, "time_limit_s": time_limit, "mip_rel_gap": gap,
-                     "cost": "연료곡선 할선(최소~최대) 선형 + 기동비", "reserve_ratio": scenario.reserve_ratio}},
-        warnings=prep["warnings"])
+                     "cost": "연료곡선 할선(최소~최대) 선형+no-load+기동비", "reserve_ratio": scenario.reserve_ratio,
+                     "headroom_policy": "rated upward / clipped downward; static proxy, not certified reserve",
+                     "reserve_requirement_basis": "coal_target * reserve_ratio, both directions; not autumn p50",
+                     "reserve_shortfall_won_per_mwh": RESERVE_SHORTFALL_WON_PER_MW,
+                     "inertia_won": 0, "maximum_off_hours": None,
+                     "backend": "highspy==1.12.0", "solver_threads_per_worker": 1,
+                     "stages": "feasibility front, then validated cost start; existing quality/retries",
+                     "reserve_met": bool(max(headroom['up_short_mw'].max(), headroom['down_short_mw'].max()) <= .01),
+                     "headroom_shortages": {key: {"planned_hours": h, "returned_hours": len(values),
+                         "hours_above_0_01mw": int((values > .01).sum()), "mwh": float(values.sum()),
+                         "max_mw": float(values.max())} for key, values in headroom.items() if 'short_mw' in key},
+                     "segment_diagnostics": diagnostics,
+                     "global_segment_seams_certified": False}},
+        headroom=headroom, warnings=[*prep["warnings"],
+            "상·하향 요구량은 석탄목표×입력 예비율인 정적 프록시입니다. 원천 가을 P3와 다른 조건이며 응답 예비력 인증이 아닙니다.",
+            "병렬 구간 경계는 2일 예열만 사용하며 연간 전체의 물리 연속성은 인증하지 않습니다."])
     notify({"stage": "done", "elapsed": result.elapsed_seconds})
     return result

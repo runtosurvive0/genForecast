@@ -203,7 +203,7 @@ def save_run(result: AnnualResult, directory: Path) -> dict:
                         starts=result.starts, demand=result.demand, solar=result.solar,
                         nuclear=result.nuclear, coal_target=result.coal_target,
                         coal_model=result.coal_model, coal_available=result.coal_available,
-                        shortage=result.shortage, excess=result.excess)
+                        shortage=result.shortage, excess=result.excess, **result.headroom)
     return summary
 
 

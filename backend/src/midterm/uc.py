@@ -1,5 +1,5 @@
-"""[포크] national-solar-forecast `dss/coal_uc.py` (커밋 be2a0a0). MILP 본체는 그대로 두고 원천
-패키지 import 세 곳만 이 프로젝트의 것으로 바꿨다(달력, 동해안 그룹, 호기명 정규화).
+"""Fork of national-solar-forecast be2a0a0, retaining annual cost/quality options.
+P3 fb109c5a validation and startup carry hooks: docs/MILP_DOWN_RESERVE_PORT.md.
 
 Hourly coal-only commitment. Costs are KRW/kWh, power MW, duration hours."""
 import math
@@ -243,7 +243,7 @@ def ramp_floor_from(start, minimum, ramp_up, hour):
 
 # 예비력 1 MW 가 모자란 한 시간의 값. 호기 하나를 더 켜 두는 비용(최소출력 연료 차이·기동비,
 # 대개 수천만 원)보다 커서 채울 수 있으면 채우고, 목표 부족분보다는 뒤에 온다.
-RESERVE_SHORTFALL_WON_PER_MW = 1e7
+RESERVE_SHORTFALL_WON_PER_MW = 3e6
 
 
 def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
@@ -256,7 +256,8 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
                   ramp_down=None, reserve_mw=None, commitment_reference=None, inertia_won=0.0,
                   group_online_targets=(), event_penalty=None, mip_rel_gap=0.001,
                   single_stage=False, slack_penalty_won=5e7, highs_options=None,
-                  objective_scale=1.0, no_load_won=None):
+                  objective_scale=1.0, no_load_won=None, _build_only=False,
+                  _initial_floor_relief=None, _milp=None):
     """Daily inputs have shape (hours, units). Unknown initial ages are satisfied.
 
     Slack is minimised before money. Nonzero slack is explicitly infeasible for
@@ -278,6 +279,11 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
     ramp_down = np.asarray(ramp_up if ramp_down is None else ramp_down, dtype=float)
     must, outage = np.asarray(must, bool), np.asarray(outage, bool)
     h, n = minimum.shape
+    relief = None if _initial_floor_relief is None else np.asarray(_initial_floor_relief, float)
+    if relief is not None and (relief.shape != (h, n) or not np.isfinite(relief).all() or (relief < 0).any()):
+        raise ValueError('Invalid carried startup floor relief')
+    if no_load_won is not None and not np.isfinite(np.broadcast_to(np.asarray(no_load_won, float), (h, n))).all():
+        raise ValueError('No-load costs must be finite per hour and unit')
     # Coefficients already multiplied by heat price: won/hour, P in MW.
     quadratic = None if fuel_curve is None else np.asarray(fuel_curve, float)
     if not isinstance(fuel_segments, int) or isinstance(fuel_segments, bool) or not 1 <= fuel_segments <= 100:
@@ -479,7 +485,9 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
             floor_lb = 0.0
             # 창이 열리기 직전에 병입해 아직 올라가는 중인 호기(초기 출력이 최소출력 아래). 몇
             # 시간째인지 추정하지 않고 관측한 초기 출력에서부터 올린다 -- `ramp_floor_from`.
-            if initial[j] and p0[j] < minimum[t,j]:
+            if relief is not None:
+                floor_lb = -relief[t,j]
+            elif initial[j] and p0[j] < minimum[t,j]:
                 level = ramp_floor_from(p0[j], minimum[t,j], ramp_up[t,j], t)
                 if level < minimum[t,j]:
                     floor_lb = level - minimum[t,j]
@@ -522,6 +530,13 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
             (fuel_v,(fuel_r,fuel_c)), shape=(len(fuel_rows),count)).tocsc()
         fuel_constraints = [LinearConstraint(
             fuel_matrix, np.zeros(len(fuel_rows)), np.full(len(fuel_rows), np.inf))]
+    if _build_only:
+        return {'constraints': constraints+fuel_constraints, 'lower': lower, 'upper': upper,
+                'fuel_start': cost_start, 'fuel_end': reserve_start,
+                'reserve_start': reserve_start, 'reserve_end': soft_start,
+                'initial_online': initial.copy(), 'initial_output': p0.copy(),
+                'initial_elapsed': elapsed.copy()}
+    solve_milp = milp if _milp is None else _milp
     objective = np.zeros(count); objective[4*size:4*size+2*h] = 1
     # [포크] 연간 계획은 창이 365개라 허용 간격을 인자로 받는다(원천 고정값 0.001 이 기본).
     options = {'time_limit':time_limit,'mip_rel_gap':mip_rel_gap, **(highs_options or {})}
@@ -576,8 +591,9 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
         one[4*size:4*size+2*h] += slack_penalty_won
         # 원 단위 계수가 1e8 까지 커서 HiGHS 가 척도 경고를 낸다. 최적해는 그대로이고 간격 판정만 안정된다.
         one = one * objective_scale
-        result = milp(one, integrality=integer, bounds=Bounds(lower, upper),
-                      constraints=constraints+fuel_constraints, options=cost_options)
+        result = solve_milp(one, integrality=integer, bounds=Bounds(lower, upper),
+                      constraints=constraints+fuel_constraints, options=cost_options,
+                      **({'_cost_stage': True} if _milp is not None else {}))
         cost_seconds = time.perf_counter() - began
         front_seconds = 0.0
         if result.x is None:
@@ -592,9 +608,9 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
         exact_upper=upper.copy()
         exact_upper[4*size:cost_start]=0
         front_began = time.perf_counter()
-        exact=milp(np.zeros(count),integrality=integer,bounds=Bounds(lower,exact_upper),constraints=constraints,options=options)
+        exact=solve_milp(np.zeros(count),integrality=integer,bounds=Bounds(lower,exact_upper),constraints=constraints,options=options)
         if exact.x is None and exact.status != 2 and allow_approximate:
-            exact=milp(np.zeros(count),integrality=integer,bounds=Bounds(lower,exact_upper),constraints=constraints,
+            exact=solve_milp(np.zeros(count),integrality=integer,bounds=Bounds(lower,exact_upper),constraints=constraints,
                        options={**options,'time_limit':time_limit*2})
         exact_found=exact.x is not None
         if exact_found:
@@ -606,9 +622,9 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
             # whole-horizon plan instead of matching six extrema and abandoning everything between.
             peak_objective=np.zeros(count);peak_objective[peak_index]=h
             peak_objective[4*size:4*size+2*h] = 1
-            peak=milp(peak_objective,integrality=integer,bounds=Bounds(lower,upper),constraints=constraints,options=options)
+            peak=solve_milp(peak_objective,integrality=integer,bounds=Bounds(lower,upper),constraints=constraints,options=options)
             if peak.x is None and peak.status != 2:
-                peak=milp(peak_objective,integrality=integer,bounds=Bounds(lower,upper),
+                peak=solve_milp(peak_objective,integrality=integer,bounds=Bounds(lower,upper),
                           constraints=constraints,options={**options,'time_limit':time_limit*2})
             if peak.x is None:
                 return {'status':'constraints_infeasible' if peak.status==2 else 'no_solution',
@@ -619,7 +635,7 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
             else:
                 first=peak
         if not exact_found and peak_proved:
-            first = milp(objective,integrality=integer,bounds=Bounds(lower,upper),constraints=constraints,options=options)
+            first = solve_milp(objective,integrality=integer,bounds=Bounds(lower,upper),constraints=constraints,options=options)
         if first.x is None and allow_approximate and not exact_found:
             first=peak
         front_seconds = time.perf_counter() - front_began
@@ -634,8 +650,9 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
         # 고치는 방법이 다르므로 둘을 구분해 적는다.
         cost_attempted = bool(first.success)
         began = time.perf_counter()
-        result = (milp(steer,integrality=integer,bounds=Bounds(lower,upper),
-                       constraints=constraints+fuel_constraints,options=cost_options)
+        result = (solve_milp(steer,integrality=integer,bounds=Bounds(lower,upper),
+                       constraints=constraints+fuel_constraints,options=cost_options,
+                       **({'_cost_stage': True} if _milp is not None else {}))
                   if cost_attempted else first)
         cost_seconds = time.perf_counter() - began
     x = result.x if result.x is not None else first.x

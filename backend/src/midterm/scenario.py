@@ -27,8 +27,8 @@ class Scenario:
     solar_growth_pct: float | None = None
     #: 월별 석탄목표 보정(%). 석탄곡선 모델은 2026-01~09 로만 학습돼 10~12월을 본 적이 없다.
     coal_adjust_pct: list[float] = field(default_factory=lambda: [0.0] * 12)
-    #: 석탄 목표의 이 비율만큼 켜 둔 호기 최대출력 여유를 둔다(원천 기본 0.12, 소프트 제약).
-    reserve_ratio: float = 0.12
+    #: 석탄 목표×이 비율을 상·하향 정적 여유 요구로 둔다(소프트 제약; 가을 p50 아님).
+    reserve_ratio: float = 0.12  # coal-target-based static up AND clipped-down requirement
     quality: str = "normal"
     workers: int | None = None
     nuclear_oh: list[Outage] = field(default_factory=list)
