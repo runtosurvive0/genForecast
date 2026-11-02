@@ -10,7 +10,7 @@ import {
 
 export const LEDGER_PAGE_SIZE = 20;
 const COLUMNS: { key: LedgerKey; label: string }[] = [
-  { key: "id", label: "Pile" },
+  { key: "id", label: "더미" },
   { key: "yard", label: "발전소 · 처" },
   { key: "coal", label: "탄종" },
   { key: "tons", label: "재고 · t" },
@@ -23,9 +23,10 @@ const COLUMNS: { key: LedgerKey; label: string }[] = [
 ];
 const groupOf = (r: LedgerRow) => (r.yard === "-" ? r.plantName : `${r.plantName} ${r.yard}`);
 
-/** Pile 원장: 정렬·필터·20행 페이지·CSV, 행 선택은 약도·패널과 동기화. */
+/** 더미 원장: 정렬·필터·20행 페이지·CSV, 행 선택은 약도·패널과 동기화. */
 export function PileLedger({
   rows,
+  heapName,
   riskFilter,
   selectedId,
   onSelect,
@@ -34,10 +35,12 @@ export function PileLedger({
   source,
 }: {
   rows: LedgerRow[];
+  /** 화면 더미 이름 (P1-01, A-10 …). */
+  heapName: (pile: LedgerRow["pile"]) => string;
   riskFilter: "all" | "낮음" | "관찰" | "높음";
   selectedId: string | null;
   onSelect: (id: string) => void;
-  /** "원장에서 보기" 요청 번호. 바뀌면 선택 Pile이 있는 페이지로 이동하고 펼친다. */
+  /** "원장에서 보기" 요청 번호. 바뀌면 선택 더미가 있는 페이지로 이동하고 펼친다. */
   jump: number;
   renderDetail: (row: LedgerRow) => ReactNode;
   source: string;
@@ -58,12 +61,13 @@ export function PileLedger({
           (group === "all" || groupOf(r) === group) &&
           (!q ||
             r.pile.stockpile_id.toLowerCase().includes(q) ||
+            heapName(r.pile).toLowerCase().includes(q) ||
             r.pile.coal_type.toLowerCase().includes(q)),
       ),
       sortKey,
       dir,
     );
-  }, [rows, riskFilter, group, query, sortKey, dir]);
+  }, [rows, riskFilter, group, query, sortKey, dir, heapName]);
   const pages = Math.max(1, Math.ceil(visible.length / LEDGER_PAGE_SIZE));
   const current = Math.min(page, pages - 1);
   const shown = visible.slice(current * LEDGER_PAGE_SIZE, (current + 1) * LEDGER_PAGE_SIZE);
@@ -94,14 +98,14 @@ export function PileLedger({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "저탄장_Pile_원장.csv";
+    a.download = "저탄장_더미_원장.csv";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
     <Section
-      title="전체 Pile 원장"
+      title="전체 더미 원장"
       note={`${visible.length}개 · ${LEDGER_PAGE_SIZE}행 페이지 · 헤더를 눌러 정렬 · 행을 누르면 상세와 약도 선택`}
       action={
         <button className="stockyard-csv" onClick={download}>
@@ -122,7 +126,7 @@ export function PileLedger({
         </div>
         <input
           aria-label="원장 검색"
-          placeholder="Pile·탄종 검색"
+          placeholder="더미·탄종 검색"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -164,7 +168,8 @@ export function PileLedger({
                         setExpanded((e) => (e === id ? null : id));
                       }}
                     >
-                      {id}
+                      {heapName(r.pile)}
+                      {heapName(r.pile) !== id && <small className="ledger-source-id">{id}</small>}
                     </button>
                   </td>
                   <td>{groupOf(r)}</td>
@@ -192,7 +197,7 @@ export function PileLedger({
             })}
             {!shown.length && (
               <tr>
-                <td colSpan={COLUMNS.length}>조건에 맞는 Pile이 없습니다</td>
+                <td colSpan={COLUMNS.length}>조건에 맞는 더미가 없습니다</td>
               </tr>
             )}
           </tbody>

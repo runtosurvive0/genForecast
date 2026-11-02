@@ -66,6 +66,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE_TIME } from "../src/domain/operations.ts";
 import { stockpiles } from "../src/data/control-tower.ts";
+import { siteGroups, heapNames, RESERVE_CELLS, UNLOAD_LINES, lineMaxTph, canUnload } from "../src/features/stockyard/site-layout.ts";
 import {
   pileRisk,
   plantInputs,
@@ -899,4 +900,36 @@ test("DB inventory preserves zero and negative forecasts without inventing missi
   assert.equal(rows.length, 3);
   assert.ok(rows.every((row) => row.unloadEnd === null && row.unload === null && row.reflect === null));
   assert.equal(rows.find((row) => row.voyage.voyage_id === "supply:2")?.voyage.cargo_t, 60000);
+});
+
+test("site layout: Pile 1~8 and A/B Shed groups keep fixed heap names", () => {
+  const dangjin = stockpiles.filter((p) => p.plant_id === "dangjin");
+  const groups = siteGroups(dangjin);
+  assert.deepEqual(groups.map((g) => g.label), [
+    "Pile 1", "Pile 2", "Pile 3", "Pile 4", "Pile 5", "Pile 6", "Pile 7", "Pile 8", "A Shed", "B Shed",
+  ]);
+  assert.ok(groups.every((g) => g.heaps.length === (g.pileNo === null ? 10 : 5)));
+  const names = heapNames(groups);
+  // 사용자 지정 예: DA-01 → P1-01, DA-08 → P1-05 (Pile 안 원본 ID 순).
+  assert.equal(names["DA-01"], "P1-01");
+  assert.equal(names["DA-08"], "P1-05");
+  assert.deepEqual(groups[8].names, ["A-10", "A-9", "A-8", "A-7", "A-6", "A-5", "A-4", "A-3", "A-2", "A-1"]);
+  assert.equal(groups[9].names.at(-1), "B-1");
+  assert.equal(new Set(Object.values(names)).size, 60);
+  assert.deepEqual([...RESERVE_CELLS], ["A-10", "B-1"]);
+  // 재고·위험도가 바뀌어도 이름은 그대로다 (화면 정렬과 무관).
+  const shuffled = [...dangjin].reverse().map((p) => ({ ...p, on_hand_t: p.on_hand_t * 3 }));
+  assert.deepEqual(heapNames(siteGroups(shuffled)), names);
+});
+
+test("site layout: unload lines follow the stockyard PDF capacities and blocked piles", () => {
+  const [one, twoThree] = UNLOAD_LINES;
+  assert.deepEqual([one.berths, twoThree.berths], [["BD-1"], ["BD-2", "BD-3"]]);
+  assert.equal(lineMaxTph(one), 2400);
+  assert.equal(lineMaxTph(twoThree), 3600);
+  const groups = siteGroups(stockpiles.filter((p) => p.plant_id === "dangjin"));
+  const blocked = (line: (typeof UNLOAD_LINES)[number]) =>
+    groups.filter((g) => !canUnload(line, g)).map((g) => g.label);
+  assert.deepEqual(blocked(one), ["Pile 7", "Pile 8"]);
+  assert.deepEqual(blocked(twoThree), ["Pile 3", "Pile 4"]);
 });

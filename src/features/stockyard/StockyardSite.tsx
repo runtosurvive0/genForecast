@@ -5,10 +5,17 @@ import { number as n } from "@/lib/format";
 import { PileButton } from "./PileButton";
 import { PlantGlyph, SeaTexture, ShipGlyph } from "./SiteArt";
 import {
+  canUnload,
+  lineMaxTph,
+  RESERVE_CELLS,
+  UNLOAD_LINES,
+  YARD_TITLES,
+  type PileGroup,
+} from "./site-layout";
+import {
   BERTHS,
   DAYS_STATUS_LABEL,
   historyForPile,
-  orderPiles,
   yardShortName,
   YARD_LAYOUT,
   YARD_UNIT_RANGES,
@@ -34,11 +41,12 @@ export interface LinkChip {
 
 /**
  * 당진 항만·저탄장 약도 (SIMULATED): 해상 대기 → 부두 접안·하역 →
- * 하역 컨베이어 → 발전처별 저탄장 → 상탄 컨베이어 → 발전소.
+ * 부두별 저탄 라인 → 저탄장 Pile(더미 5개 묶음)·Shed → 상탄 컨베이어 → 발전소.
  * 우측 패널은 `panel`로 받는다.
  */
 export function StockyardSite({
   piles,
+  pileGroups,
   attributions,
   vessels,
   berths,
@@ -48,7 +56,6 @@ export function StockyardSite({
   onSelectPile,
   selectedYard,
   onSelectYard,
-  sort,
   riskFilter,
   unitCount,
   feeds,
@@ -64,6 +71,8 @@ export function StockyardSite({
   historyDays,
 }: {
   piles: Stockpile[];
+  /** Pile 1~8 · A/B Shed 묶음 (화면 고정 순서). */
+  pileGroups: PileGroup[];
   attributions: Attribution[];
   vessels: SiteVessel[];
   berths: BerthStatus[];
@@ -73,7 +82,6 @@ export function StockyardSite({
   onSelectPile: (id: string) => void;
   selectedYard: string | null;
   onSelectYard: (yard: string) => void;
-  sort: "tons" | "age" | "risk";
   riskFilter: "all" | "낮음" | "관찰" | "높음";
   unitCount: number;
   feeds: YardFeed[];
@@ -107,19 +115,10 @@ export function StockyardSite({
     berths.find((b) => b.plant_yard === selectedYard)?.berth_id ??
     vessels.find((v) => v.voyage.voyage_id === activeShipId)?.berth_id;
 
-  // 방향키 이동용 격자: 처 → 구역 → Pile (화면 순서).
+  // 방향키 이동용 격자: 저탄장 → Pile·Shed → 더미 (화면 고정 순서).
   const grid = useMemo(
-    () =>
-      YARDS.map((yard) =>
-        [0, 1, 2, 3].map((zone) =>
-          orderPiles(
-            piles.filter((p) => p.plant_yard === yard && p.zone === zone),
-            sort,
-            "all",
-          ),
-        ),
-      ),
-    [piles, sort],
+    () => YARDS.map((yard) => pileGroups.filter((g) => g.yard === yard).map((g) => g.heaps)),
+    [pileGroups],
   );
   const firstId = grid.flat(2)[0]?.stockpile_id ?? null;
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -145,7 +144,7 @@ export function StockyardSite({
       return r?.length ? r[Math.max(0, Math.min(r.length - 1, ii))].stockpile_id : null;
     };
     if (key === "ArrowRight") return row[i + 1]?.stockpile_id ?? at(y + 1, 0, 0);
-    if (key === "ArrowLeft") return row[i - 1]?.stockpile_id ?? at(y - 1, 3, Infinity);
+    if (key === "ArrowLeft") return row[i - 1]?.stockpile_id ?? at(y - 1, (grid[y - 1]?.length ?? 1) - 1, Infinity);
     if (key === "ArrowDown") return row[i + columns]?.stockpile_id ?? null;
     if (key === "ArrowUp") return row[i - columns]?.stockpile_id ?? null;
     if (key === "Home") return row[Math.floor(i / columns) * columns].stockpile_id;
@@ -182,8 +181,8 @@ export function StockyardSite({
         <div>
           <h2 id={titleId}>당진 항만 · 저탄장 현황</h2>
           <p>
-            선박 대기·접안·하역 → 발전처별 저탄 → 발전소 상탄 · Pile에 마우스를
-            올리면 탄질과 하역 이력, 선택하면 우측 패널에 상세
+            선박 대기·접안·하역 → 저탄장 Pile 저탄 → 발전소 상탄 · 더미에 마우스를
+            올리면 탄질과 하역 이력, 선택하면 우측 패널에 상세 · Pile 이름을 누르면 Pile 요약
           </p>
         </div>
         <div className="site-links" aria-label="외부 연계 상태">
@@ -204,7 +203,8 @@ export function StockyardSite({
         <div className="site-scene">
           <div className="site-plants" role="group" aria-label="당진 발전소 처별 발전·상탄 계획">
             <div className="site-plants-caption"><strong>당진 발전소</strong><span>{feedDate} · {feedSource} · KST · 일평균 · 실시간 계측 미연계</span></div>
-            <p className="site-unload-note">하역 기본 {n(DEFAULT_UNLOAD_TPD)} t/일 (약 {n(DEFAULT_UNLOAD_TPD / 24, 1)} t/h) · 가정 · 선박 잔량·접안시간 반영</p>
+            <p className="site-unload-note">하역 기본 {n(DEFAULT_UNLOAD_TPD)} t/일 (약 {n(DEFAULT_UNLOAD_TPD / 24, 1)} t/h) · 가정 · 선박 잔량·접안시간 반영 · 저탄 라인 1,000~1,200 t/h 상한 (하역기 능력보다 작음)
+              <span className="site-reach-legend"><span className="site-reach is-ok">부두</span> 하역 가능 <span className="site-reach is-no">부두</span> 하역 불가 · Pile = 더미 5개 묶음</span></p>
             <div className="site-plant-grid">
               {YARDS.map((yard) => {
                 const feed = feeds.find((f) => f.yard === yard);
@@ -249,7 +249,7 @@ export function StockyardSite({
                 ?.focus();
             }}
           >
-            {YARDS.map((yard, y) => {
+            {YARDS.map((yard) => {
               const yardPiles = piles.filter((p) => p.plant_yard === yard);
               const indoor = yardPiles.some((p) => p.indoor);
               const tons = yardPiles.reduce((s, p) => s + p.on_hand_t, 0);
@@ -269,9 +269,9 @@ export function StockyardSite({
                       aria-pressed={selectedYard === yard}
                       onClick={() => onSelectYard(yard)}
                     >
-                      <strong>{yardShortName(yard)}</strong>
+                      <strong>{YARD_TITLES[yard]}</strong>
                       <span>
-                        {indoor ? "옥내" : "옥외"} · {n(forecast?.source === "db" ? forecast.currentTons : tons)} t
+                        {yardShortName(yard)} · {indoor ? "옥내" : "옥외"} · {n(forecast?.source === "db" ? forecast.currentTons : tons)} t
                       </span>
                     </button>
                     {forecast && (
@@ -293,18 +293,43 @@ export function StockyardSite({
                       </em>
                     )}
                   </header>
-                  {grid[y].map((group, zone) => {
-                    if (!group.length) return null;
+                  {pileGroups.filter((g) => g.yard === yard).map((group) => {
+                    const shed = group.pileNo === null;
+                    const sum = group.heaps.reduce((s, p) => s + p.on_hand_t, 0);
+                    const picked = group.heaps.some((p) => p.stockpile_id === selectedPileId);
                     return (
-                      <div key={zone} className="zone-group">
-                        <span>
-                          {zone + 1}구역 · {group[0].coal_type}
-                        </span>
+                      <div key={group.id} className={`zone-group site-pile-group${picked ? " is-picked" : ""}`} data-pile-group={group.id}>
+                        <div className="site-pile-head">
+                          <button
+                            className="site-pile-name"
+                            aria-label={`${group.label} 요약 보기`}
+                            onClick={() => onSelectPile(group.heaps[0].stockpile_id)}
+                          >
+                            <strong>{group.label}</strong>
+                            {!shed && <span>{group.heaps[0].coal_type}</span>}
+                          </button>
+                          <span className="site-pile-meta">
+                            · {shed ? "Cell" : "더미"} {group.heaps.length} · <b>{n(sum)} t</b>
+                          </span>
+                          <span className="site-pile-reach" aria-label={`${group.label} 하역 가능 부두`}>
+                            {UNLOAD_LINES.map((line) => {
+                              const ok = canUnload(line, group);
+                              return (
+                                <span key={line.id} className={`site-reach is-${ok ? "ok" : "no"}`}
+                                  title={`${line.label} 저탄 라인 ${ok ? "하역 가능" : "하역 불가"}`}>
+                                  {line.label}
+                                </span>
+                              );
+                            })}
+                          </span>
+                        </div>
                         <div className="yard-piles">
-                          {group.map((pile) => (
+                          {group.heaps.map((pile, i) => (
                             <PileButton
                               key={pile.stockpile_id}
                               pile={pile}
+                              name={group.names[i]}
+                              reserve={shed && RESERVE_CELLS.has(group.names[i])}
                               entries={historyForPile(pile, attributions, historyDays)}
                               selected={selectedPileId === pile.stockpile_id}
                               restricted={pile.eligible_unit_ids.length < unitCount}
@@ -322,6 +347,11 @@ export function StockyardSite({
                       </div>
                     );
                   })}
+                  {yard === "P3" && (
+                    <p className="site-reserve-note">
+                      <i aria-hidden="true" /> 예비 Cell: {[...RESERVE_CELLS].join(" · ")}
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -331,25 +361,62 @@ export function StockyardSite({
                 title="이탄 연결 개념도 · 실제 설비 연결 확인 필요">
                 <span className="site-transfer-label">이탄벨트</span>
                 <span className="site-transfer-track" aria-hidden="true">↔</span>
-                <small>{i + 1}↔{i + 2}</small>
+                <small>{i + 1}↔{i + 2} · 확인 필요</small>
               </div>)}
           </div>
 
-          <div className="site-unload-conveyors" role="group" aria-label="부두별 하역량·당일 재고 반영">
+          <div className="site-unload-conveyors" role="group" aria-label="부두별 저탄 라인 최대 공급량·하역량">
           {BERTHS.map((berth, i) => (
             <div
               key={berth}
               className={`site-conveyor${running.has(berth) ? " is-running" : ""}${selectedBerth === berth ? " is-selected" : ""}`}
-              data-unload-berth={berth}
+              data-conveyor-berth={berth}
               style={{ gridArea: `c${i + 1}` }}
             >
               <span className="site-conveyor-belt" aria-hidden="true" />
-              <span className="site-unload-chip"><small>하역 {berth} → {yardShortName(YARDS[i])}</small>
-                <strong data-unload-value="rate">{n(unloads.find((u) => u.berth === berth)?.rateTpd)} t/일</strong>
-                <small>당일 입고 <b data-unload-value="receipts">{n(unloads.find((u) => u.berth === berth)?.receipts)} t</b></small>
-              </span>
             </div>
           ))}
+          {UNLOAD_LINES.map((line) => {
+            const blocked = `Pile ${line.blockedPiles.join("·")}`;
+            const totalUnloaders = line.unloaders.reduce((s, u) => s + u.count, 0);
+            return (
+              <div key={line.id} className="site-unload-line" data-unload-line={line.id}>
+                <span className="site-unload-chip">
+                  <small>
+                    하역 {line.label} · {line.berths.length > 1 ? "총 " : ""}{line.lines}라인
+                    {line.maxRunning < totalUnloaders ? ` · 하역기 ${totalUnloaders}대 중 최대 ${line.maxRunning}대 동시` : " · 동시하역"}
+                  </small>
+                  <strong data-unload-value="max">최대 {n(lineMaxTph(line))} t/h</strong>
+                  <span className="site-unload-flow">
+                    하역기{" "}
+                    {line.unloaders.map((u, k) => (
+                      <span key={u.berth}>
+                        {k > 0 && " · "}
+                        {line.unloaders.length > 1 && `${u.berth} `}<b>{n(u.tph)} t/h×{u.count}대</b>
+                      </span>
+                    ))}{" "}
+                    → 저탄 <b>{n(line.stackTph[1])} t/h×{line.lines}라인</b>
+                  </span>
+                  <span className="site-unload-lanes" aria-hidden="true">
+                    {/* 저탄 라인마다 1칸, 동시 가동 못 하는 하역기가 있으면 점선 1칸. */}
+                    {Array.from({ length: line.lines + (totalUnloaders > line.maxRunning ? 1 : 0) }, (_, k) => (
+                      <i key={k} className={k < line.lines ? undefined : "is-off"} />
+                    ))}
+                  </span>
+                  {line.berths.map((berth) => {
+                    const u = unloads.find((x) => x.berth === berth);
+                    return (
+                      <small key={berth} data-unload-berth={berth}>
+                        {berth} 현재 <b data-unload-value="rate">{n(u?.rateTpd)} t/일</b> · 당일 입고{" "}
+                        <b data-unload-value="receipts">{n(u?.receipts)} t</b>
+                      </small>
+                    );
+                  })}
+                  <small className="site-unload-blocked">{blocked} 하역 불가</small>
+                </span>
+              </div>
+            );
+          })}
           </div>
 
           <ul className="harbor-quay stockyard-berths" aria-label="부두 점유">

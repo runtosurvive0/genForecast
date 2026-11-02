@@ -54,6 +54,7 @@ import { YardForecast } from "./YardForecast";
 import { IncomingTimeline } from "./IncomingTimeline";
 import { StockyardAnalysis, type AnalysisTab } from "./StockyardAnalysis";
 import { PileLedger } from "./PileLedger";
+import { heapNames, siteGroups } from "./site-layout";
 import {
   IntegrationError,
   correctSupplyUnloading,
@@ -283,6 +284,16 @@ export function Stockyard({
     selection?.kind === "pile"
       ? (piles.find((p) => p.stockpile_id === selection.id) ?? null)
       : null;
+  // 당진 Pile·Shed 묶음과 화면 더미 이름 (P1-01, A-10 …). stockpile_id는 그대로 쓴다.
+  const pileGroups = useMemo(
+    () => siteGroups(piles.filter((p) => p.plant_id === "dangjin")),
+    [piles],
+  );
+  const names = useMemo(() => heapNames(pileGroups), [pileGroups]);
+  const nameOf = (pile: { stockpile_id: string }) => names[pile.stockpile_id] ?? pile.stockpile_id;
+  const activeGroup = activePile
+    ? (pileGroups.find((g) => g.heaps.some((p) => p.stockpile_id === activePile.stockpile_id)) ?? null)
+    : null;
   const activeVessel = planning && selection?.kind === "vessel" && selection.id.startsWith("supply:") ? null :
     (selection?.kind === "vessel" &&
       vessels.find((v) => v.voyage.voyage_id === selection.id)) ||
@@ -351,10 +362,10 @@ export function Stockyard({
   );
   const alerts = useMemo(
     () => [
-      ...stockyardAlerts({ forecasts: planning ? [] : forecasts, piles, vessels, transferOver }),
-      ...(planning ? [{ level: "info" as const, text: planning.failed || (planning.loading || planning.listLoading ? "DB 수급 조회 중" : planning.current ? `DB 수급 ${planning.current.start} · ${planning.current.horizon_days}일 · Pile 표본 미연계` : "DB 수급 미연계"), target: null }] : []),
+      ...stockyardAlerts({ forecasts: planning ? [] : forecasts, piles, vessels, transferOver, names }),
+      ...(planning ? [{ level: "info" as const, text: planning.failed || (planning.loading || planning.listLoading ? "DB 수급 조회 중" : planning.current ? `DB 수급 ${planning.current.start} · ${planning.current.horizon_days}일 · 더미 표본 미연계` : "DB 수급 미연계"), target: null }] : []),
     ],
-    [forecasts, piles, vessels, transferOver, planning?.current, planning?.failed, planning?.loading, planning?.listLoading],
+    [forecasts, piles, vessels, transferOver, names, planning?.current, planning?.failed, planning?.loading, planning?.listLoading],
   );
 
   const kpis: KpiItem[] = [
@@ -362,7 +373,7 @@ export function Stockyard({
       label: "총 저탄량",
       value: n(total),
       unit: "t",
-      note: planning ? "DB 처별 재고 · Pile 원장 미연계" : `${piles.length}개 Pile 합계`,
+      note: planning ? "DB 처별 재고 · 더미 원장 미연계" : `${piles.length}개 더미 합계`,
       action: "원장으로 이동",
       onClick: () => scrollToRef(ledgerRef),
     },
@@ -382,10 +393,10 @@ export function Stockyard({
           : scrollToRef(forecastRef),
     },
     {
-      label: "운영 Pile",
+      label: "운영 더미",
       value: piles.length,
       unit: "개",
-      note: `${groups.length}개 처·발전소${planning ? " · Pile 표본" : ""}`,
+      note: `${groups.length}개 처·발전소${planning ? " · 더미 표본" : ""}`,
       action: "원장으로 이동",
       onClick: () => scrollToRef(ledgerRef),
     },
@@ -397,7 +408,7 @@ export function Stockyard({
         ),
       ),
       unit: "kcal/kg",
-      note: planning ? "DB 처별 재고 가중" : "Pile 재고 가중",
+      note: planning ? "DB 처별 재고 가중" : "더미 재고 가중",
       action: "탄종 구성 보기",
       onClick: () => {
         setAnalysisTab("mix");
@@ -416,13 +427,13 @@ export function Stockyard({
       label: "최장 적치",
       value: oldest ? pileRisk(oldest).age : 0,
       unit: "일",
-      note: oldest?.stockpile_id,
-      action: "해당 Pile 선택",
+      note: oldest ? nameOf(oldest) : undefined,
+      action: "해당 더미 선택",
       onClick: () =>
         oldest && select({ kind: "pile", id: oldest.stockpile_id }, true),
     },
     {
-      label: "고위험 Pile",
+      label: "고위험 더미",
       value: highCount,
       unit: "개",
       note: sensed ? "센서 반영 위험도" : "모의 위험도 · SIMULATED",
@@ -472,7 +483,7 @@ export function Stockyard({
     const q = query.trim().toUpperCase();
     if (!q) return;
     const hit =
-      piles.find((p) => p.stockpile_id.toUpperCase() === q) ??
+      piles.find((p) => p.stockpile_id.toUpperCase() === q || nameOf(p).toUpperCase() === q) ??
       (/^\d+$/.test(q)
         ? piles.find((p) => p.stockpile_id.endsWith(`-${q.padStart(2, "0")}`))
         : undefined) ??
@@ -547,8 +558,8 @@ export function Stockyard({
           <label className="stockyard-search">
             <Search size={13} aria-hidden="true" />
             <input
-              aria-label="Pile 검색"
-              placeholder="Pile 검색 (DA-04)"
+              aria-label="더미 검색"
+              placeholder="더미 검색 (P1-01 · A-10 · DA-04)"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -576,7 +587,7 @@ export function Stockyard({
           <label>
             정렬
             <select
-              aria-label="Pile 정렬"
+              aria-label="더미 정렬"
               value={sort}
               onChange={(e) => setSort(e.target.value as typeof sort)}
             >
@@ -595,6 +606,7 @@ export function Stockyard({
         <div ref={siteRef} className="stockyard-anchor">
           <StockyardSite
             piles={dangjinPiles}
+            pileGroups={pileGroups}
             attributions={attributions}
             vessels={vessels}
             berths={berths}
@@ -608,7 +620,6 @@ export function Stockyard({
             onSelectPile={(id) => select({ kind: "pile", id })}
             selectedYard={panelTab === "yard" ? activeYard : null}
             onSelectYard={(id) => select({ kind: "yard", id })}
-            sort={sort}
             riskFilter={riskFilter}
             unitCount={dangjinPlant?.units.length ?? 0}
             feeds={siteFeeds}
@@ -690,12 +701,15 @@ export function Stockyard({
                 }}
                 unitNames={unitNames}
                 activePile={activePile}
+                activeGroup={activeGroup}
+                heapName={nameOf}
                 pileEntries={
                   activePile
                     ? historyForPile(activePile, attributions, horizon)
                     : []
                 }
                 eligibleNames={activePile ? eligibleNames(activePile) : ""}
+                onSelectPile={(id) => select({ kind: "pile", id })}
                 onShowInLedger={() => {
                   setLedgerJump((j) => j + 1);
                   scrollToRef(ledgerRef);
@@ -709,7 +723,7 @@ export function Stockyard({
       {otherYards.length > 0 && (
         <Section
           title={dangjinInView ? "기타 발전소 저탄장" : "저탄장 배치"}
-          note="둔덕 크기는 재고량 비례 · Pile에 마우스를 올리면 탄질과 하역 이력, 선택하면 상세"
+          note="둔덕 크기는 재고량 비례 · 더미에 마우스를 올리면 탄질과 하역 이력, 선택하면 상세"
           action={
             <span className="stockyard-gauge tower-tag">
               상탄 {n(otherGauge, 1)} t/h · SIMULATED
@@ -753,8 +767,8 @@ export function Stockyard({
 
       {standalonePile && (
         <Section
-          title={`${standalonePile.stockpile_id} · ${standalonePile.coal_type}`}
-          note="약도 또는 원장에서 Pile 선택"
+          title={`${nameOf(standalonePile)} · ${standalonePile.coal_type}`}
+          note="약도 또는 원장에서 더미 선택"
         >
           <PileDetail
             pile={standalonePile}
@@ -802,6 +816,7 @@ export function Stockyard({
           blend={blend}
           groups={groups}
           piles={piles}
+          heapName={nameOf}
           onSelectPile={(id) => select({ kind: "pile", id }, true)}
         />
       </div>
@@ -809,6 +824,7 @@ export function Stockyard({
       <div ref={ledgerRef} className="stockyard-anchor">
         <PileLedger
           rows={rows}
+          heapName={nameOf}
           riskFilter={riskFilter}
           selectedId={activePile?.stockpile_id ?? null}
           onSelect={(id) => select({ kind: "pile", id })}

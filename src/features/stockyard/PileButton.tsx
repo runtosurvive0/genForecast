@@ -41,7 +41,7 @@ export function PileHistory({ entries }: { entries: HistoryEntry[] }) {
 }
 
 /**
- * 약도용 Pile: 재고 비례 둔덕 + 번호 + 하역 이력 건수 배지.
+ * 약도용 석탄 더미: 재고 비례 둔덕 + 이름 + 하역 이력 건수 배지.
  * 마우스오버·포커스 시 탄질과 하역 이력·예정을 툴팁으로 보여준다.
  */
 export function PileButton({
@@ -53,16 +53,22 @@ export function PileButton({
   dimmed = false,
   receiving = false,
   tabIndex,
+  name = pile.stockpile_id,
+  reserve = false,
   onSelect,
 }: {
   pile: Stockpile;
+  /** 화면 더미 이름 (P1-01, A-10 …). 없으면 stockpile_id. */
+  name?: string;
+  /** 예비 Cell (3저탄장 A-10 · B-1). */
+  reserve?: boolean;
   entries: HistoryEntry[];
   selected: boolean;
   restricted: boolean;
   maxTons: number;
-  /** 위험도 필터에 맞지 않는 Pile: 자리는 유지하고 흐리게. */
+  /** 위험도 필터에 맞지 않는 더미: 자리는 유지하고 흐리게. */
   dimmed?: boolean;
-  /** 선택한 선박의 하역분이 귀속되는 Pile. */
+  /** 선택한 선박의 하역분이 귀속되는 더미. */
   receiving?: boolean;
   /** 약도 방향키 이동(roving tabindex)용. 없으면 기본 탭 순서. */
   tabIndex?: number;
@@ -119,7 +125,7 @@ export function PileButton({
         ref={button}
         className={`yard-pile risk-${riskClass(risk.label)}${
           dimmed ? " is-dimmed" : ""
-        }${receiving ? " is-receiving" : ""}`}
+        }${receiving ? " is-receiving" : ""}${reserve ? " is-reserve" : ""}`}
         aria-pressed={selected}
         aria-describedby={anchor ? id : undefined}
         tabIndex={tabIndex}
@@ -156,9 +162,9 @@ export function PileButton({
         </span>
         <span className="pile-label">
           <span className="pile-label-prefix">
-            {pile.stockpile_id.split("-")[0]}-
+            {name.slice(0, name.lastIndexOf("-") + 1)}
           </span>
-          {pile.stockpile_id.split("-").slice(1).join("-")}
+          {name.slice(name.lastIndexOf("-") + 1)}
         </span>
         {entries.length > 0 && (
           <span className="pile-badge" aria-hidden="true">
@@ -166,6 +172,8 @@ export function PileButton({
           </span>
         )}
         <span className="yard-pile-sr">
+          {name !== pile.stockpile_id ? `${pile.stockpile_id} · ` : ""}
+          {reserve ? "예비 Cell · " : ""}
           {n(pile.on_hand_t)} t · {risk.label}
           {restricted ? " · 혼탄" : ""}
           {pile.indoor ? " · 옥내" : ""} · 하역 이력·예정 {entries.length}건
@@ -187,13 +195,19 @@ export function PileButton({
           >
             <header>
               <strong>
-                {pile.stockpile_id} · {pile.coal_type}
+                {name} · {pile.coal_type}
               </strong>
               <span className={`pile-risk-tag risk-${riskClass(risk.label)}`}>
                 {risk.label} {risk.score}
               </span>
             </header>
             <dl className="pile-history-summary">
+              {name !== pile.stockpile_id && (
+                <div>
+                  <dt>원본 ID</dt>
+                  <dd>{pile.stockpile_id}</dd>
+                </div>
+              )}
               <div>
                 <dt>재고</dt>
                 <dd>{n(pile.on_hand_t)} t</dd>
@@ -225,9 +239,9 @@ export function PileButton({
                 <dd>{risk.source === "SENSOR" ? "센서 + 적치·탄종" : "적치·탄종 (모의)"}</dd>
               </div>
             </dl>
-            {(restricted || pile.indoor) && (
+            {(reserve || restricted || pile.indoor) && (
               <p className="pile-history-flags">
-                {[restricted && "혼탄 전용", pile.indoor && "옥내"]
+                {[reserve && "예비 Cell", restricted && "혼탄 전용", pile.indoor && "옥내"]
                   .filter(Boolean)
                   .join(" · ")}
               </p>

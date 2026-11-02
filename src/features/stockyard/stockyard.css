@@ -151,6 +151,7 @@
   --site-ok: #5e8f6a;
   --site-medium: #b3935e;
   --site-high: #be7963;
+  --site-reserve: #c9962f;
   --coal: #4b555e;
   --coal-lit: #6e7a84;
   --coal-shade: #333c44;
@@ -185,6 +186,7 @@
   --site-ok: #82b48f;
   --site-medium: #d4b47d;
   --site-high: #dd9a84;
+  --site-reserve: #e0b45c;
   --coal: #5c656e;
   --coal-lit: #7d8790;
   --coal-shade: #434b53;
@@ -244,7 +246,7 @@
   --site-columns: minmax(0, 1fr) var(--site-transfer-gap) minmax(0, 1fr) var(--site-transfer-gap) minmax(0, 1fr);
   display: grid;
   grid-template-columns: var(--site-columns);
-  grid-template-rows: auto 64px auto 84px 26px minmax(132px, 1fr);
+  grid-template-rows: auto 64px auto 128px 26px minmax(132px, 1fr);
   flex: 1;
   grid-template-areas:
     "plants plants plants plants plants"
@@ -455,8 +457,65 @@
   gap: 3px;
   align-items: flex-end;
 }
-.yard-block[data-yard="P3"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.yard-block[data-yard="P3"] > header { grid-column: 1 / -1; }
+/* Pile = 더미 5개 묶음, 3저탄장은 A·B Shed 각 10 Cell. */
+.yard-block .site-pile-group {
+  padding: 4px 6px 3px;
+  margin-top: 3px;
+  gap: 3px;
+  border: 1px solid var(--site-yard-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+}
+.yard-block .site-pile-group.is-picked { border-color: var(--primary); }
+.site-pile-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 9px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.site-pile-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+.site-pile-name strong { font-size: 10.5px; font-weight: 600; color: var(--foreground); }
+.site-pile-name:hover strong { color: var(--primary); }
+.site-pile-meta { overflow: hidden; text-overflow: ellipsis; }
+.site-pile-meta b { font-weight: 600; color: var(--foreground); font-variant-numeric: tabular-nums; }
+.site-pile-reach { display: inline-flex; gap: 3px; margin-left: auto; }
+.site-reach {
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 8.5px;
+  line-height: 13px;
+  white-space: nowrap;
+}
+.site-reach.is-ok { color: #fff; background: var(--site-ok); }
+.site-reach.is-no {
+  color: var(--site-high);
+  background: color-mix(in srgb, var(--site-high) 12%, transparent);
+  text-decoration: line-through;
+}
+.site-reach-legend { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; }
+.yard-block[data-yard="P3"] .yard-piles { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+.yard-pile.is-reserve {
+  border-radius: 3px;
+  outline: 1.5px solid var(--site-reserve);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--site-reserve) 18%, transparent);
+}
+.site-reserve-note { display: flex; align-items: center; gap: 5px; margin: 2px 0 0; font-size: 9px; color: var(--muted-foreground); }
+.site-reserve-note i { width: 9px; height: 9px; border-radius: 2px; outline: 1.5px solid var(--site-reserve); background: color-mix(in srgb, var(--site-reserve) 18%, transparent); }
 .yard-block .yard-pile { min-width: 0; }
 
 /* Pile: 재고 비례 둔덕 */
@@ -647,6 +706,26 @@
 }
 .site-unload-chip strong { font-size: 12px; color: var(--foreground); font-variant-numeric: tabular-nums; }
 .site-unload-chip b { font-weight: 500; }
+/* 부두별 저탄 라인: 하역기 능력 → 저탄 라인 → 최대 공급량. 칩은 벨트 위에 놓인다. */
+.site-unload-line {
+  grid-row: 4;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.site-unload-line[data-unload-line="berth-1"] { grid-column: 1; }
+.site-unload-line[data-unload-line="berth-23"] { grid-column: 3 / 6; }
+.site-unload-line .site-unload-chip { position: static; transform: none; }
+.site-unload-line strong[data-unload-value="max"] { font-size: 13px; }
+.site-unload-flow { font-size: 9px; color: var(--muted-foreground); }
+.site-unload-flow b { font-weight: 600; color: var(--foreground); font-variant-numeric: tabular-nums; }
+.site-unload-lanes { display: flex; justify-content: center; gap: 3px; }
+.site-unload-lanes i { width: 18px; height: 4px; border-radius: 2px; background: var(--site-belt); }
+.site-unload-lanes i.is-off { background: transparent; outline: 1px dashed var(--site-belt); outline-offset: -1px; }
+.site-unload-blocked { color: var(--site-high) !important; }
 
 /* 안벽(부두) */
 .harbor-quay {
@@ -1269,7 +1348,7 @@
   .site-scene {
     --site-transfer-gap: var(--site-gap);
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto auto 40px auto 40px auto 90px 26px 170px;
+    grid-template-rows: auto auto auto 40px auto 40px auto auto 26px 170px;
     grid-template-areas: "plants" "belt" "P1" "t12" "P2" "t23" "P3" "unloads" "quay" "sea";
     row-gap: 18px;
     padding-top: 10px;
@@ -1289,7 +1368,14 @@
   .site-feed-conveyors { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--site-gap); height: 80px; }
   .site-feed-conveyor:nth-child(n) { grid-column: auto; }
   .site-unload-conveyors { grid-area: unloads; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--site-gap); }
-  .site-unload-conveyors .site-conveyor { grid-area: auto !important; }
+  .site-unload-conveyors .site-conveyor { min-height: 150px; }
+  .site-conveyor[data-conveyor-berth="BD-1"] { grid-area: 1 / 1 !important; }
+  .site-conveyor[data-conveyor-berth="BD-2"] { grid-area: 1 / 2 !important; }
+  .site-conveyor[data-conveyor-berth="BD-3"] { grid-area: 1 / 3 !important; }
+  .site-unload-line { grid-row: 1; }
+  .site-unload-line[data-unload-line="berth-1"] { grid-column: 1; }
+  .site-unload-line[data-unload-line="berth-23"] { grid-column: 2 / 4; }
+  .site-pile-head { flex-wrap: wrap; white-space: normal; }
   .site-belt-chip { font-size: 9px; }
   .site-belt-chip strong { font-size: 12px; }
   .site-transfer-belt { flex-direction: row; gap: 10px; }
@@ -1747,6 +1833,29 @@
   font-size: 13px;
   font-weight: 600;
 }
+.site-pile-summary {
+  margin: 0 6px 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--muted-foreground) 6%, transparent);
+}
+.site-pile-summary h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; }
+.site-pile-summary dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 8px; }
+.site-pile-summary dt { font-size: 10px; color: var(--muted-foreground); }
+.site-pile-summary dd { margin: 0; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.site-pile-heaps { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.site-pile-heaps button {
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 10px;
+  cursor: pointer;
+}
+.site-pile-heaps button[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.ledger-source-id { margin-left: 5px; font-size: 9px; color: var(--muted-foreground); }
 .site-link-button {
   align-self: flex-start;
   margin: 12px 6px 0;
