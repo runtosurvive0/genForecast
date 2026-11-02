@@ -182,6 +182,7 @@ export function VesselMap({
           </div>
         )}
         <div className="vessel-map-legend">
+          {fleetDiscovery && <AisAttribution />}
           <span>
             <i className="legend-vessel" />
             선박
@@ -287,3 +288,4 @@ export function VesselMap({
     </section>
   );
 }
+import { AisAttribution } from "./AisAttribution";

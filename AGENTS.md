@@ -14,6 +14,7 @@
 ## 공용 서버와 개발 환경
 
 - **ZGX가 공용 Python 백엔드·API 서버다.** AIS 상시 수집, 선박 목록·항적 DB, 인증·관리자 승인, 계정별 관심 선박 저장을 ZGX에서 처리한다. 브라우저 접속을 수집 시작 조건으로 만들지 않는다.
+- Open Waters 보조 수신은 `OPENWATERS_ENABLED=1`로 ZGX에서 활성화한다. 기존 AISstream과 MMSI로 병합하고 위치별 출처·시각을 보존한다. 팀원 PC에 별도 키나 수신기를 요구하지 않는다. 설정과 호환용 source 키는 `docs/OPENWATERS_SETUP.md`를 따른다.
 - 팀원 PC는 기본적으로 `npm ci` 후 `npm run dev`로 프런트엔드만 실행한다. `/api`는 Vite 프록시를 통해 `https://zgx-6660.tailec6d33.ts.net`에 연결한다. 팀원별 AIS/GFW 키, Python 서버, 로컬 선박 DB, Tailscale·SSH 터널을 기본 설치 절차로 요구하지 않는다.
 - 로그인과 관리자 승인은 공용 ZGX 계정 기준이다. GitHub 계정과 앱 계정은 별개다. 공용 API에 대한 쓰기는 실제 ZGX 자료를 변경하므로 테스트는 격리된 테스트 서버·DB에서 실행한다.
 - 별도 Python 백엔드를 개발할 때만 로컬 서버를 실행하고 `MIDTERM_API_TARGET=http://127.0.0.1:8093`으로 명시한다. 이때 기존 `MIDTERM_API_ORIGIN`은 제거한다. `.env.local` 등에 남은 설정이 공용 기본값을 덮어쓰는지 먼저 확인한다. 자세한 절차는 `docs/ACCESS_SETUP.md`와 `scripts/dev-origin.ts`를 확인한다.

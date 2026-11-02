@@ -194,3 +194,12 @@ Digitraffic REST의 `timestampExternal`과 metadata `timestamp`는 ms이며 AIS 
 epoch로 사용하지 않는다. 이 관측은 팀 Voyage/Cargo/입하 원장을 자동 생성하거나 수정하지 않는다.
 저장 형식은 workspace v1의 선택적 필드 확장으로 기존 저장 목록을 유지한다.
 설정·API·제한은 [선박 API 안내](VESSEL_API.md)를 참고한다.
+
+## 통합 AIS 보조 수신 (2026-10-31)
+
+`aisstream`은 기존 계정·항적 호환용 컬렉션 키로 유지한다. Open Waters 보조 스트림도 MMSI로 합쳐 `ais-<MMSI>`를 사용한다.
+실제 위치 출처는 `ais.position.feed`(`openwaters`, 생략 시 `aisstream`)와 `upstream`(`aishub` 등)으로 구분한다.
+`reencoded=true`는 공급원의 실제 JSON 관측을 AIS 형식으로 중계했음을 뜻하며 위치 외삽이 아니다.
+위치 없는 정적 정보의 출처는 선택적 `ais.metadataFeed`에 보존한다. 위치가 생기면 위치 출처를 우선한다.
+관측 시각은 원본 시각이며, 정적 수신·재연결이 위치 최신성을 바꾸지 않는다. 공급원별 상태는 카탈로그의 `feeds`에 제공한다.
+DB 테이블·계정·관심 선박 ID 변경 없이 확장한다. [설정·이용 범위·배포 안내](OPENWATERS_SETUP.md)를 참고한다.

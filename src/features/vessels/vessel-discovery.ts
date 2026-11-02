@@ -23,6 +23,7 @@ export interface DiscoverySnapshot {
   lastReceivedAt: string | null;
   fetchedAt: string;
   capacity: number;
+  feeds?: Record<string, { status: string; lastReceivedAt: string | null }>;
   vessels: TrackingVessel[];
   koreaCandidates?: {
     capacity: number;
@@ -44,11 +45,11 @@ export const discoveryStatus: Record<string, string> = {
   not_configured: "서버 API 키 설정 필요",
   configuration_error: "서버 수신 영역 설정 확인 필요",
   idle: "수신 준비",
-  connecting: "AISstream 연결 중",
+  connecting: "AIS 수신원 연결 중",
   waiting: "연결됨 · 첫 선박 메시지 대기",
   receiving: "AIS 메시지 수신 중",
   reconnecting: "재연결 대기 · 마지막 수신 목록 유지",
-  provider_error: "AISstream 구독 오류 · 서버 키와 연결 한도를 확인해 주세요",
+  provider_error: "AIS 수신원 구독 오류 · 서버 키와 연결 한도를 확인해 주세요",
 };
 export const shipTypeLabel = (type: number | null | undefined) =>
   type == null

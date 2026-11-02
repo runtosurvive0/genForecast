@@ -710,3 +710,19 @@ test("summary scopes cargo and piles, links model generation to fuel and uses fo
     );
   }
 });
+import { vesselSourceLabel } from '../src/features/vessels/vessel-source.ts';
+import { validateVessel } from '../src/domain/vessel-workflow.ts';
+
+test('merged AIS provenance survives validation and identifies the actual position feed', () => {
+  const row = { id: 'ais-440123456', name: 'LOCAL TEST', mmsi: '440123456', imo: '', source: 'aisstream',
+    ais: { updatedAt: '2026-10-31T12:00:00Z', shipType: 70, navStatus: 0, destination: 'KR PTK',
+      position: { latitude: 37, longitude: 126.75, observedAt: '2026-10-31T12:00:00Z', sogKn: 12,
+        cogDeg: 90, feed: 'openwaters', upstream: 'aishub' } } };
+  const value = validateVessel(row);
+  assert.equal(value.ais?.position?.feed, 'openwaters');
+  assert.equal(vesselSourceLabel(value), 'Open Waters · AISHub');
+  assert.equal(vesselSourceLabel(validateVessel({ ...row, ais: { ...row.ais,
+    metadataFeed: 'openwaters', position: { ...row.ais.position, feed: undefined, upstream: undefined } } })), 'AISstream');
+  assert.throws(() => validateVessel({ ...row, ais: { ...row.ais,
+    position: { ...row.ais.position, feed: 'untrusted', upstream: '<script>' } } }));
+});

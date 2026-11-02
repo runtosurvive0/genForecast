@@ -204,7 +204,7 @@ export function VesselSearchDialog({
                         {v.source === "demo"
                           ? "합성 표본 · 실제 선박 아님"
                           : v.ais
-                            ? `${v.source === "digitraffic" ? "Digitraffic · 핀란드" : "AISstream"} · 저장된 관측`
+                            ? `${vesselSourceLabel(v)} · 저장된 관측`
                             : "직접 등록 · 위치 미수신"}
                       </small>
                     </div>
@@ -255,3 +255,4 @@ export function VesselSearchDialog({
     </Dialog>
   );
 }
+import { vesselSourceLabel } from "./vessel-source";

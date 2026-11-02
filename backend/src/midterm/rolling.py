@@ -1,4 +1,4 @@
-"""[포크] national-solar-forecast `dss/rolling_uc.py` (커밋 be2a0a0) 그대로.
+"""Fork of national-solar-forecast be2a0a0, with P3 startup carry and joined validation.
 
 5일 창을 한 번에 풀지 않고 48시간씩 이어 푼다 -- `solve_coal_uc` 를 감싸는 얇은 층.
 
@@ -14,11 +14,12 @@
 """
 
 import numpy as np
+from midterm.uc import startup_ramp, ramp_floor_from, solve_coal_uc as build_original
 
 #: 시간 축이 첫 축인 인자. 자리 인자는 target, minimum, maximum, ramp, costs, must, outage 순이다.
 _HOURLY_POSITIONAL = 7
 _HOURLY_KEYWORDS = ("fuel_curve", "ramp_down", "reserve_mw", "commitment_reference", "fixed_commitment",
-                    "no_load_won")  # [포크] no_load_won 추가
+                    "no_load_won", "up_need", "down_need")  # [포크] no_load_won 추가
 _GROUP_KEYWORDS = ("group_caps", "group_online_minimums", "group_online_maximums", "group_online_targets")
 _STATUS_ORDER = ("optimal", "time_limit_feasible", "approximate")
 
@@ -62,10 +63,52 @@ def _elapsed(history, initial_online, initial_elapsed, online_now):
     return float(k + (initial_elapsed if initial_online == online_now else 0.0))
 
 
+def _startup_relief(minimum, maximum, ramp, history, origin, output, a, b):
+    """Move only already-adopted startup terms to the next window's floor RHS."""
+    low, high, rr = (np.asarray(v, float)[a:b] for v in (minimum, maximum, ramp))
+    floors, _ = startup_ramp(low, high, rr)
+    relief = np.zeros(low.shape)
+    for j, past in enumerate(history):
+        prior, starts = bool(origin[0][j]), []
+        for s, on in enumerate(past):
+            if on and not prior:
+                starts.append(s)
+            prior = on
+        for t in range(b-a):
+            if origin[0][j] and output[j] < low[t, j]:
+                relief[t, j] = low[t, j]-ramp_floor_from(output[j], low[t, j], rr[t, j], a+t)
+            for s in starts:
+                age = a+t-s
+                if age < len(floors):
+                    relief[t, j] += max(0., low[t, j]-floors[age][t, j])
+    return relief
+
+
+def _joined_physical_check(args, kwargs, answer):
+    """Original full-horizon physical rows, preserving the original partial initial data."""
+    problem = build_original(*args, **kwargs, _build_only=True)
+    h, n = np.shape(args[1])
+    size = h*n
+    x = np.zeros(len(problem['lower']))
+    for k, key in enumerate(('output_mw', 'online', 'starts', 'stops')):
+        x[k*size:(k+1)*size] = np.asarray(answer[key]).ravel()
+    x[4*size:4*size+h], x[4*size+h:4*size+2*h] = answer['shortage_mw'], answer['excess_mw']
+    con = problem['constraints'][0]
+    lhs = con.A @ x
+    physical = np.asarray(con.A[:, 4*size+2*h:].getnnz(axis=1)).ravel() == 0
+    rows = int(np.count_nonzero(physical & ((lhs < con.lb-1e-5) | (lhs > con.ub+1e-5))))
+    bounds = int(np.count_nonzero((x[:4*size+2*h] < problem['lower'][:4*size+2*h]-1e-5)
+                                | (x[:4*size+2*h] > problem['upper'][:4*size+2*h]+1e-5)))
+    integer = int(np.count_nonzero(abs(x[size:4*size]-np.rint(x[size:4*size])) > 1e-5))
+    return dict(violated_rows=rows, violated_bounds=bounds, integer_violations=integer)
+
+
 def solve_rolling(solve, target, minimum, maximum, ramp, costs, must, outage, uptime, downtime, *,
                   window=48, step=24, window_time_limit=None, window_cost_time_limit=None, **kwargs):
     """`solve` 와 같은 인자를 받고 같은 모양의 답을 낸다. 창이 하나로 끝나면 그대로 넘긴다."""
     hours = len(target)
+    if not 0 < step <= window:
+        raise ValueError('Rolling step must be positive and no larger than the window')
     if hours <= window:
         return solve(target, minimum, maximum, ramp, costs, must, outage, uptime, downtime, **kwargs)
     positional = [target, minimum, maximum, ramp, costs, must, outage]
@@ -74,6 +117,10 @@ def solve_rolling(solve, target, minimum, maximum, ramp, costs, must, outage, up
         kwargs["time_limit"] = window_time_limit
     if window_cost_time_limit is not None:
         kwargs["cost_time_limit"] = window_cost_time_limit
+    p3 = 'up_need' in kwargs
+    if p3:
+        from midterm.headroom_uc import EXTRA_KEYS, exact_costs
+        original_kw = {key: value for key, value in kwargs.items() if key not in EXTRA_KEYS}
     pieces, history, carried, origin = [], [[] for _ in range(n)], {}, None
     for k, (a, b, keep) in enumerate(_windows(hours, window, step)):
         args = [_slice(v, a, b, hours) for v in positional]
@@ -88,6 +135,12 @@ def solve_rolling(solve, target, minimum, maximum, ramp, costs, must, outage, up
         if k > 0:
             kw.pop("initial_target", None)
             kw.update(carried)
+            if p3:
+                kw["_initial_floor_relief"] = _startup_relief(minimum, maximum, ramp, history, origin,
+                    pieces[0][3]["initial_output_mw"], a, b)
+        if kw.get('validation_log_dir') is not None:
+            from pathlib import Path
+            kw['validation_log_dir'] = Path(kw['validation_log_dir']) / f'window-{k}'
         result = solve(*args, uptime, downtime, **kw)
         if not result.get("has_plan"):
             return {**result, "rolling": {"window": window, "step": step, "failed_window": k,
@@ -106,14 +159,23 @@ def solve_rolling(solve, target, minimum, maximum, ramp, costs, must, outage, up
             "initial_elapsed_hours": [_elapsed(history[j], bool(origin[0][j]), float(origin[1][j]),
                                                bool(online[last, j])) for j in range(n)],
         }
-    return _stitch(pieces, hours, window, step)
+    answer = _stitch(pieces, hours, window, step)
+    if p3:
+        answer['joined_physical_check'] = _joined_physical_check((*positional, uptime, downtime), original_kw, answer)
+        if any(answer['joined_physical_check'].values()):
+            answer.update(has_plan=False, status='joined_constraints_violated',
+                          message='Joined rolling plan failed the original full-horizon physical constraints')
+        exact_costs(answer, (*positional, uptime, downtime), original_kw)
+    return answer
 
 
 def _stitch(pieces, hours, window, step):
     first, last = pieces[0][3], pieces[-1][3]
     out = dict(first)
     for key, value in first.items():
-        if isinstance(value, list) and len(value) == pieces[0][2]:
+        unit_keys = ('initial_output_mw', 'initial_online', 'initial_elapsed_hours',
+                     'minimum_downtime_hours', 'terminal_minimum_remaining_hours', 'online_target_deviation')
+        if key not in unit_keys and isinstance(value, list) and len(value) == pieces[0][2]:
             joined = []
             for _a, keep, _length, result in pieces:
                 joined.extend(result[key][:keep])
@@ -134,6 +196,10 @@ def _stitch(pieces, hours, window, step):
         if key in first:
             out[key] = all(bool(r.get(key)) for *_, r in pieces)
     out["target_met"] = bool(max(max(out["shortage_mw"]), max(out["excess_mw"])) <= .01)
+    if 'up_short_mw' in out:
+        out['reserve_met'] = max(max(out['up_short_mw']), max(out['down_short_mw'])) <= .01
+    elif 'reserve_shortfall_mw' in out:
+        out['reserve_met'] = max(out['reserve_shortfall_mw']) <= .01
     out["exact_feasibility"] = ("found" if all(r.get("exact_feasibility") == "found" for *_, r in pieces)
                                 else next(r.get("exact_feasibility") for *_, r in pieces
                                           if r.get("exact_feasibility") != "found"))

@@ -5,6 +5,29 @@ import { planningFixture, suppliedPlanningFixture } from "./planning-fixture";
 import { mapStyleFixture } from "./map-style-fixture";
 import { voyages } from "../src/data/control-tower";
 
+test('Open Waters observations show attribution and retain provenance after interest registration', async ({ page }) => {
+  const at = new Date().toISOString();
+  const ship = { id: 'ais-440123456', name: 'DANGJIN SUPPLEMENT TEST', mmsi: '440123456', imo: '', source: 'aisstream',
+    ais: { updatedAt: at, destination: 'KR PTK', shipType: 70, navStatus: 0,
+      position: { latitude: 37, longitude: 126.75, observedAt: at, sogKn: 12, cogDeg: 90,
+        feed: 'openwaters', upstream: 'aishub', reencoded: true } } };
+  await page.route('**/api/vessels/catalog?*', r => r.fulfill({ json: { provider: 'aisstream', status: 'receiving',
+    coverage: 'Open Waters test', capacity: 120000, fetchedAt: at, lastReceivedAt: at,
+    feeds: { openwaters: { status: 'receiving', lastReceivedAt: at } }, vessels: [ship] } }));
+  await openEta(page);
+  await page.getByRole('button', { name: '관심 선박 구성', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('tab', { name: '실제 AIS 검색', exact: true }).click();
+  await dialog.getByRole('button', { name: '한국 주변', exact: true }).click();
+  const row = dialog.getByRole('row').filter({ hasText: ship.name });
+  await expect(row).toContainText('Open Waters · AISHub');
+  await expect(dialog.getByRole('link', { name: 'AISHub contributors' })).toBeVisible();
+  await dialog.screenshot({ path: '.tooling-tmp/openwaters-search.png' });
+  await row.getByRole('button', { name: `${ship.name} 관심 등록` }).click();
+  const saved = await readSavedWorkspace(page);
+  expect(saved.vessels.find((v: any) => v.mmsi === ship.mmsi)?.ais.position.feed).toBe('openwaters');
+});
+
 test('AIS catalog tolerates transfer beyond twelve seconds and still renders received vessels', async ({ page }) => {
   const at = new Date().toISOString();
   await page.route('**/api/vessels/catalog?*', async route => {

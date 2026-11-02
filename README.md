@@ -2,6 +2,9 @@
 
 연료 기반 발전량 전망 시스템. 저장소 이름은 `genForecast`, npm 패키지 이름은 소문자 `genforecast`를 사용합니다.
 
+태양광·전력수요·석탄 모델의 학습 방식과 HiGHS 비용 MILP를 이용한 1년 석탄 발전량 산정 흐름은
+[예측모델과 연간 MILP 동작 원리](README_MODELS_AND_ANNUAL_MILP.md)를 참고하세요.
+
 팀 개발은 [3인 협업 안내](CONTRIBUTING.md) → [Git 실습 가이드](docs/GIT_WORKFLOW.md) 순서로 확인하세요. AI에게는 [작업 지시 예시](docs/AI_PROMPTS.md)와 [AGENTS.md](AGENTS.md)를 전달하세요. 생성된 대시보드 HTML은 Git에서 제외하며 `npm run build`로 만듭니다.
 
 ## 중장기 개발 브랜치

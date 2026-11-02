@@ -12,6 +12,7 @@ import type { BasicEta } from "./vessel-basic-eta";
 import type { WeatherEta } from "./vessel-weather-eta";
 import type { ForecastState } from "./vessel-weather";
 import { etaDate } from "./VesselEtaDetail";
+import { vesselSourceLabel } from "./vessel-source";
 
 export function VesselArrivalSummary({
   vessel,
@@ -46,7 +47,7 @@ export function VesselArrivalSummary({
       : vessel.source === "digitraffic"
         ? "Digitraffic · 핀란드"
         : vessel.ais
-          ? "AISstream"
+          ? vesselSourceLabel(vessel)
           : "직접 등록 · 관측 미연결";
   const method = weather?.eta
     ? `${weather.state === "partial" ? "부분 " : ""}기상 보정 · 시연 모델`

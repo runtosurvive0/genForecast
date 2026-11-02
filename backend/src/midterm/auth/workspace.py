@@ -22,6 +22,9 @@ def valid_date(value):
 
 
 class Position(DTO):
+    reencoded: bool | None = None
+    feed: Literal['aisstream', 'openwaters'] | None = None
+    upstream: Literal['aishub', 'aisstream', 'digitraffic', 'kystverket', 'barentswatch', 'station', 'udp', 'mmsi', 'other'] | None = None
     latitude: Annotated[float, Field(ge=-90, le=90)]
     longitude: Annotated[float, Field(ge=-180, le=180)]
     observedAt: str
@@ -31,6 +34,7 @@ class Position(DTO):
 
 
 class AIS(DTO):
+    metadataFeed: Literal['aisstream', 'openwaters'] | None = None
     updatedAt: str
     destination: Annotated[str, Field(max_length=100)] = ''
     shipType: Annotated[float, Field(ge=1, le=99)] | None = None

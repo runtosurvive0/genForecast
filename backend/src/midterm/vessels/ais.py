@@ -86,6 +86,9 @@ class AisCatalog:
         self._last_prune = -float("inf")
         self._task = None
         self.last_received_at = None
+        self._primary_received_at = None
+        from .openwaters import OpenWatersReceiver
+        self.openwaters = OpenWatersReceiver(self.ingest)
         self.boxes = DEFAULT_BOXES
         self.coverage = "전 세계 수신 범위 · AIS 수신 공백 있음"
         configured = os.getenv("AISSTREAM_BOUNDING_BOXES")
@@ -106,11 +109,13 @@ class AisCatalog:
                 self.status = "configuration_error"
 
     def start(self):
+        self.openwaters.start()
         if self._key and self.status != "configuration_error" and (self._task is None or self._task.done()):
             self.status = "connecting"
             self._task = asyncio.create_task(self._receive())
 
     async def stop(self):
+        await self.openwaters.stop()
         if self._task:
             self._task.cancel()
             with suppress(asyncio.CancelledError):
@@ -180,10 +185,10 @@ class AisCatalog:
             return self.snapshot()
         now = utc_now()
         saved = await asyncio.to_thread(self.store.snapshot, now)
-        return {'provider': 'aisstream', 'status': self.status, 'coverage': self.coverage,
+        return {'provider': 'aisstream', **self.feed_metadata(),
                 'fetchedAt': now, **saved}
 
-    def ingest(self, payload, received_at):
+    def ingest(self, payload, received_at, *, feed='aisstream', upstream=None, reencoded=False):
         if not isinstance(payload, dict):
             return
         kind = payload.get("MessageType")
@@ -239,12 +244,20 @@ class AisCatalog:
             if ais["position"] and epoch(observed_at) < epoch(ais["position"]["observedAt"]):
                 return
             ais["position"] = {"latitude": latitude, "longitude": longitude, "observedAt": observed_at,
-                               "sogKn": number(report.get("Sog"), 0, 102.2), "cogDeg": number(report.get("Cog"), 0, 359.9)}
+                               "sogKn": number(report.get("Sog"), 0, 102.2), "cogDeg": number(report.get("Cog"), 0, 359.9),
+                               **({'feed': feed} if feed != 'aisstream' else {}),
+                               **({'reencoded': True} if reencoded else {}),
+                               **({'upstream': upstream} if upstream else {})}
             if kind == "PositionReport":
                 ais["navStatus"] = number(report.get("NavigationalStatus"), 0, 14)
         if static_fields is not None:
             merge_static_fields(row, static_fields, observed_at)
             self._static_at[mmsi] = ais['staticObservedAt']
+        if not ais.get('position'):
+            if feed != 'aisstream':
+                ais['metadataFeed'] = feed
+            else:
+                ais.pop('metadataFeed', None)
         if kind == "ShipStaticData":
             if static_fresh:
                 imo = str(report.get("ImoNumber", ""))
@@ -281,8 +294,25 @@ class AisCatalog:
             removed, _ = self._korea.popitem(last=False)
             self._forget_static_if_unused(removed)
         self.last_received_at = received_at
+        if feed == 'aisstream':
+            self._primary_received_at = received_at
         if self.on_observation:
             self.on_observation(row)
+        return True
+
+    def feed_metadata(self):
+        """The legacy provider key names the shared catalog, not its observation feed."""
+        ow = self.openwaters
+        status = self.status
+        if ow.enabled:
+            if 'receiving' in (self.status, ow.status):
+                status = 'receiving'
+            elif self.status in ('not_configured', 'configuration_error', 'provider_error'):
+                status = ow.status
+        return {'status': status,
+                'coverage': self.coverage + (' · Open Waters 지정 해역 보완' if ow.enabled else ''),
+                'feeds': {'aisstream': {'status': self.status, 'lastReceivedAt': self._primary_received_at},
+                          'openwaters': ow.summary()}}
 
     def _forget_static_if_unused(self, mmsi):
         if self.store is not None:
@@ -313,7 +343,7 @@ class AisCatalog:
         # Metadata-only messages must never change position freshness.
         now = utc_now()
         self._prune_candidates(now)
-        return {"provider": "aisstream", "status": self.status, "coverage": self.coverage,
+        return {"provider": "aisstream", **self.feed_metadata(),
                 "lastReceivedAt": self.last_received_at, "fetchedAt": now,
                 "capacity": MAX_VESSELS, "vessels": list(reversed(self._rows.values())),
                 "koreaCandidates": {"capacity": MAX_KOREA_CANDIDATES, "retentionHours": KOREA_RETENTION_HOURS,
