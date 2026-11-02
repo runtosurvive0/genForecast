@@ -26,3 +26,4 @@ def test_new_run_preserves_capacity_series_and_uses_master_for_utilization(tmp_p
     assert summary['annual']['dangjin_cf_pct'] == pytest.approx(16.67)
     with np.load(tmp_path / 'hourly.npz') as stored:
         np.testing.assert_array_equal(stored['coal_available'], result.coal_available)
+        assert 'up_short_mw' not in stored and 'down_short_mw' not in stored  # legacy is unknown, not zero
