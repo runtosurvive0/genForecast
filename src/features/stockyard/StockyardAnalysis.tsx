@@ -21,6 +21,7 @@ export function StockyardAnalysis({
   blend,
   groups,
   piles,
+  heapName,
   onSelectPile,
 }: {
   theme: string;
@@ -29,6 +30,7 @@ export function StockyardAnalysis({
   blend: ReturnType<typeof pileBlend>;
   groups: StockGroup[];
   piles: Stockpile[];
+  heapName: (pile: { stockpile_id: string }) => string;
   onSelectPile: (id: string) => void;
 }) {
   const mix = Object.entries(
@@ -103,11 +105,11 @@ export function StockyardAnalysis({
                 }}
               />
               <div>
-                <strong className="stockyard-list-title">소진 상위 Pile</strong>
+                <strong className="stockyard-list-title">소진 상위 더미</strong>
                 <ol className="stockyard-top-list">
                   {top.map((r) => (
                     <li key={r.stockpile_id}>
-                      <button onClick={() => onSelectPile(r.stockpile_id)}>{r.stockpile_id}</button>
+                      <button onClick={() => onSelectPile(r.stockpile_id)}>{heapName(r)}</button>
                       <span>
                         {n(r.burnedTons)} t → 잔량 {n(r.afterTons)} t
                       </span>
@@ -145,7 +147,7 @@ export function StockyardAnalysis({
           <>
             <TowerChart
               theme={theme}
-              label="Pile 적치일수와 위험 점수 산점도"
+              label="더미 적치일수와 위험 점수 산점도"
               option={{
                 tooltip: {
                   trigger: "item",
@@ -157,7 +159,7 @@ export function StockyardAnalysis({
                   {
                     type: "scatter",
                     data: piles.map((p) => ({
-                      name: p.stockpile_id,
+                      name: heapName(p),
                       value: [pileRisk(p).age, pileRisk(p).score, p.on_hand_t],
                     })),
                     symbolSize: (v: number[]) => Math.max(8, Math.sqrt(v[2]) / 12),

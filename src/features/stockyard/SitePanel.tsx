@@ -7,6 +7,7 @@ import { date as fmtDate, number as n } from "@/lib/format";
 import { PileDetail } from "./PileDetail";
 import type { LinkState, SupplyRecords } from "./integrations";
 import { inventoryStatusLabel, type InventoryGroup } from "./supply-view";
+import type { PileGroup } from "./site-layout";
 import {
   BERTHS,
   DAYS_STATUS_LABEL,
@@ -26,7 +27,7 @@ export type PanelTab = "vessel" | "yard" | "pile";
 const TABS: { id: PanelTab; label: string }[] = [
   { id: "vessel", label: "선박" },
   { id: "yard", label: "처" },
-  { id: "pile", label: "Pile" },
+  { id: "pile", label: "Pile·더미" },
 ];
 const YARDS = ["P1", "P2", "P3"] as const;
 /** datetime-local 값(KST) ↔ ISO 8601. */
@@ -60,8 +61,13 @@ export function SitePanel(props: {
   onSaveTransfer: (id: string) => Promise<void>;
   unitNames: Record<string, string>;
   activePile: Stockpile | null;
+  /** 선택 더미가 속한 Pile·Shed. */
+  activeGroup: PileGroup | null;
+  heapName: (pile: { stockpile_id: string }) => string;
   pileEntries: HistoryEntry[];
   eligibleNames: string;
+  /** 더미 선택 (Pile 요약의 더미 목록). */
+  onSelectPile: (id: string) => void;
   onShowInLedger: () => void;
 }) {
   const { tab, onTab } = props;
@@ -501,18 +507,70 @@ function YardTab({
   );
 }
 
+/** Pile·Shed 요약: 재고 합계·가중 열량·더미 목록. 더미를 누르면 그 더미를 선택한다. */
+function PileSummary({
+  group,
+  activeId,
+  onSelectPile,
+}: {
+  group: PileGroup;
+  activeId: string;
+  onSelectPile: (id: string) => void;
+}) {
+  const tons = group.heaps.reduce((s, p) => s + p.on_hand_t, 0);
+  const cv = weightedCalorific(
+    group.heaps.map((p) => ({ tons: p.on_hand_t, cv: p.calorific_value_kcal_kg })),
+  );
+  const high = group.heaps.filter((p) => pileRisk(p).label === "높음").length;
+  const unit = group.pileNo === null ? "Cell" : "더미";
+  return (
+    <section className="site-pile-summary" aria-label={`${group.label} 요약`}>
+      <h3>{group.label} 요약</h3>
+      <dl>
+        <div>
+          <dt>재고</dt>
+          <dd>{n(tons)} t</dd>
+        </div>
+        <div>
+          <dt>가중 열량</dt>
+          <dd>{cv === null ? "-" : n(cv)} kcal/kg</dd>
+        </div>
+        <div>
+          <dt>{unit}</dt>
+          <dd>
+            {group.heaps.length}개{high ? ` · 고위험 ${high}` : ""}
+          </dd>
+        </div>
+      </dl>
+      <ul className="site-pile-heaps" aria-label={`${group.label} ${unit} 목록`}>
+        {group.heaps.map((p, i) => (
+          <li key={p.stockpile_id}>
+            <button aria-pressed={p.stockpile_id === activeId} onClick={() => onSelectPile(p.stockpile_id)}>
+              {group.names[i]}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function PileTab({
   activePile,
+  activeGroup,
+  heapName,
   pileEntries,
   eligibleNames,
+  onSelectPile,
   onShowInLedger,
 }: Parameters<typeof SitePanel>[0]) {
   if (!activePile)
-    return <p className="site-empty">약도나 원장에서 Pile을 선택하면 탄질·센서·하역 이력이 여기에 표시됩니다.</p>;
+    return <p className="site-empty">약도에서 Pile 이름이나 더미를, 원장에서 더미를 선택하면 탄질·센서·하역 이력이 여기에 표시됩니다.</p>;
   return (
     <>
+      {activeGroup && <PileSummary group={activeGroup} activeId={activePile.stockpile_id} onSelectPile={onSelectPile} />}
       <h3 className="site-pile-title">
-        {activePile.stockpile_id} · {activePile.coal_type}
+        {heapName(activePile)} · {activePile.coal_type}
       </h3>
       <PileDetail pile={activePile} entries={pileEntries} eligibleNames={eligibleNames} compact />
       <button className="site-link-button" onClick={onShowInLedger}>

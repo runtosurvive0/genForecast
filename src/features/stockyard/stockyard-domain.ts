@@ -1023,11 +1023,14 @@ export function stockyardAlerts({
   piles,
   vessels,
   transferOver,
+  names = {},
 }: {
   forecasts: GroupForecast[];
   piles: Stockpile[];
   vessels: SiteVessel[];
   transferOver: boolean;
+  /** stockpile_id → 화면 더미 이름 (없으면 stockpile_id). */
+  names?: Record<string, string>;
 }): StockyardAlert[] {
   const out: StockyardAlert[] = [];
   const fmtDays = (d: number) => `${Math.round(d * 10) / 10}일`;
@@ -1057,7 +1060,7 @@ export function stockyardAlerts({
     if (risk.label === "높음")
       out.push({
         level: "warn",
-        text: `${pile.stockpile_id} 고위험 ${risk.score}점 · ${risk.age}일 적치`,
+        text: `${names[pile.stockpile_id] ?? pile.stockpile_id} 고위험 ${risk.score}점 · ${risk.age}일 적치`,
         target: { kind: "pile", id: pile.stockpile_id },
       });
   }

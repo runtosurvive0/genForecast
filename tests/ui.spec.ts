@@ -2921,7 +2921,7 @@ test("pile drilldown, stale AIS and model training update the operational foreca
   await da04.click();
   await expect(da04).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByRole("heading", { name: "DA-04 · 인니 저열량탄" }),
+    page.getByRole("heading", { name: "B-5 · 인니 저열량탄" }),
   ).toBeVisible();
   await expect(page.locator(".tower-details")).toContainText("미연결");
   await expect(page.locator(".tower-details")).toContainText("당진 9호기");
@@ -3334,15 +3334,36 @@ test("dangjin site plan links harbor, yards, burn conveyor and pile history", as
   await expect(site.locator(".site-ship-detail")).toContainText("BD-1");
   await expect(site.locator(".site-ship-detail .tower-tag")).toHaveCount(2);
   await expect(site.locator(".site-ship-detail")).toContainText("추천 BD-1");
-  // 옥내 (fact-indoor-badge): P2·P3 40개, 구역×5개 (fact-zone-assert).
+  // 옥내 (fact-indoor-badge): P2·P3 40개. Pile 1~8 = 더미 5개, 3저탄장 A·B Shed = Cell 10개.
   await expect(
     page.locator(".yard-pile", { hasText: "옥내" }),
   ).toHaveCount(40);
   await expect(site.locator(".yard-block.is-indoor")).toHaveCount(2);
-  await expect(page.locator(".zone-group")).toHaveCount(12);
+  await expect(page.locator(".zone-group")).toHaveCount(10);
   await expect(
     page.locator(".zone-group").first().locator(".yard-pile"),
   ).toHaveCount(5);
+  await expect(site.locator('[data-pile-group="shed-B"] .yard-pile')).toHaveCount(10);
+  await expect(site.locator(".site-pile-name strong")).toHaveText([
+    "Pile 1", "Pile 2", "Pile 3", "Pile 4", "Pile 5", "Pile 6", "Pile 7", "Pile 8", "A Shed", "B Shed",
+  ]);
+  await expect(site.locator(".yard-pile[data-pile-id='DA-01'] .pile-label")).toHaveText("P1-01");
+  await expect(site.locator(".yard-pile[data-pile-id='DA-08'] .pile-label")).toHaveText("P1-05");
+  await expect(site.locator(".yard-pile.is-reserve .pile-label")).toHaveText(["A-10", "B-1"]);
+  // 하역 가능 부두: 1부두 → Pile 7·8 불가, 2·3부두 → Pile 3·4 불가.
+  await expect(site.locator('[data-pile-group="pile-3"] .site-reach.is-no')).toHaveText("2·3부두");
+  await expect(site.locator('[data-pile-group="pile-7"] .site-reach.is-no')).toHaveText("1부두");
+  await expect(site.locator('[data-pile-group="pile-5"] .site-reach.is-no')).toHaveCount(0);
+  await expect(site.locator('[data-unload-line="berth-1"] [data-unload-value="max"]')).toHaveText("최대 2,400 t/h");
+  await expect(site.locator('[data-unload-line="berth-23"] [data-unload-value="max"]')).toHaveText("최대 3,600 t/h");
+  await expect(site.locator('[data-unload-line="berth-23"]')).toContainText("Pile 3·4 하역 불가");
+  // Pile 이름 → 패널에 Pile 요약, 요약의 더미 목록으로 더미 선택.
+  await site.getByRole("button", { name: "Pile 2 요약 보기" }).click();
+  const summary = page.getByRole("region", { name: "Pile 2 요약" });
+  await expect(summary).toContainText("18,000 t");
+  await summary.getByRole("button", { name: "P2-03" }).click();
+  await expect(page.locator(".site-pile-title")).toHaveText("P2-03 · 인니 아역청탄");
+  await expect(site.locator('[data-pile-group="pile-2"]')).toHaveClass(/is-picked/);
   // 하역 이력은 Pile 배지와 마우스오버로 본다. BD-1 하역분은 1발전처 Pile에만 귀속.
   await expect(page.locator(".stockyard-history-pile")).toHaveCount(0);
   const da05 = page.locator(".yard-pile", { hasText: "DA-05" });
@@ -3402,10 +3423,10 @@ test("stockyard KPIs, alerts, search, keyboard, forecast and ledger work togethe
   await expect(page.locator(".stockyard-kpi")).toHaveCount(7);
   await expect(page.locator(".stockyard-kpi").nth(1)).toContainText("3발전처");
   await expect(page.locator(".yard-days")).toHaveCount(3);
-  // 알림: 처 재고 소진 예상, 고위험 Pile.
+  // 알림: 처 재고 소진 예상, 고위험 더미 (화면 이름).
   await expect(page.locator(".alert-chip", { hasText: "소진 예상" })).not.toHaveCount(0);
-  await page.locator(".alert-chip", { hasText: "DA-04" }).click();
-  await expect(page.locator(".site-pile-title")).toHaveText("DA-04 · 인니 저열량탄");
+  await page.locator(".alert-chip", { hasText: "B-5 고위험" }).click();
+  await expect(page.locator(".site-pile-title")).toHaveText("B-5 · 인니 저열량탄");
   // 고위험 KPI = 위험도 필터 토글.
   const high = page.locator(".stockyard-kpi", { hasText: "고위험" });
   await high.click();
@@ -3413,16 +3434,23 @@ test("stockyard KPIs, alerts, search, keyboard, forecast and ledger work togethe
   await expect(page.getByLabel("위험도 필터")).toHaveValue("높음");
   await high.click();
   await expect(page.getByLabel("위험도 필터")).toHaveValue("all");
-  // Pile 검색과 방향키 이동 (roving tabindex).
-  await page.getByLabel("Pile 검색").fill("4");
-  await page.getByLabel("Pile 검색").press("Enter");
+  // 더미 검색과 방향키 이동 (roving tabindex). 3저탄장은 A·B Shed 10칸 2줄.
+  await page.getByLabel("더미 검색").fill("4");
+  await page.getByLabel("더미 검색").press("Enter");
   await expect(page.locator(".yard-pile[data-pile-id='DA-04']")).toBeFocused();
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator(".yard-pile[data-pile-id='DA-56']")).toBeFocused();
   await page.keyboard.press("ArrowUp");
   await expect(page.locator(".yard-pile[data-pile-id='DA-46']")).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page.locator(".site-pile-title")).toHaveText("DA-46 · 호주 역청탄");
+  await expect(page.locator(".site-pile-title")).toHaveText("A-6 · 호주 역청탄");
+  // 화면 더미 이름(P1-01)으로도 찾는다.
+  await page.getByLabel("더미 검색").fill("p1-05");
+  await page.getByLabel("더미 검색").press("Enter");
+  await expect(page.locator(".yard-pile[data-pile-id='DA-08']")).toBeFocused();
+  await page.getByLabel("더미 검색").fill("A-6");
+  await page.getByLabel("더미 검색").press("Enter");
+  await expect(page.locator(".site-pile-title")).toHaveText("A-6 · 호주 역청탄");
   await expect(page.locator('.site-yards [tabindex="0"]')).toHaveCount(1);
   // 원장: 20행 페이지, 혼탄 열, 원장에서 보기 → 해당 페이지에서 펼침.
   const ledger = page.locator(".stockyard-ledger");
