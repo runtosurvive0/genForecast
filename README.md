@@ -56,7 +56,7 @@ Windows PowerShell에서 실행 정책으로 npm이 막히면 `npm.cmd`를 사�
 - Linear 스타일, Aceternity 도트 지도, 라이트/다크, 모바일 drawer, 키보드 조작 및 CSV를 유지합니다.
 - 선박 화면은 서버 AIS 수신·관심 목록·항적 보존·예상 항로·거리/SOG 기반 ETA와 시연용 기상 보정을 제공합니다. 실제 관측과 합성 표본을 구분하며 센서·확정 운항계획·화물 자동 연계는 제공하지 않습니다. 설치·제한은 [선박 API 안내](docs/VESSEL_API.md), 과거 기항 조회는 [GFW 안내](docs/GFW_PORT_VISITS.md)를 참고하세요. 발전소의 저장 Python/MILP 결과 조회는 위 실행 안내를 따릅니다.
 
-계약·단위·계산 전제는 [데이터 사전](docs/DATA_DICTIONARY.md)을 참고하세요. 원본 SPEC 문서는 수정하지 않았습니다.
+계약·단위·계산 전제는 [데이터 사전](docs/DATA_DICTIONARY.md)을 참고하세요. 원본 SPEC 문서는 수정하지 않았습니다. 저탄장 시뮬레이션에 발전계획·재고·선박 자료를 연결하는 방안은 [통합 검토](docs/STOCKYARD_DATA_INTEGRATION.md)에 있습니다.
 
 ## UI Kit 전략
 
