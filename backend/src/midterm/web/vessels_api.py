@@ -8,22 +8,28 @@ import logging
 from uuid import UUID
 from typing import Literal
 from typing import Annotated
-from fastapi import APIRouter, Response, HTTPException, Query
+from datetime import datetime, timezone
+import time
+from fastapi import APIRouter, Response, HTTPException, Query, Request
+from fastapi import Path as PathParam
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from midterm.vessels.ais import AisCatalog
 from midterm.vessels.discovery_store import DiscoveryStore
 from midterm.vessels.digitraffic import DigitrafficCatalog
-from midterm.vessels.navigation import TrackStore, SeaRouter
+from midterm.vessels.navigation import TrackStore, SeaRouter, epoch
 from midterm.vessels.weather import WeatherService
 from midterm.vessels.cyclones import CycloneService
 from midterm.vessels.port_visits import PortVisitService
 from midterm.vessels.destinations import resolve_destination
 from midterm.vessels.fleet_map import fleet_map, vessel_detail
 from midterm.vessels.ais import utc_now
+from midterm.vessels.waiting import WaitingStore, evidence_for, waiting_candidates
 
 catalog: AisCatalog | None = None
 digitraffic: DigitrafficCatalog | None = None
 tracks: TrackStore | None = None
+waiting: WaitingStore | None = None
 sea_router = SeaRouter()
 weather_service = WeatherService(sea_router)
 cyclone_service = CycloneService()
@@ -65,15 +71,24 @@ async def persist_loop(app):
             await asyncio.to_thread(tracks.flush)
         except Exception:
             logging.getLogger(__name__).error('Registered-vessel persistence failed; retrying next cycle.')
+        try:
+            await asyncio.to_thread(waiting.flush)
+        except Exception:
+            logging.getLogger(__name__).error('Waiting-area persistence failed; retrying next cycle.')
 
 
 @asynccontextmanager
 async def lifespan(app):
-    global catalog, digitraffic, tracks
+    global catalog, digitraffic, tracks, waiting
     track_path = Path(os.getenv("AIS_TRACK_DB", str(Path(__file__).resolve().parents[3] / "data" / "vessel-tracks.sqlite3")))
     tracks = TrackStore(track_path)
+    waiting = WaitingStore(track_path, radius_km=float(os.getenv("WAITING_RADIUS_KM", "15")))
+
+    def observe(vessel):
+        tracks.record(vessel)
+        waiting.record(vessel)
     discovery = DiscoveryStore(os.getenv('AIS_DISCOVERY_DB', str(track_path.with_name('vessel-discovery.sqlite3'))))
-    catalog = AisCatalog(store=discovery, on_observation=tracks.record,
+    catalog = AisCatalog(store=discovery, on_observation=observe,
                          lookup_observation=lambda mmsi: tracks.active_observation("aisstream", mmsi))
     digitraffic = DigitrafficCatalog()
     worker = None
@@ -94,7 +109,11 @@ async def lifespan(app):
         finally:
             discovery.close()
             tracks.close()
+            with suppress(Exception):
+                waiting.flush()
+            waiting.db.close()
             tracks = None
+            waiting = None
             catalog = None
             digitraffic = None
 
@@ -243,3 +262,69 @@ async def vessel_weather(owner: UUID, source: Literal["aisstream", "digitraffic"
     if vessel is None:
         raise HTTPException(404, "이 브라우저에 등록되어 관측된 관심 선박이 아닙니다.")
     return await weather_service.forecast(vessel, destination)
+
+
+# --- 당진 부두 대기(체선) 후보: 규칙으로 찾은 후보를 사용자가 확인한다. ---
+waiting_router = APIRouter()
+ANSWER_HOLD_S = 7 * 86400  # 답한 배는 7일 동안 다시 묻지 않고, 확인 표시도 7일만 보인다
+
+
+def _iso(at: float) -> str:
+    return datetime.fromtimestamp(at, timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _waiting_view(request: Request, now: float, skip_watchlist: bool = True):
+    from midterm.web.auth_api import get_store
+    if waiting is None:
+        raise HTTPException(503, "선박 수신기가 준비되지 않았습니다.")
+    uid = request.state.session["user"]["id"]
+    payload = get_store(request).workspace(uid)["workspace"]
+    interests = set(payload.get("watchlist", []))
+    exclude = {v.get("mmsi") for v in payload.get("vessels", []) if v.get("id") in interests and v.get("mmsi")}         if skip_watchlist else set()
+    answers = {m: (answer, at) for m, (answer, at) in waiting.answers(uid).items() if now - at < ANSWER_HOLD_S}
+    exclude |= set(answers)
+    points, heads = waiting.snapshot(now)
+    return uid, answers, heads, waiting_candidates(points, heads, now, exclude)
+
+
+@waiting_router.get("/api/vessels/waiting-candidates")
+def waiting_feed(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    now = time.time()
+    _, answers, heads, candidates = _waiting_view(request, now)
+    observed = []
+    for head in heads.values():
+        try:
+            observed.append(epoch(head["ais"]["position"]["observedAt"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return {
+        "updatedAt": _iso(now),
+        "lastReceivedAt": _iso(max(observed)) if observed else None,
+        "radiusKm": waiting.radius_km,
+        "candidates": candidates,
+        "confirmed": {m: _iso(at) for m, (answer, at) in answers.items() if answer == "yes"},
+    }
+
+
+class WaitingAnswer(BaseModel):
+    answer: Literal["yes", "no"]
+
+
+@waiting_router.post("/api/vessels/waiting-candidates/{mmsi}/answer")
+async def answer_waiting(mmsi: Annotated[str, PathParam(pattern=r"^\d{9}$")], body: WaitingAnswer, request: Request):
+    from midterm.web.auth_api import get_store
+    session = getattr(request.state, "session", None)
+    if session:
+        await run_in_threadpool(get_store(request).rate_limit, "waiting:" + session["user"]["id"], 30, 60)
+    now = time.time()
+    # "네"는 관심 등록을 먼저 저장한 뒤 도착하므로, 답 판정에서는 관심 목록을 빼지 않는다.
+    uid, _, _, candidates = await run_in_threadpool(_waiting_view, request, now, False)
+    candidate = next((c for c in candidates if c["mmsi"] == mmsi), None)
+    if candidate is None:
+        raise HTTPException(409, "후보 상태가 바뀌었습니다.")
+    await run_in_threadpool(waiting.save_answer, uid, mmsi, body.answer, evidence_for(candidate, now), now)
+    return {"ok": True, "answeredAt": _iso(now)}
+
+
+router.include_router(waiting_router)

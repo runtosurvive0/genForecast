@@ -140,7 +140,7 @@ def install_access(app, store=None, origins=None, secure=None):
                 if origin not in allowed or not await run_in_threadpool(db.check_csrf, request.cookies.get(CSRF_COOKIE), request.headers.get('x-csrf-token'), token):
                     raise AccessError(403, 'csrf_failed', '요청 확인 정보가 만료되었습니다. 다시 시도해 주세요.')
                 if path not in PUBLIC and path not in LIMITED:
-                    user_write = (path, request.method) in REGISTRY_WRITES or path in READ_POST and request.method == 'POST' or path == '/api/me/vessel-workspace' and request.method == 'PUT' or bool(re.fullmatch(r'/api/vessels/tracking/[^/]+', path)) and request.method == 'PUT' or path == '/api/auth/reauthenticate' and request.method == 'POST'
+                    user_write = (path, request.method) in REGISTRY_WRITES or path in READ_POST and request.method == 'POST' or path == '/api/me/vessel-workspace' and request.method == 'PUT' or bool(re.fullmatch(r'/api/vessels/tracking/[^/]+', path)) and request.method == 'PUT' or path == '/api/auth/reauthenticate' and request.method == 'POST' or bool(re.fullmatch(r'/api/vessels/waiting-candidates/\d{9}/answer', path)) and request.method == 'POST'
                     admin_write = (path, request.method) in ADMIN_WRITES or bool(re.fullmatch(r'/api/supply/vessels/[^/]+/(unloading|schedule)', path)) and request.method in ('POST', 'PUT') or bool(re.fullmatch(r'/api/admin/users/[^/]+/actions', path)) and request.method == 'POST'
                     if not user_write and not (admin_write and session['user']['role'] == 'admin'):
                         raise AccessError(403, 'write_forbidden', '이 변경에는 관리자 권한이 필요하거나 지원되지 않는 요청입니다.')

@@ -63,6 +63,8 @@ import type { BerthFeed } from "@/domain/use-berth-feed";
 import "./vessel-operations.css";
 import "./vessel-route-cards.css";
 import { VoyageRegistry } from './VoyageRegistry';
+import { WaitingCandidatesPanel } from "./WaitingCandidatesPanel";
+import type { WaitingCandidate } from "@/domain/waiting-candidates";
 
 export function VesselTracking({
   plants,
@@ -153,6 +155,12 @@ export function VesselTracking({
     [workspace.vessels],
   );
   const tracking = useTrackedVessels(storedCatalog, workspace.watchlist);
+  const [waitingConfirmed, setWaitingConfirmed] = useState<Record<string, string>>({});
+  const [mapFocus, setMapFocus] = useState<{ mmsi: string; longitude: number; latitude: number; key: number } | null>(null);
+  const watchlistMmsi = useMemo(
+    () => new Set(workspace.vessels.filter((v) => workspace.watchlist.includes(v.id) && v.source !== "demo" && v.mmsi).map((v) => v.mmsi)),
+    [workspace.vessels, workspace.watchlist],
+  );
   const catalog = useMemo(
     () =>
       storedCatalog.map((v) => {
@@ -425,6 +433,10 @@ export function VesselTracking({
         : "관심 목록에 추가했습니다. 이 브라우저에만 저장됩니다.",
     );
   }
+  function showOnMap(c: WaitingCandidate) {
+    setMapFocus((current) => ({ mmsi: c.mmsi, longitude: c.position.longitude, latitude: c.position.latitude, key: (current?.key ?? 0) + 1 }));
+    document.querySelector(".vessel-map-stage")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
   function removeInterest(id: string) {
     const current = latestWorkspace.current;
     save({
@@ -580,6 +592,12 @@ export function VesselTracking({
           className="vessel-watchlist-panel"
           data-collapsed={listCollapsed}
         >
+          <WaitingCandidatesPanel
+            watchlistMmsi={watchlistMmsi}
+            onAdd={add}
+            onShowOnMap={showOnMap}
+            onConfirmed={setWaitingConfirmed}
+          />
           <header className="vessel-workspace-header" aria-label="관심 선박 관리">
             <div className="vessel-workspace-heading">
               <div className="vessel-workspace-summary">
@@ -716,6 +734,7 @@ export function VesselTracking({
                   sharedCargo={cargo.length > 0}
                   registry={registry}
                   registryStatus={registryStatus}
+                  waitingConfirmedAt={vessel.source !== 'demo' && vessel.mmsi ? waitingConfirmed[vessel.mmsi] : undefined}
                   observationLoading={vessel.source !== 'demo' && Boolean(berthFeed?.status === 'loading' || (!tracking.ready && !tracking.error))}
                   now={now}
                   selected={selected?.vessel.id === vessel.id}
@@ -815,6 +834,7 @@ export function VesselTracking({
                   )
                   .map((v) => v.mmsi),
                 onAdd: add,
+                focus: mapFocus,
               }}
               shipments={mapShipments}
               positions={mapPositions}

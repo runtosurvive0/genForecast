@@ -12,6 +12,12 @@ import type { Observation } from "@/domain/berth-ais";
 import { berthDisplay } from "./vessel-berth-display";
 import type { BerthRegistry } from "@/domain/berth-ais";
 
+function waitingStamp(iso: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+    .formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
 export function VesselVoyageCard({
   vessel,
   voyage,
@@ -23,6 +29,7 @@ export function VesselVoyageCard({
   berthObservation,
   registry,
   registryStatus = 'ready',
+  waitingConfirmedAt,
   observationLoading = false,
   coalName,
   cargoCv,
@@ -39,6 +46,8 @@ export function VesselVoyageCard({
   berthObservation?: Observation;
   registry?: BerthRegistry | null;
   registryStatus?: 'loading' | 'ready' | 'error';
+  /** 사용자가 부두 대기(체선)로 확인한 시각 */
+  waitingConfirmedAt?: string;
   observationLoading?: boolean;
   coalName?: string;
   cargoCv?: number;
@@ -95,6 +104,7 @@ export function VesselVoyageCard({
       {berthObservation && <span className="gf-voyage-card-berth">
         {berthObservation.berth ? `${berthObservation.berth}부두` : "부두 인근"} · {berthObservation.stale ? "마지막 위치 · 확인 필요" : berthObservation.estimated ? "AIS 접안 추정" : "접안 판별 대기"}
       </span>}
+      {waitingConfirmedAt && <span className="vw-wait-confirmed">부두 대기 확인 · {waitingStamp(waitingConfirmedAt)}</span>}
       <span className="gf-voyage-card-compact" aria-hidden={selected}>
         <span className="gf-voyage-card-compact-inner">
           <span title={voyage?.destination || vessel.ais?.destination || "미수신"}>{voyage?.destination || vessel.ais?.destination || "미수신"}</span>

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   completeTotal,
   reviewReceipt,
@@ -144,4 +145,8 @@ test('berth detection separates measured dock faces, ambiguous boundaries, traff
   const simulated = { ...plan, classification: 'simulation' };
   assert.equal(matchCargo(v, {...registry, voyages:[simulated]}), null);
   registry.voyages.push({...plan,voyage_no:'b'});assert.equal(matchCargo(v,registry),null);
+});
+test('부두 위치 JSON은 프런트와 백엔드 사본이 같다',()=>{
+  const read=(p:string)=>JSON.parse(readFileSync(new URL(p,import.meta.url),'utf8'));
+  assert.deepEqual(read('../backend/src/midterm/vessels/dangjin_berths.json'),read('../src/data/berths/dangjin-berths.json'));
 });

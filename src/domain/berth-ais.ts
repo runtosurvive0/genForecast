@@ -1,23 +1,14 @@
 import type { TrackingVessel } from "./vessel-workflow.ts";
 
+import berths from "../data/berths/dangjin-berths.json" with { type: "json" };
+
 export type Dock = 1 | 2 | 3;
 type Point = readonly [number, number];
 // Approximate WGS84 water-side berth axes digitized from the Esri World Imagery
 // 4326 export (126.495,37.043,126.535,37.075). The short eastern pier is BD-1.
-const faces: Record<Dock, [Point, Point]> = {
-  1: [
-    [126.50996, 37.06532],
-    [126.51272, 37.0644],
-  ],
-  2: [
-    [126.5054, 37.0668],
-    [126.50868, 37.06564],
-  ],
-  3: [
-    [126.50212, 37.068],
-    [126.5054, 37.0668],
-  ],
-};
+// 백엔드 사본(backend/src/midterm/vessels/dangjin_berths.json)과 같은 파일이다.
+const faces = berths.faces as unknown as Record<Dock, [Point, Point]>;
+const berthRadiusM = berths.berthRadiusM;
 export const docks = [1, 2, 3] as const;
 function distance(lon: number, lat: number, [a, b]: [Point, Point]) {
   const east = 111320 * Math.cos((lat * Math.PI) / 180);
@@ -32,7 +23,7 @@ export function berthArea(lon: number, lat: number) {
   const ranked = docks
     .map((id) => ({ id, metres: distance(lon, lat, faces[id]) }))
     .sort((a, b) => a.metres - b.metres);
-  if (ranked[0].metres > 90) return undefined;
+  if (ranked[0].metres > berthRadiusM) return undefined;
   return ranked[1].metres - ranked[0].metres < 30 ? null : ranked[0].id;
 }
 export function berthObservation(vessel: TrackingVessel, now: number) {

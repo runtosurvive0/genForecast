@@ -3538,3 +3538,98 @@ test("supply ledger records real transfer and unloading inputs while sensors rem
   await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'저탄·재고',exact:true}).click();
   await expect(page.getByRole('region',{name:'선택 구간 상세'})).toContainText('센서 미연결');
 });
+
+// --- 부두 대기(체선) 후보 확인 ---
+function waitingFixture() {
+  const at = new Date().toISOString(), mmsi = '440123456', lon = 126.47, lat = 37.0;
+  const candidate = { mmsi, name: 'SAM WOO 47', shipType: 70, navStatus: 1, sogKn: 0.1, destination: 'KRTJI',
+    position: { latitude: lat, longitude: lon, observedAt: at }, dwellHours: 14.3, distanceKm: 6.2, stale: false,
+    reasons: ['묘박 상태'] };
+  const ship = { id: 'ais-' + mmsi, name: 'SAM WOO 47', mmsi, imo: '', source: 'aisstream',
+    ais: { updatedAt: at, destination: 'KRTJI', shipType: 70, navStatus: 1,
+      position: { longitude: lon, latitude: lat, observedAt: at, sogKn: 0.1, cogDeg: 0 } } };
+  const feed = (candidates: unknown[], confirmed: Record<string, string> = {}) =>
+    ({ updatedAt: at, lastReceivedAt: at, radiusKm: 15, candidates, confirmed });
+  return { at, mmsi, candidate, ship, feed };
+}
+
+test('waiting candidate asks with evidence and adds the vessel to interests on yes', async ({ page }) => {
+  const { mmsi, candidate, ship, feed } = waitingFixture();
+  let answers = 0;
+  let confirmed: Record<string, string> = {};
+  await page.route('**/api/vessels/waiting-candidates', r => r.fulfill({ json: feed(Object.keys(confirmed).length ? [] : [candidate], confirmed) }));
+  await page.route('**/api/vessels/map/' + mmsi, async r => { await new Promise(done => setTimeout(done, 300)); await r.fulfill({ json: ship }); });
+  await page.route(`**/api/vessels/waiting-candidates/${mmsi}/answer`, r => {
+    answers++; confirmed = { [mmsi]: '2026-11-09T03:20:00Z' };
+    return r.fulfill({ json: { ok: true, answeredAt: confirmed[mmsi] } });
+  });
+  await openEta(page);
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await expect(panel).toContainText('SAM WOO 47이 당진 부두에서 6.2km 떨어진 바다에서 14시간째 멈춰 있습니다. 부두 대기(체선) 중인 배가 맞나요?');
+  await expect(panel.locator('.vw-wait-chip')).toHaveText(['묘박', '0.1노트', '목적지 KRTJI', '화물선', '관측 0분 전']);
+  await expect(panel).not.toContainText('석탄');
+  await panel.screenshot({ path: '.tooling-tmp/waiting-panel-light.png' });
+  const yes = panel.getByRole('button', { name: '네, 관심 선박에 추가' });
+  await yes.click();
+  await yes.click({ force: true }).catch(() => {});
+  await expect(page.locator('.gf-voyage-card').filter({ hasText: 'SAM WOO 47' })).toContainText('부두 대기 확인 · 11/09 12:20');
+  expect(answers).toBe(1);
+  const saved = await readSavedWorkspace(page);
+  expect(saved.vessels.some((v: any) => v.mmsi === mmsi)).toBe(true);
+  await expect(panel).toContainText('확인할 배 없음');
+});
+
+test('waiting candidate hides on no and reports load failures without substitutes', async ({ page }) => {
+  const { mmsi, candidate, feed } = waitingFixture();
+  let fail = false, body: unknown = null;
+  await page.route('**/api/vessels/waiting-candidates', r => fail ? r.fulfill({ status: 500, json: { detail: 'down' } }) : r.fulfill({ json: feed([candidate]) }));
+  await page.route(`**/api/vessels/waiting-candidates/${mmsi}/answer`, r => { body = r.request().postDataJSON(); return r.fulfill({ json: { ok: true, answeredAt: new Date().toISOString() } }); });
+  await openEta(page);
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await panel.getByRole('button', { name: '아니요' }).click();
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
+  expect(body).toEqual({ answer: 'no' });
+  fail = true;
+  await page.evaluate(() => document.documentElement.classList.add('dark'));
+  await panel.getByRole('button', { name: '목록 새로 고침' }).click();
+  await expect(panel).toContainText('체선 후보를 불러오지 못했습니다');
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
+  await panel.screenshot({ path: '.tooling-tmp/waiting-panel-dark.png' });
+});
+
+test('waiting answer conflict refreshes the list and narrow screens do not overflow', async ({ page }) => {
+  const { mmsi, candidate, feed } = waitingFixture();
+  let reads = 0;
+  await page.route('**/api/vessels/waiting-candidates', r => { reads++; return r.fulfill({ json: feed([candidate]) }); });
+  await page.route(`**/api/vessels/waiting-candidates/${mmsi}/answer`, r => r.fulfill({ status: 409, json: { detail: '후보 상태가 바뀌었습니다.' } }));
+  await openEta(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await expect(panel).toContainText('SAM WOO 47');
+  await panel.screenshot({ path: '.tooling-tmp/waiting-panel-mobile.png' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const before = reads;
+  await panel.getByRole('button', { name: '아니요' }).click();
+  await expect(panel).toContainText('후보 상태가 바뀌었습니다. 목록을 새로 고칩니다');
+  await expect.poll(() => reads).toBeGreaterThan(before);
+});
+
+test('waiting no stays hidden when an older list arrives after the answer', async ({ page }) => {
+  const { mmsi, candidate, feed } = waitingFixture();
+  let reads = 0;
+  await page.route('**/api/vessels/waiting-candidates', async r => {
+    reads++;
+    if (reads > 1) await new Promise(done => setTimeout(done, 800));
+    await r.fulfill({ json: feed([candidate]) });
+  });
+  await page.route(`**/api/vessels/waiting-candidates/${mmsi}/answer`, r => r.fulfill({ json: { ok: true, answeredAt: new Date().toISOString() } }));
+  await openEta(page);
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(1);
+  await panel.getByRole('button', { name: '목록 새로 고침' }).click();
+  await panel.getByRole('button', { name: '아니요' }).click();
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
+  await expect.poll(() => reads).toBeGreaterThan(1);
+  await page.waitForTimeout(1200);
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
+});
