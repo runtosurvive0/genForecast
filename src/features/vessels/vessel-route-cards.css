@@ -470,6 +470,9 @@
   .gf-voyages .vessel-watchlist-panel {
     background: var(--card);
   }
+  .gf-voyages .vessel-workspace-header {
+    padding: 0 16px;
+  }
   .gf-voyages .vessel-watchlist-content {
     padding: 0 12px 12px;
   }

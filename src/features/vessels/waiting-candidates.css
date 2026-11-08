@@ -114,3 +114,13 @@
 .vessel-watchlist-panel[data-collapsed="true"] > .vw-wait {
   display: none;
 }
+@media (max-width: 900px) {
+  /* 좁은 화면에서는 목록 칸 전체가 한 장의 카드가 되므로, 카드 속 카드 대신 같은 안쪽 여백(16px)과 구분선만 둔다. */
+  .gf-voyages .vessel-watchlist-panel > .vw-wait {
+    margin: 0 0 12px;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+  }
+}

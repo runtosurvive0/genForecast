@@ -3633,3 +3633,19 @@ test('waiting no stays hidden when an older list arrives after the answer', asyn
   await page.waitForTimeout(1200);
   await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
 });
+
+test('waiting panel and interest headings share one left inset on narrow screens', async ({ page }) => {
+  const { feed } = waitingFixture();
+  await page.route('**/api/vessels/waiting-candidates', r => r.fulfill({ json: feed([]) }));
+  await openEta(page);
+  await page.setViewportSize({ width: 542, height: 1000 });
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await expect(panel).toContainText('확인할 배 없음');
+  const left = async (locator: import('@playwright/test').Locator) => (await locator.boundingBox())!.x;
+  const wait = await left(panel.getByRole('heading', { name: '확인할 배' }));
+  const interests = await left(page.locator('.vessel-workspace-title h2'));
+  const card = await left(page.locator('.vessel-watchlist-panel'));
+  expect(interests - card).toBeGreaterThanOrEqual(12);
+  expect(Math.abs(wait - interests)).toBeLessThanOrEqual(1);
+  await page.locator('.vessel-watchlist-panel').screenshot({ path: '.tooling-tmp/waiting-panel-narrow.png' });
+});
