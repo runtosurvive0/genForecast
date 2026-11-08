@@ -22,6 +22,7 @@ import type { PlanningSnapshot } from "../../domain/planning";
 import { forecastSummary } from "./forecast-summary";
 import { ForecastFocus } from "./ForecastFocus";
 import { ForecastDetails } from "./ForecastDetails";
+import { overviewPalette } from "./overview-palette";
 
 const fmt = (value: number | null | undefined, digits = 0) =>
   value == null
@@ -192,18 +193,18 @@ function Models({
             },
             tooltip,
             color: [
-              "#248df5",
-              "#f4b22a",
-              "#7190b9",
-              theme === "dark" ? "#b4cfff" : "#183568",
-              "#30b77b",
+              overviewPalette(theme).c1,
+              overviewPalette(theme).c2,
+              overviewPalette(theme).muted,
+              overviewPalette(theme).ink,
+              overviewPalette(theme).c3,
             ],
             legend: {
               top: 0,
               type: "plain",
               textStyle: {
                 fontSize: 10,
-                color: theme === "dark" ? "#a6bed7" : "#54677b",
+                color: theme === "dark" ? "#a5a7b1" : "#646874",
               },
             },
             grid: { left: 48, right: 44, top: 62, bottom: 32 },
@@ -406,9 +407,9 @@ function Flow({ snapshot: s }: { snapshot: PlanningSnapshot }) {
         <ArrowRight className="fuel-flow-arrow" aria-hidden="true" />
         <div className="fuel-flow-stage">
           <h3>저탄장별 입하 배분</h3>
-          {groups.map((group) => (
+          {groups.map((group, groupIndex) => (
             <p key={group.id}>
-              <i style={{ background: group.color }} />
+              <i style={{ background: `var(--gf-ov-c${groupIndex + 1})` }} />
               <span>{group.name}</span>
               <b>
                 {fmt(
@@ -460,7 +461,7 @@ function Forecasts({
       top: 0,
       textStyle: {
         fontSize: 9,
-        color: theme === "dark" ? "#a6bed7" : "#54677b",
+        color: theme === "dark" ? "#a5a7b1" : "#646874",
       },
     },
   };
@@ -483,7 +484,7 @@ function Forecasts({
                 description: "호기별 기간 이용률 퍼센트와 석탄 시간평균 사용량",
               },
             },
-            color: ["#248df5", "#f4b22a"],
+            color: [overviewPalette(theme).c1, overviewPalette(theme).c2],
             grid: { left: 40, right: 38, top: 40, bottom: 30 },
             xAxis: {
               type: "category",
@@ -519,33 +520,53 @@ function Forecasts({
     </div>
   );
 }
+const UNIT_TONE = (unit: number) => (unit <= 4 ? 1 : unit <= 8 ? 2 : 3);
+
+function UnitBars({ snapshot }: { snapshot: PlanningSnapshot }) {
+  const rows = snapshot.units.map((unit) => {
+    const number = Number(unit.unit_id.replace("dj-", ""));
+    const average = unit.generation_mwh === null || snapshot.horizon_days <= 0 ? null : unit.generation_mwh / (24 * snapshot.horizon_days);
+    return { id: unit.unit_id, number, average, factor: unit.capacity_factor_pct };
+  });
+  return (
+    <section className="gf-forecast-units" aria-label="호기별 발전계획">
+      <header><h2>호기별 발전계획</h2><span>{snapshot.horizon_days}일 평균 출력 · 실제 출력 아님 · 막대 높이는 이용률</span></header>
+      <div className="gf-unit-bars">{rows.map((row) => (
+        <div key={row.id} className="gf-unit-bar" data-tone={UNIT_TONE(row.number)}>
+          <span className="gf-unit-bar-track" aria-hidden="true"><i style={{ height: `${Math.max(0, Math.min(100, row.factor ?? 0))}%` }} /></span>
+          <span className="gf-unit-bar-name">{row.number}호기</span>
+          <strong>{fmt(row.average, 1)}{row.average !== null && <small> MW</small>}</strong>
+          <small>이용률 {row.factor == null ? "미확정" : `${fmt(row.factor, 1)}%`}</small>
+        </div>
+      ))}</div>
+    </section>
+  );
+}
+
 export function FuelSupplyOverview({
   snapshot,
   theme,
   onSupplyTarget,
   onSimulation,
+  onPurchasing,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
   onSupplyTarget: (target: SupplyTarget) => void;
   onSimulation: () => void;
+  onPurchasing?: () => void;
 }) {
   const summary = forecastSummary(snapshot);
+  const lead = (
+    <section className="gf-forecast-summary" aria-label="발전·수급 전망 요약">
+      <div><span>기간 발전 계획</span><strong><NumberWithUnit value={summary.generation} unit="MWh" /></strong><small>{snapshot.horizon_days}일 계획 합계</small></div>
+      <div><span>기간 연료 사용계획</span><strong><NumberWithUnit value={summary.fuel} /></strong><small>발전계획 기반 · {snapshot.horizon_days}일</small></div>
+      <div><span>{summary.minimumStock && summary.minimumStock.tonnes < 0 ? "예상 최대 부족량" : "예상 최저 재고"}</span><strong><NumberWithUnit value={summary.minimumStock ? Math.abs(summary.minimumStock.tonnes) : null} /></strong><small>{summary.minimumStock ? `${summary.minimumStock.day} · 일말 계획 기준` : "전체 저탄장 일별 재고 확인 필요"}</small></div>
+    </section>
+  );
   return (
     <>
-      <section className="gf-forecast-summary" aria-label="발전·수급 전망 요약">
-        <div><span>기간 발전 계획</span><strong><NumberWithUnit value={summary.generation} unit="MWh" /></strong><small>{snapshot.horizon_days}일 계획 합계</small></div>
-        <div><span>기간 연료 사용계획</span><strong><NumberWithUnit value={summary.fuel} /></strong><small>발전계획 기반 · {snapshot.horizon_days}일</small></div>
-        <div><span>{summary.minimumStock && summary.minimumStock.tonnes < 0 ? "예상 최대 부족량" : "예상 최저 재고"}</span><strong><NumberWithUnit value={summary.minimumStock ? Math.abs(summary.minimumStock.tonnes) : null} /></strong><small>{summary.minimumStock ? `${summary.minimumStock.day} · 일말 계획 기준` : "전체 저탄장 일별 재고 확인 필요"}</small></div>
-      </section>
-      <ForecastFocus snapshot={snapshot} theme={theme} onSupplyTarget={onSupplyTarget} onSimulation={onSimulation} />
-      <section className="gf-forecast-units" aria-label="호기별 발전계획">
-        <header><h2>호기별 발전계획</h2><span>{snapshot.horizon_days}일 평균 출력 · 실제 출력 아님</span></header>
-        <div>{snapshot.units.map((unit) => {
-          const average = unit.generation_mwh === null || snapshot.horizon_days <= 0 ? null : unit.generation_mwh / (24 * snapshot.horizon_days);
-          return <div key={unit.unit_id}><span>{unit.unit_id.replace('dj-', '')}호기</span><strong>{fmt(average, 1)}{average !== null && <small> MW</small>}</strong><small>이용률 {unit.capacity_factor_pct == null ? '미확정' : `${fmt(unit.capacity_factor_pct, 1)}%`}</small></div>;
-        })}</div>
-      </section>
+      <ForecastFocus snapshot={snapshot} onSupplyTarget={onSupplyTarget} onSimulation={onSimulation} onPurchasing={onPurchasing} lead={lead} trail={<UnitBars snapshot={snapshot} />} />
       <ForecastDetails title="저탄장별 수급 상세" note="재고일수 · 입하 배분 · 호기별 사용량">
         <SupplyKpis snapshot={snapshot} onTarget={onSupplyTarget} />
         <Forecasts snapshot={snapshot} theme={theme} />

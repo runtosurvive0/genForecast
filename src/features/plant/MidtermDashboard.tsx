@@ -108,11 +108,13 @@ export function MidtermDashboard({
   theme,
   onSupplyTarget,
   onSimulation,
+  onPurchasing,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
   onSupplyTarget: (target: SupplyTarget) => void;
   onSimulation: () => void;
+  onPurchasing?: () => void;
 }) {
   return (
     <FuelDashboard
@@ -120,6 +122,7 @@ export function MidtermDashboard({
       theme={theme}
       onSupplyTarget={onSupplyTarget}
       onSimulation={onSimulation}
+      onPurchasing={onPurchasing}
     >
       <Outages snapshot={snapshot} />
     </FuelDashboard>

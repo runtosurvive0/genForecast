@@ -153,6 +153,53 @@ test('발전 수급 전망은 선택한 날짜의 완전한 자료만 합산한�
   await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('검증 계산');
 });
 
+test('운영 개요는 머리를 줄이고 1920 첫 화면에 KPI·shadcn 주 차트·호기 막대·고정 확인 열을 담는다', async ({ page }) => {
+  const snapshot = suppliedPlanningFixture('검증 계산', '2027-01-01', 30);
+  snapshot.classification = 'operational';
+  await page.route('**/api/runs', route => route.fulfill({ json: [{ id: '검증 계산', name: '검증 계산', period: '2027-01-01 ~ 2027-12-31' }] }));
+  await page.route('**/api/planning/**', route => route.fulfill({ json: snapshot }));
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto('/#overview');
+  const focus = page.locator('.gf-forecast-focus');
+  await expect(focus.locator('[data-slot="chart"]')).toHaveCount(1);
+  // 데이터 모드 전환은 제목 줄에 있고, 조회 조건·저장 범위·시작재고는 패널 하나에 있다.
+  const heading = page.locator('.page-heading');
+  await expect(heading.getByRole('group', { name: '발전소 종합 데이터 모드' })).toBeVisible();
+  const query = page.getByRole('region', { name: '조회 조건', exact: true });
+  await expect(query.getByLabel('저장된 MILP 계산')).toBeVisible();
+  await expect(query.getByRole('region', { name: '전망 시작재고' })).toBeVisible();
+  // 주 차트와 호기 막대는 ECharts가 아니고 이전 색을 쓰지 않는다.
+  await expect(focus.locator('[_echarts_instance_]')).toHaveCount(0);
+  const units = page.getByRole('region', { name: '호기별 발전계획' });
+  await expect(units.locator('.gf-unit-bar')).toHaveCount(snapshot.units.length);
+  const html = (await focus.innerHTML()).toLowerCase();
+  for (const old of ['#3f6ae0', '#c08e52', '#49a28f']) expect(html).not.toContain(old);
+  // KPI·주 차트·호기 막대·확인할 변화가 첫 화면 안에 있다.
+  for (const target of [page.getByRole('region', { name: '발전·수급 전망 요약' }), focus.locator('[data-slot="chart"]'), units, page.getByRole('complementary', { name: '확인할 변화' })]) {
+    const box = (await target.boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(1080);
+  }
+  const watch = page.getByRole('complementary', { name: '확인할 변화' });
+  await expect(watch).toHaveCSS('position', 'sticky');
+  expect(Math.round((await watch.boundingBox())!.width)).toBe(320);
+  await expect(watch.getByRole('button', { name: '부족 시점·반입 가능 여부 검토' })).toBeVisible();
+  await page.screenshot({ path: 'artifacts/overview/light-1920.png', animations: 'disabled' });
+  await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
+  await page.screenshot({ path: 'artifacts/overview/dark-1920.png', animations: 'disabled' });
+  // 차트에서 날짜를 누르면 선택 날짜가 바뀐다.
+  const chart = focus.locator('[data-slot="chart"] .recharts-surface');
+  const cbox = (await chart.boundingBox())!;
+  await page.mouse.move(cbox.x + cbox.width * 0.7, cbox.y + cbox.height / 2);
+  await page.mouse.move(cbox.x + cbox.width * 0.75, cbox.y + cbox.height / 2, { steps: 4 });
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(page.getByLabel('날짜 선택')).not.toHaveAttribute('aria-valuetext', '2027-01-01');
+  await page.setViewportSize({ width: 1131, height: 900 });
+  await expect(watch).toHaveCSS('position', 'static');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+});
+
 test('가정 입력 기반 계산도 전망 화면에 표시하고 실제 운전정보와 구분한다', async ({page}) => {
   const snapshot=suppliedPlanningFixture('가정 계산','2027-01-01',30);
   snapshot.classification='functional_demo';
@@ -776,4 +823,85 @@ test('older AIS at a berth remains visible as an unconfirmed last position',asyn
   await dock.click();
   await expect(page.locator('#gf-berth-detail')).toContainText('현재 접안 여부 미확인');
   await expect(page.locator('.gf-rail-pair')).toContainText('0/ 3');
+});
+
+test('수급 예측은 운영 화면과 같은 머리글·조회 막대를 쓰고, 상황 반영·기준 복귀·규칙 해석 대체가 동작한다',async({page})=>{
+  await page.route('**/api/demo-forecast/interpret',r=>r.fulfill({status:503,json:{detail:'LLM 해석이 설정되지 않았습니다.'}}));
+  await page.goto('/#forecast');
+  await expect(page.getByRole('heading',{level:1,name:'수급 예측',exact:true})).toHaveCount(1);
+  const period=page.getByRole('group',{name:'예측 기간',exact:true});
+  await period.getByRole('button',{name:'30일',exact:true}).click();
+  await expect(period.getByRole('button',{name:'30일',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('.dfc-basis')).toContainText('30일');
+  const reset=page.getByRole('button',{name:'기준 계획으로',exact:true});
+  await expect(reset).toBeDisabled();
+  await page.getByRole('group',{name:'상황 가정',exact:true}).getByRole('button',{name:'입항 지연',exact:true}).click();
+  await expect(page.getByRole('list',{name:'반영한 조건',exact:true})).toContainText('지연');
+  await reset.click();
+  await expect(page.locator('.dfc-strip')).toContainText('변경한 조건 없음');
+  await page.getByRole('textbox',{name:'지시 입력',exact:true}).fill('2부두 CV가 내일 오전 정비야');
+  await page.getByRole('button',{name:'해석',exact:true}).click();
+  await expect(page.locator('.dfc-source')).toContainText('규칙 해석');
+  await page.setViewportSize({width:375,height:812});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('수급 예측은 1920 기본 화면을 스크롤 없이 담고, shadcn 차트와 포인트색 테마, 7열 선박 목록·고정 어시스턴트를 쓴다',async({page})=>{
+  await page.setViewportSize({width:1920,height:1080});
+  await page.goto('/#forecast');
+  const root=page.locator('.dfc-page');
+  await expect(root.locator('.recharts-surface').first()).toBeVisible();
+  // 기본 상태는 페이지 스크롤 없이 한 화면에 담는다.
+  expect(await page.evaluate(()=>document.scrollingElement!.scrollHeight<=innerHeight+2)).toBe(true);
+  // 차트는 ECharts가 아니라 shadcn(Recharts) 차트이고, 두 차트를 나란히 둔다.
+  await expect(root.locator('[_echarts_instance_]')).toHaveCount(0);
+  const charts=root.locator('[data-slot="chart"]');
+  await expect(charts).toHaveCount(2);
+  const [a,b]=await Promise.all([charts.nth(0).boundingBox(),charts.nth(1).boundingBox()]);
+  expect(Math.abs(a!.y-b!.y)).toBeLessThan(4);
+  // 이전의 튀는 저탄장·탄종 색을 쓰지 않는다.
+  const html=(await root.innerHTML()).toLowerCase();
+  for(const old of ['#c08e52','#49a28f','#3f6ae0','#85919e']) expect(html).not.toContain(old);
+  // 접안 계획과 선박 목록은 탭 하나에 있고, 선박 목록은 7열로 패널 폭을 넘지 않는다.
+  const tabs=page.getByRole('tablist',{name:'접안·선박 보기',exact:true});
+  await tabs.getByRole('tab',{name:'선박 목록',exact:true}).click();
+  const table=page.getByRole('region',{name:'선박별 예측 표',exact:true});
+  await expect(table.locator('thead th')).toHaveCount(7);
+  expect(await table.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  // 어시스턴트 열은 320px로 화면에 붙어 따라온다.
+  const assist=page.getByRole('complementary',{name:'AI 어시스턴트',exact:true});
+  await expect(assist).toHaveCSS('position','sticky');
+  expect(Math.round((await assist.boundingBox())!.width)).toBe(320);
+  await page.screenshot({path:'artifacts/forecast/light-1920.png',animations:'disabled'});
+  await page.getByRole('button',{name:'다크 모드로 전환',exact:true}).click();
+  await expect(page.locator('.gen4cast-app')).toHaveCSS('background-color','rgb(23, 24, 27)');
+  await page.screenshot({path:'artifacts/forecast/dark-1920.png',animations:'disabled'});
+  // 좁은 화면은 어시스턴트를 아래로 내리고 가로 넘침이 없다.
+  await page.setViewportSize({width:1131,height:900});
+  await expect(assist).toHaveCSS('position','static');
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('수급 예측은 운전 데모의 현재 재고·선박 잔량을 시작값으로 쓰고, 기준 표본으로 돌아갈 수 있다',async({page})=>{
+  const catalog=loadCatalog(),engine=createEngine(catalog);let socket:any;let seq=0;
+  engine.command({op:'preset'});engine.command({op:'play'});engine.advance(600);
+  const state=engine.snapshot();
+  await page.routeWebSocket(/\/demo-stream\?/,ws=>{socket=ws;ws.send(JSON.stringify({type:'hello',serverId:'forecast-live',catalog}));});
+  await page.goto('/#data');await page.getByRole('checkbox',{name:'운전 데모 연결'}).check();
+  await page.evaluate(()=>{location.hash='#forecast';});
+  await expect.poll(()=>!!socket).toBe(true);
+  const tick=()=>socket.send(JSON.stringify({type:'snapshot',serverId:'forecast-live',seq:++seq,state}));
+  tick();const timer=setInterval(tick,300);
+  try{
+    const origin=page.getByLabel('시작값 출처');
+    const remaining=(state.material.ships['1'].remaining+state.material.ships['2'].remaining)/10000;
+    await expect(origin).toContainText('현재 운전 상태');
+    await expect(origin).toContainText(`하역 잔량 ${remaining.toFixed(1)}만 t`);
+    const group=page.getByRole('group',{name:'시작값',exact:true});
+    await expect(group.getByRole('button',{name:'현재 운전 상태',exact:true})).toHaveAttribute('aria-pressed','true');
+    await page.screenshot({path:'.tooling-tmp/forecast-live.png'});
+    await group.getByRole('button',{name:'기준 표본',exact:true}).click();
+    await expect(origin).toHaveText('시작값 기준 표본');
+  }finally{clearInterval(timer);}
 });

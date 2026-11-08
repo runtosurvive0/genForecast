@@ -106,10 +106,25 @@
   }
 }
 
-.gf-forecast-navigation p { margin: 0 0 14px; color: var(--muted-foreground); font-size: 13px; line-height: 1.6; }
-.gf-forecast-navigation [role="tablist"] { display: flex; gap: 24px; border-bottom: 1px solid var(--border); }
-.gf-forecast-navigation [role="tab"] { padding: 12px 4px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted-foreground); cursor: pointer; font: inherit; font-weight: 600; }
-.gf-forecast-navigation [aria-selected="true"] { border-bottom-color: var(--data-blue); color: var(--data-blue); }
-.gf-forecast-navigation button:focus-visible { outline: 2px solid var(--data-blue); outline-offset: 2px; }
-.gf-forecast-results:not([hidden]) { display: grid; gap: 18px; min-width: 0; }
+/* 2줄: 작업 탭(왼쪽)과 과정 안내(오른쪽)를 한 줄에 */
+.gf-forecast-navigation { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border); min-width: 0; }
+.gf-forecast-navigation p { order: 2; margin: 0 0 10px; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; text-align: right; }
+.gf-forecast-navigation [role="tablist"] { order: 1; display: flex; gap: 24px; }
+.gf-forecast-navigation [role="tab"] { padding: 8px 4px 10px; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; background: transparent; color: var(--muted-foreground); cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; }
+.gf-forecast-navigation [aria-selected="true"] { border-bottom-color: var(--primary); color: var(--primary); }
+.gf-forecast-navigation button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 3줄: 조회 조건 패널 하나(계획·기간·새로고침 / 저장 범위·시작재고) */
+.gf-planning-query { min-width: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.gf-planning-query .midterm-controls { padding: 12px 16px; border: 0; border-radius: 12px 12px 0 0; background: transparent; gap: 12px; }
+.gf-planning-query .midterm-controls select, .gf-planning-query .midterm-controls input { height: 32px; }
+.gf-planning-query-strip { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); align-items: center; gap: 12px; padding: 0 16px; border-top: 1px solid var(--border); min-width: 0; }
+.gf-planning-query-strip > .tower-context { padding: 10px 0; }
+.gf-planning-query-strip .gf-stock-conditions { border: 0; border-radius: 0; background: transparent; }
+.gf-planning-query-strip .gf-stock-conditions-heading { padding: 8px 0; }
+.gf-planning-query-strip .gf-stock-conditions-heading p { font-size: 12px; }
+.gf-planning-query-strip .gf-stock-conditions-content { padding: 0 0 14px; }
+.gf-planning-query-strip:has(.gf-stock-conditions-content) { grid-template-columns: 1fr; }
+@media (max-width: 900px) { .gf-planning-query-strip { grid-template-columns: 1fr; gap: 0; } .gf-planning-query-strip > .tower-context { border-bottom: 1px solid var(--border); } }
+@media (max-width: 700px) { .gf-forecast-navigation { flex-direction: column; align-items: stretch; gap: 8px; } .gf-forecast-navigation p { order: 0; margin: 0; text-align: left; } }
+.gf-forecast-results:not([hidden]) { display: grid; gap: 12px; min-width: 0; }
 .midterm-empty button { margin: 12px auto 0; }

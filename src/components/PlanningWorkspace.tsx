@@ -38,6 +38,7 @@ export function PlanningWorkspace({
     refresh,
   } = state;
   const selected = runs.find((r) => r.id === query?.runId);
+  const ready = !failed && !listLoading && !loading && current ? current : null;
   return (
     <div className="tower-page midterm-page">
       {renderInputs && <section className="gf-forecast-navigation" aria-label="전망이 만들어지는 과정">
@@ -56,6 +57,7 @@ export function PlanningWorkspace({
         </ol>
         <p className="gf-planning-flow-note">이 화면은 저장된 계산을 조회합니다. 입력을 바꾼 뒤에는 새 계산을 실행해야 결과에 반영됩니다.</p>
       </section>}
+      <section className="gf-planning-query" aria-label="조회 조건">
       <div className="midterm-controls">
         <label>
           조회할 발전계획
@@ -126,6 +128,23 @@ export function PlanningWorkspace({
           새로고침
         </Button>
       </div>
+      {ready && <div className="gf-planning-query-strip">
+        <div className="tower-context midterm-source">
+          <div>
+            <span className="tower-tag">
+              {ready.classification === "functional_demo"
+                ? "가정 입력 기반 전망"
+                : "저장된 발전계획"}
+            </span>
+            <span>당진 1~10호기 · 계획 시점 수급</span>
+          </div>
+          <span>
+            {ready.start} ~ {ready.end} · KST
+          </span>
+        </div>
+        <ForecastStockConditions key={ready.run_id} snapshot={ready} onSaved={refresh} />
+      </div>}
+      </section>
       {failed ? (
         <div className="error-banner" role="alert">
           <TriangleAlert size={18} />
@@ -148,22 +167,7 @@ export function PlanningWorkspace({
         </div>
       ) : (
         <>
-          <div className="tower-context midterm-source">
-            <div>
-              <span className="tower-tag">
-                {current.classification === "functional_demo"
-                  ? "가정 입력 기반 전망"
-                  : "저장된 발전계획"}
-              </span>
-              <span>당진 1~10호기 · 계획 시점 수급</span>
-            </div>
-            <span>
-              {current.start} ~ {current.end} · KST
-            </span>
-          </div>
-          <ForecastStockConditions key={current.run_id} snapshot={current} onSaved={refresh} />
           {children(current)}
-          {renderInputs && onOpenPurchasing && <Button variant="outline" onClick={onOpenPurchasing}>부족 시점·반입 가능 여부 검토 <ArrowRight size={15}/></Button>}
           <div id="gf-forecast-sources"><details className="gf-forecast-details"><summary><strong>자료·계산 기준</strong><span>기준시각 · 입력 출처 · 확인사항 {current.issues.length}건</span></summary><Section title="자료 확인사항">
             <p className="gf-planning-basis">재고 기준: {current.start} 00:00 KST. 왼쪽 현재 재고와 기준시각이 다를 수 있습니다. 사용량은 1저탄장 1~4호기, 2저탄장 5~8호기, 3저탄장 9~10호기 계획을 기준으로 계산합니다.</p>
             <p className="tower-footnote">계산 ID {current.run_id} · 결과 저장 {current.generated_at.slice(0,16).replace('T',' ')} KST</p>

@@ -603,29 +603,9 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                   : currentPage.sub}
               </p>
             </div>
-            {["overview","fuel","scenario","schedule"].includes(page) && !isBackendSupplyView && <div className="heading-actions">
-              <Button
-                variant="outline"
-                className="export-button"
-                onClick={exportCsv}
-                disabled={busy || isBackendSupplyView}
-              >
-                <ArrowDownToLine />
-                CSV 내보내기
-              </Button>
-              <Button
-                onClick={() => navigate("scenario")}
-                className="scenario-shortcut"
-                disabled={isBackendSupplyView}
-              >
-                <Settings2 />
-                시나리오 분석
-              </Button>
-            </div>}
-          </div>}
-          {page === "overview" && (
-            <div
-              className="context-bar"
+            {page === "overview" && (
+              <div
+              className="context-bar gf-overview-mode"
               role="group"
               aria-label="발전소 종합 데이터 모드"
             >
@@ -656,7 +636,27 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                   : "시연 데이터 · 실제 운영 정보 아님"}
               </span>
             </div>
-          )}
+            )}
+            {["overview","fuel","scenario","schedule"].includes(page) && !isBackendSupplyView && <div className="heading-actions">
+              <Button
+                variant="outline"
+                className="export-button"
+                onClick={exportCsv}
+                disabled={busy || isBackendSupplyView}
+              >
+                <ArrowDownToLine />
+                CSV 내보내기
+              </Button>
+              <Button
+                onClick={() => navigate("scenario")}
+                className="scenario-shortcut"
+                disabled={isBackendSupplyView}
+              >
+                <Settings2 />
+                시나리오 분석
+              </Button>
+            </div>}
+          </div>}
           {!isMilpOverview && (["overview","fuel","scenario","schedule"].includes(page) || (page==='blend'&&blendView==='analysis')) && (
             <div className="context-bar">
               <div className="context-left">
@@ -748,13 +748,13 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           {page === 'procurement' && <><div className="gf-workflow-tabs"><button onClick={()=>navigate('simulation')}><ArrowRight size={14}/>시뮬레이션 결과로 돌아가기</button></div><ProcurementWorkspace planning={planning} demoSnapshot={demo.snapshot} demoStatus={demo.status} demoCatalog={demo.catalog}/></>}
           {page === 'connections' && <ConnectionsWorkspace planning={planning} status={demo.status} receivedAt={demo.receivedAt} onNavigate={navigateFromScreen}/>}
           {page === 'members' && <MemberManagement/>}
-          {page === 'forecast' && <DemoForecast theme={theme}/>}
+          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status}/>}
           {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
           {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
           {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onOpenYard={id=>navigate('yard',id)}/>}
           {isMilpOverview && (
-            <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>} onOpenInputs={page === 'overview' ? () => { setDataInitialTab('upload'); navigate('data'); } : undefined} onOpenPurchasing={page === 'overview' ? () => navigate('procurement') : undefined}>
-              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} onSimulation={() => navigate("simulation")} onSupplyTarget={(target) => {
+            <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>} onOpenInputs={page === 'overview' ? () => { setDataInitialTab('upload'); navigate('data'); } : undefined}>
+              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} onSimulation={() => navigate("simulation")} onPurchasing={page === 'overview' ? () => navigate('procurement') : undefined} onSupplyTarget={(target) => {
                 setSupplyTarget(target);
                 navigate("fuel");
               }} /></>}
