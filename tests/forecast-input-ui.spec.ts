@@ -18,7 +18,7 @@ test('전망에서 시작재고를 저장하고 실패 시 입력을 보존하�
     saved=true; return r.fulfill({json:{run_id:'stock-run',at:'2027-01-01T00:00:00+09:00',total_tonnes:300000,classification:'simulation'}});
   });
   await page.setViewportSize({width:1920,height:1080});
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   const stock=page.getByRole('region',{name:'전망 시작재고'});
   await stock.getByRole('button',{name:'시작재고 설정',exact:true}).click();
   await expect(stock).toContainText('2027-01-01 00:00 KST');
@@ -51,7 +51,7 @@ test('핵심 전망을 먼저 보여주고 상세 차트와 정지 일정은 펼
   await page.route('**/api/runs',r=>r.fulfill({json:[{id:'review',name:'월간 전망',period:'2027-01-01 ~ 2027-01-30'}]}));
   await page.route('**/api/planning/runs/review/snapshot?**',r=>r.fulfill({json:suppliedPlanningFixture('review','2027-01-01',30)}));
   await page.setViewportSize({width:1920,height:1080});
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   await expect(page.locator('.gf-forecast-focus')).toBeVisible();
   const supply=page.locator('details').filter({has:page.locator('summary strong',{hasText:'저탄장별 수급 상세'})});
   await expect(supply).not.toHaveAttribute('open','');
@@ -82,7 +82,7 @@ test('실행 요청 실패 후 저장된 조건을 중복 저장하지 않고 �
     starts++;expect(r.request().postDataJSON()).toEqual({input_id:6});
     return starts===1?r.fulfill({status:503,json:{detail:'계산 서버 연결 실패'}}):r.fulfill({json:{run_id:'retry-run'}});
   });
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   await page.getByRole('tab',{name:'조건 설정'}).click();
   await expect(page.getByLabel('시작일',{exact:true})).toHaveValue('2027-01-01');
   await page.getByRole('button',{name:'저장 후 전망 실행'}).click();
@@ -95,7 +95,7 @@ test('실행 요청 실패 후 저장된 조건을 중복 저장하지 않고 �
 test('DB 연결 실패를 빈 목록으로 표시하지 않고 다시 불러온다',async({page})=>{
   let loads=0;
   await page.route('**/api/planning/inputs',r=>++loads===1?r.fulfill({status:503,json:{detail:'DB 연결 실패'}}):r.fulfill({json:[{id:5,...scenario}]}));
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   await page.getByRole('tab',{name:'조건 설정'}).click();
   await expect(page.getByRole('alert')).toContainText('DB 연결 실패');
   await expect(page.getByText('저장된 전망 조건이 없습니다')).not.toBeVisible();
@@ -108,7 +108,7 @@ test('상태 확인 전에는 실행을 막고 입력 화면은 라이트·다�
   const gate=new Promise<void>(resolve=>{release=resolve});
   await page.route('**/api/job',async r=>{await gate;await r.fulfill({json:{state:'idle'}})});
   await page.setViewportSize({width:1920,height:1080});
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   await page.getByRole('tab',{name:'조건 설정'}).click();
   await expect(page.getByLabel('시작일',{exact:true})).toHaveValue('2027-01-01');
   await expect(page.getByRole('button',{name:'저장 후 전망 실행'})).toBeDisabled();
@@ -132,7 +132,7 @@ test('상태 확인 전에는 실행을 막고 입력 화면은 라이트·다�
 test('일반 회원은 조건과 결과를 조회하고 저장·실행은 노출하지 않는다',async({page})=>{
   await page.route('**/api/auth/session',r=>r.fulfill({json:{user:{id:'00000000-0000-4000-8000-000000000001',username:'member',displayName:'Member',role:'member',status:'active',version:1,createdAt:0,reviewedAt:null,mustChangePassword:0},scope:'full'}}));
   await page.route('**/api/planning/executions',r=>r.fulfill({json:[{id:'past',input_id:5,state:'done',summary:{scenario}}]}));
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   await page.getByRole('tab',{name:'조건 설정'}).click();
   await expect(page.getByLabel('시작일',{exact:true})).toHaveValue('2027-01-01');
   await expect(page.getByLabel('시작일',{exact:true})).toBeDisabled();

@@ -24,7 +24,7 @@ test('전망 메인에서 DB 조건을 자동으로 불러와 기간만 바꾸�
   await page.route('**/api/planning/executions',r=>r.fulfill({json:started?[{id:'new-run',input_id:6,state:'done',summary:{scenario:{...scenario,end:'2027-02-28'}}}]:[]}));
   await page.route('**/api/run',r=>{expect(r.request().postDataJSON()).toEqual({input_id:6});started=true;return r.fulfill({json:{run_id:'new-run'}})});
   await page.route('**/api/planning/runs/new-run/snapshot?**',r=>r.fulfill({json:suppliedPlanningFixture('new-run','2027-01-01',30)}));
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   await page.getByRole('tab',{name:'조건 설정',exact:true}).click();
   await expect(page.getByLabel('시작일', {exact:true})).toHaveValue('2027-01-01');
   await expect(page.getByLabel('연료 환산 발열량 (kcal/kg)')).not.toBeVisible();
@@ -35,7 +35,7 @@ test('전망 메인에서 DB 조건을 자동으로 불러와 기간만 바꾸�
   await page.getByRole('button',{name:'저장 후 전망 실행'}).click();
   await expect(page.getByRole('button',{name:'이번 계산 결과 보기'})).toBeVisible();
   await page.getByRole('button',{name:'이번 계산 결과 보기'}).click();
-  await expect(page).toHaveURL(/#overview$/);
+  await expect(page).toHaveURL(/#simulation$/);
   await expect(page.getByRole('tab',{name:'전망 결과',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(page.locator('.gf-forecast-focus')).toContainText('저탄장 재고 전망');
 });
@@ -83,7 +83,7 @@ test('전망에서 계산 흐름을 이해하고 입력 화면과 구매 검토�
   await page.route('**/api/planning/inputs', route => route.fulfill({json:[]}));
   await page.route('**/api/planning/executions', route => route.fulfill({json:[]}));
   await page.route('**/api/job', route => route.fulfill({json:{state:'idle'}}));
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   const flow = page.getByRole('region', {name:'전망이 만들어지는 과정'});
   await expect(flow).toContainText('발전계획 계산');
   await expect(flow).toContainText('연료 사용량·저탄장 재고 전망');
@@ -92,7 +92,7 @@ test('전망에서 계산 흐름을 이해하고 입력 화면과 구매 검토�
   await expect(page.locator('.fuel-groups')).toContainText('1저탄장');
   await expect(page.locator('main')).not.toContainText('MILP 백엔드');
   await flow.getByRole('tab', {name:'조건 설정'}).click();
-  await expect(page).toHaveURL(/#overview$/);
+  await expect(page).toHaveURL(/#simulation$/);
   await expect(page.getByRole('heading',{name:'저장된 전망 조건이 없습니다'})).toBeVisible();
   await expect(page.getByRole('button',{name:'기준 조건 등록'})).toBeVisible();
   await flow.getByRole('tab', {name:'전망 결과'}).click();
@@ -133,7 +133,7 @@ test('발전 수급 전망은 선택한 날짜의 완전한 자료만 합산한�
   snapshot.inventory.daily[2].groups.g910.receipts = 0;
   await page.route('**/api/runs', route => route.fulfill({ json: [{ id: '검증 계산', name: '검증 계산', period: '2027-01-01 ~ 2027-12-31' }] }));
   await page.route('**/api/planning/**', route => route.fulfill({ json: snapshot }));
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   const slider = page.getByLabel('날짜 선택');
   await expect(slider).toBeVisible();
   await slider.fill('2');
@@ -147,24 +147,22 @@ test('발전 수급 전망은 선택한 날짜의 완전한 자료만 합산한�
   await page.locator('#main-content').getByRole('button', { name: '수급 원장', exact: true }).click();
   await expect(page.getByRole('region', { name: '선택 날짜 수급' })).toContainText('2027-01-03');
   await expect(page.getByRole('region', { name: '선택 날짜 수급' })).toContainText('284,000');
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '운영 개요', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '통합 시뮬레이션', exact: true }).click();
   await page.getByRole('button', { name: '통합 시뮬레이션 열기' }).click();
   await expect(page).toHaveURL(/#simulation$/);
   await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('검증 계산');
 });
 
-test('운영 개요는 머리를 줄이고 1920 첫 화면에 KPI·shadcn 주 차트·호기 막대·고정 확인 열을 담는다', async ({ page }) => {
+test('통합 시뮬레이션은 머리를 줄이고 1920 첫 화면에 KPI·shadcn 주 차트·호기 막대·고정 확인 열을 담는다', async ({ page }) => {
   const snapshot = suppliedPlanningFixture('검증 계산', '2027-01-01', 30);
   snapshot.classification = 'operational';
   await page.route('**/api/runs', route => route.fulfill({ json: [{ id: '검증 계산', name: '검증 계산', period: '2027-01-01 ~ 2027-12-31' }] }));
   await page.route('**/api/planning/**', route => route.fulfill({ json: snapshot }));
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.goto('/#overview');
+  await page.goto('/#simulation');
   const focus = page.locator('.gf-forecast-focus');
   await expect(focus.locator('[data-slot="chart"]')).toHaveCount(1);
-  // 데이터 모드 전환은 제목 줄에 있고, 조회 조건·저장 범위·시작재고는 패널 하나에 있다.
-  const heading = page.locator('.page-heading');
-  await expect(heading.getByRole('group', { name: '발전소 종합 데이터 모드' })).toBeVisible();
+  // 조회 조건·저장 범위·시작재고는 패널 하나에 있다.
   const query = page.getByRole('region', { name: '조회 조건', exact: true });
   await expect(query.getByLabel('저장된 MILP 계산')).toBeVisible();
   await expect(query.getByRole('region', { name: '전망 시작재고' })).toBeVisible();
@@ -183,9 +181,9 @@ test('운영 개요는 머리를 줄이고 1920 첫 화면에 KPI·shadcn 주 �
   await expect(watch).toHaveCSS('position', 'sticky');
   expect(Math.round((await watch.boundingBox())!.width)).toBe(320);
   await expect(watch.getByRole('button', { name: '부족 시점·반입 가능 여부 검토' })).toBeVisible();
-  await page.screenshot({ path: 'artifacts/overview/light-1920.png', animations: 'disabled' });
+  await page.screenshot({ path: 'artifacts/simulation/light-1920.png', animations: 'disabled' });
   await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
-  await page.screenshot({ path: 'artifacts/overview/dark-1920.png', animations: 'disabled' });
+  await page.screenshot({ path: 'artifacts/simulation/dark-1920.png', animations: 'disabled' });
   // 차트에서 날짜를 누르면 선택 날짜가 바뀐다.
   const chart = focus.locator('[data-slot="chart"] .recharts-surface');
   const cbox = (await chart.boundingBox())!;
@@ -200,12 +198,104 @@ test('운영 개요는 머리를 줄이고 1920 첫 화면에 KPI·shadcn 주 �
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
 });
 
+test('운영 개요는 현황판으로 호기 출력·금일 순수요·저탄 현황·접안·체선·입항 예정을 첫 화면에 나누어 보여준다', async ({ page }) => {
+  const catalog = loadCatalog(), engine = createEngine(catalog);
+  const timers = new Set<ReturnType<typeof setInterval>>();
+  await page.routeWebSocket(/\/demo-stream\?/, socket => {
+    let seq = 0;
+    socket.send(JSON.stringify({ type: 'hello', serverId: 'status-board', catalog }));
+    const tick = () => socket.send(JSON.stringify({ type: 'snapshot', serverId: 'status-board', seq: ++seq, state: engine.snapshot() }));
+    tick(); const timer = setInterval(tick, 200); timers.add(timer); socket.onClose(() => { clearInterval(timer); timers.delete(timer); });
+  });
+  await page.clock.setFixedTime(new Date('2027-01-05T03:30:00Z')); // KST 2027-01-05 12:30
+  const net = Array.from({ length: 24 }, (_, h) => 50000 + (h >= 9 && h <= 19 ? 10000 : 0) + h * 10);
+  const hourly: string[] = [];
+  await page.route('**/api/runs', route => route.fulfill({ json: [{ id: '연간 계획', name: '연간 계획', period: '2027-01-01 ~ 2027-12-31' }] }));
+  await page.route(/\/api\/runs\/[^/]+\/hourly/, route => { hourly.push(route.request().url()); return route.fulfill({ json: { day: '2027-01-05', units: [], output: [], coal_target: [], net, nuclear: [] } }); });
+  await page.route('**/api/vessels/waiting-candidates', route => route.fulfill({ json: { updatedAt: '2027-01-05T03:29:00Z', lastReceivedAt: '2027-01-05T03:29:00Z', radiusKm: 15, confirmed: {}, candidates: [
+    { mmsi: '440000001', name: 'WAIT ONE', shipType: 70, navStatus: 1, sogKn: 0, destination: 'KR TSN', position: { latitude: 37.1, longitude: 126.4, observedAt: '2027-01-05T03:27:00Z' }, dwellHours: 5.2, distanceKm: 8.4, stale: false, reasons: [] },
+  ] } }));
+  await page.route('**/api/voyage-registry/records', route => route.fulfill({ json: {
+    ships: [{ ship_code: 'S1', name: 'ARRIVE ONE' }, { ship_code: 'S2', name: 'DONE SHIP' }],
+    voyages: [
+      { voyage_no: 'V1', ship_code: 'S1', status: 'underway', planned_arrival: '2027-01-07T09:00', destination_port: '당진', classification: 'actual' },
+      { voyage_no: 'V2', ship_code: 'S2', status: 'completed', planned_arrival: '2027-01-02T09:00', destination_port: '당진', classification: 'actual' },
+    ],
+    cargo: [],
+  } }));
+  try {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto('/?demo=1#overview');
+    await expect(page.getByRole('heading', { level: 1, name: '운영 현황', exact: true })).toBeVisible();
+    // 전망 계산 탭과 조회 막대는 운영 개요에 없다.
+    await expect(page.getByRole('tab', { name: '조건 설정' })).toHaveCount(0);
+    await expect(page.getByLabel('저장된 MILP 계산')).toHaveCount(0);
+
+    const units = page.getByRole('region', { name: '발전소 출력', exact: true });
+    await expect(units.locator('.gf-os-unit')).toHaveCount(10);
+    await expect(units).toContainText('4,820');
+    await expect(units).toContainText('운전 10기');
+    await expect(units.locator('.gf-os-unit').first()).toContainText('460');
+
+    const demand = page.getByRole('region', { name: '금일 수요전망', exact: true });
+    await expect(demand.locator('[data-slot="chart"]')).toHaveCount(1);
+    await expect(demand).toContainText('2027-01-05');
+    await expect(demand).toContainText('60,190');
+    await expect(demand).toContainText('19시');
+    await expect(demand).toContainText('60,120');
+    expect(hourly.some(url => url.includes('day=2027-01-05'))).toBe(true);
+
+    const yard = page.getByRole('region', { name: '저탄 현황', exact: true });
+    await expect(yard).toContainText('고열량탄');
+    await expect(yard).toContainText('저열량탄');
+    await expect(yard).toContainText('363,432');
+    await expect(yard.locator('.gf-os-yard')).toHaveCount(3);
+
+    const ships = page.getByRole('region', { name: '선박 현황', exact: true });
+    await expect(ships.getByRole('region', { name: '접안 중' })).toContainText('GN-A');
+    await expect(ships.getByRole('region', { name: '체선 대기' })).toContainText('WAIT ONE');
+    await expect(ships.getByRole('region', { name: '체선 대기' })).toContainText('5시간');
+    await expect(ships.getByRole('region', { name: '입항 예정' })).toContainText('ARRIVE ONE');
+    await expect(ships.getByRole('region', { name: '입항 예정' })).not.toContainText('DONE SHIP');
+
+    for (const target of [units, demand, yard, ships]) {
+      const box = (await target.boundingBox())!;
+      expect(box.y + box.height).toBeLessThanOrEqual(1080);
+    }
+    await expect(page.locator('#main-content [_echarts_instance_]')).toHaveCount(0);
+    mkdirSync('artifacts/overview', { recursive: true });
+    await page.screenshot({ path: 'artifacts/overview/status-light-1920.png', animations: 'disabled' });
+    await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
+    await page.screenshot({ path: 'artifacts/overview/status-dark-1920.png', animations: 'disabled' });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.getByRole('button', { name: '재고 전망·구매 검토는 통합 시뮬레이션에서' }).click();
+    await expect(page).toHaveURL(/#simulation$/);
+    await expect(page.getByRole('tab', { name: '조건 설정', exact: true })).toBeVisible();
+  } finally { for (const timer of timers) clearInterval(timer); }
+});
+
+test('운전 데모가 꺼져 있으면 현재 출력과 저탄 현황을 계획값으로 채우지 않는다', async ({ page }) => {
+  await page.route('**/api/runs', route => route.fulfill({ json: [] }));
+  await page.route('**/api/vessels/waiting-candidates', route => route.fulfill({ status: 503, json: { detail: '대기 후보 서버 확인' } }));
+  await page.goto('/#overview');
+  await expect(page.getByRole('region', { name: '발전소 출력', exact: true })).toContainText('운전 정보 미연계');
+  await expect(page.getByRole('region', { name: '발전소 출력', exact: true }).locator('.gf-os-unit')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: '저탄 현황', exact: true })).toContainText('운전 정보 미연계');
+  await expect(page.getByRole('region', { name: '금일 수요전망', exact: true })).toContainText('오늘을 포함한 저장 계획이 없습니다');
+  await expect(page.getByRole('region', { name: '체선 대기' })).toContainText('대기 후보 서버 확인');
+  mkdirSync('artifacts/overview', { recursive: true });
+  await page.screenshot({ path: 'artifacts/overview/status-disconnected.png', animations: 'disabled', timeout: 10000 });
+});
+
 test('가정 입력 기반 계산도 전망 화면에 표시하고 실제 운전정보와 구분한다', async ({page}) => {
   const snapshot=suppliedPlanningFixture('가정 계산','2027-01-01',30);
   snapshot.classification='functional_demo';
   await page.route('**/api/runs',route=>route.fulfill({json:[{id:'가정 계산',name:'가정 계산',period:'2027-01-01 ~ 2027-12-31'}]}));
   await page.route('**/api/planning/**',route=>route.fulfill({json:snapshot}));
-  for(const screen of ['overview','simulation']) {
+  for(const screen of ['simulation']) {
     await page.goto(`/#${screen}`);
     await expect(page.getByText('가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.')).toBeVisible();
     await expect(page.getByRole('region',{name:'호기별 발전계획'})).toBeVisible();
@@ -677,7 +767,7 @@ test('retained operational features use the same shell and source labels',async(
   test.setTimeout(60000);mkdirSync('artifacts/integration',{recursive:true});
   await page.route('https://tiles.openfreemap.org/styles/*', route => route.fulfill({json:mapStyleFixture}));
   await page.setViewportSize({width:1920,height:1080});
-  for(const [route,title] of [['overview','발전·수급 전망'],['voyages','항차·화물'],['data','데이터 워크스페이스'],['models','예측·모델'],['schedule','발전기 정지계획'],['scenario','시나리오 분석']]){
+  for(const [route,title] of [['overview','운영 현황'],['simulation','통합 시뮬레이션'],['voyages','항차·화물'],['data','데이터 워크스페이스'],['models','예측·모델'],['schedule','발전기 정지계획'],['scenario','시나리오 분석']]){
     await page.goto('/#'+route);await expect(page.getByRole('heading',{level:1,name:title,exact:true})).toBeVisible();
     if(route==='voyages'){
       await expect(page.locator('.vessel-map-online')).toHaveAttribute('data-map-ready','true');

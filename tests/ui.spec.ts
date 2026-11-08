@@ -249,14 +249,14 @@ test("yard feeds follow the selected MILP date and receiving routes respect bert
     ["g14", "g58", "g910"].forEach((id, i) => { snapshot.inventory.daily[0].groups[id].burn = (i + 1) * 2400 * factor; });
     return route.fulfill({json:snapshot});
   });
-  await page.goto("/");
+  await page.goto("/#simulation");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "수급 원장", exact: true }).click();
   const feeds = page.getByRole("region", {name:"호기군별 발전과 연료 계획"});
   await expect(feeds).toContainText("2027-01-01");
   await expect(feeds.getByRole('article').nth(0)).toContainText("10,000 MWh");
   await expect(feeds.getByRole('article').nth(1)).toContainText("26,000 MWh");
   await expect(feeds.getByRole('article').nth(2)).toContainText("300 t/h");
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "운영 개요", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "통합 시뮬레이션", exact: true }).click();
   await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
   await expect(page.locator(".midterm-source")).toContainText("2027-02-01");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "수급 원장", exact: true }).click();
@@ -2831,7 +2831,7 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
     if (!Array.isArray(body)) body.classification = 'operational';
     await route.fulfill({ json: body });
   });
-  await page.goto("/");
+  await page.goto("/#simulation");
   await page.getByText("연료 사용계획", { exact: true }).click();
   await page.getByText("저탄장별 수급 상세", { exact: true }).click();
   await page.getByText("호기별 계획정지 일정", { exact: true }).click();
@@ -2912,7 +2912,7 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
   ).toHaveCount(1);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "운영 개요", exact: true })
+    .getByRole("button", { name: "통합 시뮬레이션", exact: true })
     .click();
   await page.getByText("저탄장별 수급 상세", { exact: true }).click();
   await expect(page.locator("[data-unit-id]")).toHaveCount(10);
@@ -2980,7 +2980,7 @@ test("incomplete fuel plans remain unknown and DB inventory forecasts render sep
     });
     await route.fulfill({ json: snapshot });
   });
-  await page.goto("/");
+  await page.goto("/#simulation");
   await page.getByText('연료 사용계획', {exact:true}).click();
   await page.getByText('저탄장별 수급 상세', {exact:true}).click();
   await page.getByText('발전량 산정 근거', {exact:true}).click();
@@ -3041,7 +3041,7 @@ test("shared supply preserves the existing stockyard UI while keeping DB plan/da
     result.classification = 'operational';
     return route.fulfill({ json: result });
   });
-  await page.goto("/");
+  await page.goto("/#simulation");
   await page.getByLabel("저장된 MILP 계산").selectOption("연계 계획 B");
   await page.getByRole("button", { name: "7일", exact: true }).click();
   await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
@@ -3054,7 +3054,7 @@ test("shared supply preserves the existing stockyard UI while keeping DB plan/da
   await expect(forecast.locator('tbody tr').first()).toContainText('130,000');
   await expect(forecast.locator('tbody tr').first()).toContainText('90,000');
   await expect(page.getByRole('region', {name:'저탄장 기준재고'})).toBeVisible();
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "운영 개요", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "통합 시뮬레이션", exact: true }).click();
   await expect(page.getByLabel("저장된 MILP 계산")).toHaveValue("연계 계획 B");
   await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-02-01");
   await expect(page.getByRole("button", { name: "7일", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -3089,7 +3089,7 @@ test("shared supply ignores obsolete responses and keeps missing DB values insid
     const result = suppliedPlanningFixture("연계 계획", start, Number(url.searchParams.get("horizon"))); result.classification = 'operational';
     return route.fulfill({ json: result });
   });
-  await page.goto("/");
+  await page.goto("/#simulation");
   await expect(page.locator(".gf-forecast-focus")).toBeVisible();
   await page.getByLabel("MILP 조회 시작일").fill("2027-01-02");
   await expect.poll(() => pending).toBe(true);
@@ -3107,7 +3107,7 @@ test("shared supply ignores obsolete responses and keeps missing DB values insid
   await expect(forecast).not.toContainText('290,000');
   await expect(page.getByRole('region',{name:'저탄장 기준재고'})).toBeVisible();
   fail = false;
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "운영 개요", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "통합 시뮬레이션", exact: true }).click();
   await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-01-04");
   await page.getByRole("button", { name: "새로고침", exact: true }).click();
   await expect(page.locator(".midterm-source")).toContainText("2027-01-04");
@@ -3156,14 +3156,14 @@ test("baseline pile detail remains separate from disconnected sensors and the st
   await expect(detail).toContainText('26-1-039');
   await expect(detail).toContainText('센서 미연결');
   await expect(detail).not.toContainText('고위험');
-  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'운영 개요',exact:true}).click();
+  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'통합 시뮬레이션',exact:true}).click();
   await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('운영 계획');
   await expect(page.locator('.gf-forecast-day-values')).toContainText('290,000');
   await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'예측·모델',exact:true}).click();
   await page.getByLabel('학습 반복').selectOption('300');
   await page.getByRole('button',{name:'재학습 · 전망에 적용'}).click();
   await expect(page.locator('.tower-page')).toContainText('local-linear-v1/300');
-  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'운영 개요',exact:true}).click();
+  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'통합 시뮬레이션',exact:true}).click();
   await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('운영 계획');
   await expect(page.locator('.gf-forecast-day-values')).toContainText('290,000');
 });

@@ -84,6 +84,7 @@ import { ForecastInputPanel } from "@/features/data/ForecastInputPanel";
 import { usePlanning, initialPlanningQuery } from "@/domain/use-planning";
 import type { SupplyTarget } from "@/domain/supply";
 import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
+import { OperationsStatus } from "@/features/plant/OperationsStatus";
 import { number as n, date as fmtDate, shiftDate } from "@/lib/format";
 
 import { pageFromHash, pageHash, pageInfo, type Page } from "@/domain/navigation";
@@ -596,9 +597,11 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           <AccountWorkspaceStatus />
           {!ownHeading && <div className="page-heading">
             <div>
-              <h1>{page === "overview" && overviewSource === "milp" ? "발전·수급 전망" : currentPage.label}</h1>
+              <h1>{page === "overview" && overviewSource === "milp" ? "운영 현황" : currentPage.label}</h1>
               <p>
-                {isBackendSupplyView
+                {page === "overview" && overviewSource === "milp"
+                  ? "호기별 출력, 금일 수요, 저탄, 선박 현황을 한 화면에서 확인합니다."
+                  : isBackendSupplyView
                   ? "발전계획과 연료 수급의 변화를 함께 확인합니다."
                   : currentPage.sub}
               </p>
@@ -620,7 +623,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                     setHelpOpen(false);
                   }}
                 >
-                  저장된 발전계획
+                  운영 현황
                 </button>
                 <button
                   aria-pressed={overviewSource === "synthetic"}
@@ -632,7 +635,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
               </div>
               <span className="context-caption">
                 {isBackendSupplyView
-                  ? "당진 저장계획 · 실적과 구분"
+                  ? "당진 현재 운전·선박 현황"
                   : "시연 데이터 · 실제 운영 정보 아님"}
               </span>
             </div>
@@ -752,9 +755,12 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
           {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
           {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onOpenYard={id=>navigate('yard',id)}/>}
-          {isMilpOverview && (
-            <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>} onOpenInputs={page === 'overview' ? () => { setDataInitialTab('upload'); navigate('data'); } : undefined}>
-              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} onSimulation={() => navigate("simulation")} onPurchasing={page === 'overview' ? () => navigate('procurement') : undefined} onSupplyTarget={(target) => {
+          {page === "overview" && overviewSource === "milp" && (
+            <OperationsStatus demo={demo} runs={planning.runs} runsLoading={planning.listLoading} runsError={planning.runs.length ? null : planning.failed || null} berthFeed={berthFeed} onNavigate={(next) => navigate(next as Page)} />
+          )}
+          {page === "simulation" && (
+            <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>}>
+              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} onSimulation={() => navigate("simulation")} onPurchasing={() => navigate('procurement')} onSupplyTarget={(target) => {
                 setSupplyTarget(target);
                 navigate("fuel");
               }} /></>}
@@ -925,7 +931,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           )}
           {page === "data" && <><section className="gf-demo-data" aria-label="운전 데모 설정"><div><strong>운전 데모</strong><p>실제 운전 정보와 분리된 모사 데이터를 연결합니다.</p></div><div className="gf-demo-data-actions"><label className="gf-stream-toggle"><input aria-label="운전 데모 연결" type="checkbox" checked={demoEnabled} onChange={e=>onDemoEnabled(e.target.checked)}/><span>데모 연결</span><span className="gf-stream-state" aria-live="polite">{{disabled:'꺼짐',connecting:'연결 중',online:'수신 중',stale:'수신 지연',disconnected:'끊김'}[demo.status]}</span></label><a className="gf-control-link" href="#demo-control" target="_blank" rel="noopener"><Settings2 size={16}/><span>조작반 열기</span></a></div></section><DataPage plants={selectedPlants} initialTab={dataInitialTab} onResult={(run) => {
             planning.setQuery(initialPlanningQuery({ ...run, name: "", period: `${run.start} ~ ${run.end}` }));
-            planning.refresh(); setOverviewSource("milp"); navigate("overview");
+            planning.refresh(); setOverviewSource("milp"); navigate("simulation");
           }} /></>}
 
           {page === "scenario" && (
