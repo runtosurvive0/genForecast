@@ -17,7 +17,7 @@ CSRF_COOKIE = 'gf_csrf'
 DEFAULT_ORIGINS = {f'http://{host}:{port}' for host in ('127.0.0.1', 'localhost') for port in (5173, 4173, 8093, 8090)}
 PUBLIC = {'/api/auth/bootstrap-status', '/api/auth/csrf', '/api/auth/session', '/api/auth/register', '/api/auth/login', '/api/auth/logout'}
 LIMITED = {'/api/auth/password'}
-READ_POST = {'/api/vessels/destinations/resolve', '/api/supply/forecast', '/api/outages/parse'}
+READ_POST = {'/api/vessels/destinations/resolve', '/api/supply/forecast', '/api/outages/parse', '/api/demo-forecast/interpret'}
 REGISTRY_WRITES = {('/api/voyage-registry/' + action, 'POST') for action in
                    ('preview', 'commit', 'excel/preview', 'excel/commit',
                    'inventory/receipts', 'inventory/balance', 'inventory/reconcile', 'inventory/baseline', 'receipt-plans', 'blend/recommend', 'blend/baseline-recommend')}

@@ -21,6 +21,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "asyncpg>=0.29",
   "tzdata>=2024.1",
+  "openai>=3.46,<4",
 ]
 
 [project.optional-dependencies]

@@ -95,6 +95,7 @@ import { InventoryWorkspace } from "@/components/inventory/InventoryWorkspace";
 import { OperationsBlend } from "@/features/stockyard/OperationsBlend";
 import { useBerthFeed } from "@/domain/use-berth-feed";
 import { OperationsBerth } from "@/features/berth/OperationsBerth";
+import { DemoForecast } from "@/features/forecast/DemoForecast";
 import { UnitsWorkspace, AnalysisWorkspace, ProcurementWorkspace, ConnectionsWorkspace } from "@/features/operations/OperationsWorkspaces";
 const baseMs = new Date(BASE_TIME).getTime();
 const isStopped = (unit: Unit) =>
@@ -182,7 +183,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
   const demo = useFuelDemo();
   const berthFeed = useBerthFeed(demo.status === "disabled", page === "berth");
   const scenePage = page === 'yard' || page === 'berth';
-  const ownHeading = scenePage || ['demo-control','units','costs','procurement','connections','blend','vessels','inventory'].includes(page);
+  const ownHeading = scenePage || ['demo-control','units','costs','procurement','connections','blend','vessels','inventory','forecast'].includes(page);
   const [blendView,setBlendView]=useState<'diagram'|'analysis'>('diagram');
   const [dataInitialTab, setDataInitialTab] = useState<'status'|'upload'>('status');
   const [overviewSource, setOverviewSource] = useState<"milp" | "synthetic">(
@@ -369,7 +370,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setMessage("현재 조건의 운영 전망 CSV를 내보냈습니다.");
   }
-  const nav = <OperationsNavigation observedBerths={berthFeed.status==="ready"?new Set(berthFeed.rows.filter(r=>r.estimated).map(r=>r.berth)).size:null} page={page} onNavigate={navigate} planning={planning} demo={demo} synthetic={["blend","schedule","scenario","models"].includes(page) || (overviewSource === "synthetic" && ["overview","fuel"].includes(page))} onHelp={() => {setHelpOpen(true);setMobileOpen(false);}}/>;
+  const nav = <OperationsNavigation observedBerths={berthFeed.status==="ready"?new Set(berthFeed.rows.filter(r=>r.estimated).map(r=>r.berth)).size:null} page={page} onNavigate={navigate} planning={planning} demo={demo} synthetic={["blend","schedule","scenario","models","forecast"].includes(page) || (overviewSource === "synthetic" && ["overview","fuel"].includes(page))} onHelp={() => {setHelpOpen(true);setMobileOpen(false);}}/>;
   const navigateFromScreen = (next: string) => {
     if (next === 'demo-control') { window.open('#demo-control', '_blank', 'noopener'); return; }
     navigate(pageFromHash('#' + next));
@@ -747,6 +748,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           {page === 'procurement' && <><div className="gf-workflow-tabs"><button onClick={()=>navigate('simulation')}><ArrowRight size={14}/>시뮬레이션 결과로 돌아가기</button></div><ProcurementWorkspace planning={planning} demoSnapshot={demo.snapshot} demoStatus={demo.status} demoCatalog={demo.catalog}/></>}
           {page === 'connections' && <ConnectionsWorkspace planning={planning} status={demo.status} receivedAt={demo.receivedAt} onNavigate={navigateFromScreen}/>}
           {page === 'members' && <MemberManagement/>}
+          {page === 'forecast' && <DemoForecast theme={theme}/>}
           {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
           {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
           {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onOpenYard={id=>navigate('yard',id)}/>}

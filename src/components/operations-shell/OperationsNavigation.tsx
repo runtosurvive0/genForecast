@@ -1,10 +1,10 @@
-import { Activity, ArrowRight, BarChart3, BookOpen, CalendarClock, CircleHelp, Database, Factory, FlaskConical, LayoutGrid, Network, Route, Settings2, Ship, SlidersHorizontal, Users, Warehouse, Waves, Zap } from 'lucide-react';
+import { Activity, ArrowRight, BarChart3, BookOpen, CalendarClock, CircleHelp, Database, Factory, FlaskConical, LayoutGrid, Network, Route, Settings2, Ship, SlidersHorizontal, TrendingUp, Users, Warehouse, Waves, Zap } from 'lucide-react';
 import type { FuelDemoValue } from '@/domain/fuel-demo/types';
 import { menuGroups, pageInfo, pageGroup, type Page } from '@/domain/navigation';
 import type { PlanningState } from '@/domain/use-planning';
 import { useYardBaseline } from '@/domain/use-yard-baseline';
 import './operations-shell.css';
-const icons: Record<Page, typeof Activity> = {overview:LayoutGrid,vessels:Ship,berth:Waves,yard:Warehouse,blend:Route,units:Factory,simulation:FlaskConical,procurement:BookOpen,costs:BarChart3,data:Database,connections:Network,members:Users,inventory:BookOpen,fuel:BookOpen,schedule:CalendarClock,scenario:SlidersHorizontal,models:Activity,'demo-control':SlidersHorizontal};
+const icons: Record<Page, typeof Activity> = {overview:LayoutGrid,vessels:Ship,berth:Waves,yard:Warehouse,blend:Route,units:Factory,simulation:FlaskConical,procurement:BookOpen,costs:BarChart3,data:Database,connections:Network,members:Users,inventory:BookOpen,fuel:BookOpen,schedule:CalendarClock,scenario:SlidersHorizontal,models:Activity,'demo-control':SlidersHorizontal,forecast:TrendingUp};
 const fmt = (v:number|null) => v === null ? '—' : v.toLocaleString('ko-KR',{maximumFractionDigits:0});
 export { Gen4castBrand } from "./Gen4castBrand";
 export function OperationsGroups({page,onNavigate}:{page:Page;onNavigate:(page:Page)=>void}) {
