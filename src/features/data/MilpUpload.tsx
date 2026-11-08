@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Section } from "@/components/tower/primitives";
 import { number as n } from "@/lib/format";
+import { PlanningInputForm, type PlanningInputDetail } from "./PlanningInputForm";
+import baselinePrices from "../../../backend/data/heat_price.csv.json";
 
 type InputSet = {
   id: number;
@@ -111,6 +113,37 @@ export function MilpUpload({
   const done = executions.filter((r) => r.state === "done" && r.summary);
   return (
     <div className="milp-admin">
+      {error && <p className="error-banner" role="alert">{error}</p>}
+      {message && <p role="status">{message}</p>}
+      <PlanningInputForm inputs={inputs} busy={busy || job.state === "running"}
+        onLoad={async id => {
+          if (id !== 0) return api<PlanningInputDetail>(`/api/planning/inputs/${id}`);
+          const [meta, settings] = await Promise.all([
+            api<{default_scenario:PlanningInputDetail['payload']['scenario']}>("/api/meta"),
+            api<{fuel:PlanningInputDetail['payload']['fuel']}>("/api/settings"),
+          ]);
+          const heat_prices = Object.fromEntries(baselinePrices.rows.map(row => {
+            const fields = row as Record<string,string>;
+            return [fields.unit, Array.from({length:12}, (_,i) => Number(fields[`${i+1}월`]))];
+          }));
+          return {id:0,payload:{scenario:meta.default_scenario,heat_prices,fuel:settings.fuel}};
+        }}
+        onSave={(data, run) => action(async () => {
+          const saved = await api<InputDetail>("/api/planning/inputs/upload", {method:"POST",body:data});
+          setSelected(saved);
+          if (run) {
+            let result: {run_id:string};
+            try {
+              result = await api<{run_id:string}>("/api/run", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({input_id:saved.id})});
+            } catch (e) {
+              try { await refresh(); } catch { /* Keep the saved input selected even when refresh fails. */ }
+              throw new Error(`입력 세트 #${saved.id}는 저장됐지만 계산을 시작하지 못했습니다. ${((e as Error).message)}`);
+            }
+            setJob({state:"running",run_id:result.run_id});
+            setMessage(`입력 세트 #${saved.id} 저장 · 계산 시작: ${result.run_id}`);
+            try { await refresh(); } catch { /* Polling will retry without misreporting the started job. */ }
+          } else { await refresh(); setMessage(`입력 세트 #${saved.id}를 DB에 저장했습니다.`); }
+        })}/>
       <Section
         title="MILP 입력 업로드"
         note="예측 시뮬레이션 입력 · 검증 후 DB 저장 · 계산은 별도 실행"
@@ -450,12 +483,6 @@ export function MilpUpload({
           잔량으로 구분합니다.
         </p>
       </Section>
-      {error && (
-        <p className="error-banner" role="alert">
-          {error}
-        </p>
-      )}
-      {message && <p role="status">{message}</p>}
     </div>
   );
 }

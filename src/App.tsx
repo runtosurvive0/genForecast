@@ -72,7 +72,7 @@ import {
   defaultModels,
 } from "@/domain/control-tower";
 import { PlantOverview } from "@/features/plant/PlantOverview";
-import { Stockyard } from "@/features/stockyard/Stockyard";
+import { SupplyLedger } from "@/features/stockyard/SupplyLedger";
 import { VesselTracking } from "@/features/vessels/VesselWorkspace";
 import { ModelsPage } from "@/features/models/ModelsPage";
 import { DataPage } from "@/features/data/DataPage";
@@ -80,57 +80,22 @@ import { AccountControls, AccountWorkspaceStatus } from "@/features/auth/Account
 import { MemberManagement } from "@/features/auth/MemberManagement";
 import { forecastTask } from "@/lib/forecast-task";
 import { PlanningWorkspace } from "@/components/PlanningWorkspace";
+import { ForecastInputPanel } from "@/features/data/ForecastInputPanel";
 import { usePlanning, initialPlanningQuery } from "@/domain/use-planning";
 import type { SupplyTarget } from "@/domain/supply";
 import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
 import { number as n, date as fmtDate, shiftDate } from "@/lib/format";
 
-type Page =
-  "overview" | "schedule" | "fuel" | "vessels" | "scenario" | "models" | "data";
-const pages = [
-  {
-    id: "overview" as Page,
-    label: "발전소 종합",
-    icon: LayoutDashboard,
-    sub: "재고와 입하탄, 발전 전망을 하나의 흐름으로 확인합니다.",
-  },
-  {
-    id: "fuel" as Page,
-    label: "저탄장 현황",
-    icon: Layers3,
-    sub: "Pile별 재고·탄질과 모의 위험도를 확인합니다.",
-  },
-  {
-    id: "vessels" as Page,
-    label: "선박 추적",
-    icon: Ship,
-    sub: "입하탄의 위치부터 하역 완료까지 연결합니다.",
-  },
-  {
-    id: "models" as Page,
-    label: "예측/모델 상세",
-    icon: Activity,
-    sub: "합성 시계열로 학습한 기준모델과 검증 결과입니다.",
-  },
-  {
-    id: "data" as Page,
-    label: "데이터/관리자",
-    icon: Settings2,
-    sub: "더미데이터와 서비스 연동 상태를 확인합니다.",
-  },
-  {
-    id: "schedule" as Page,
-    label: "발전기 정지계획",
-    icon: CalendarClock,
-    sub: "계획정지와 연료 부족 예측을 구분해 확인합니다.",
-  },
-  {
-    id: "scenario" as Page,
-    label: "시나리오 분석",
-    icon: Settings2,
-    sub: "부하와 입항 지연에 따른 발전 영향을 비교합니다.",
-  },
-];
+import { pageFromHash, pageHash, pageInfo, type Page } from "@/domain/navigation";
+import { FuelDemoProvider, useFuelDemo } from "@/domain/fuel-demo";
+import { FuelDemoControl } from "@/components/fuel-demo";
+import { Gen4castBrand, OperationsGroups, OperationsNavigation } from "@/components/operations-shell/OperationsNavigation";
+import { OperationsYard } from "@/features/stockyard/OperationsYard";
+import { InventoryWorkspace } from "@/components/inventory/InventoryWorkspace";
+import { OperationsBlend } from "@/features/stockyard/OperationsBlend";
+import { useBerthFeed } from "@/domain/use-berth-feed";
+import { OperationsBerth } from "@/features/berth/OperationsBerth";
+import { UnitsWorkspace, AnalysisWorkspace, ProcurementWorkspace, ConnectionsWorkspace } from "@/features/operations/OperationsWorkspaces";
 const baseMs = new Date(BASE_TIME).getTime();
 const isStopped = (unit: Unit) =>
   unit.outages.some(
@@ -188,6 +153,38 @@ function Status({
   );
 }
 function App() {
+  const [hash, setHash] = useState(() => location.hash);
+  const route = pageFromHash(hash);
+  const initialLotId = new URLSearchParams(hash.split('?')[1]).get('lot');
+  const [demoEnabled, setDemoEnabled] = useState(() => {
+    try { return new URLSearchParams(location.search).get('demo') === '1' || localStorage.getItem('gen4cast.demo-connection') === '1'; }
+    catch { return new URLSearchParams(location.search).get('demo') === '1'; }
+  });
+  const updateDemoEnabled = (enabled: boolean) => {
+    setDemoEnabled(enabled);
+    try { localStorage.setItem('gen4cast.demo-connection', enabled ? '1' : '0'); } catch { /* The current tab still works without storage. */ }
+  };
+  useEffect(() => {
+    const sync = (event: StorageEvent) => { if (event.key === 'gen4cast.demo-connection') setDemoEnabled(event.newValue === '1'); };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
+  useEffect(() => {
+    const update = () => { if (location.hash !== '#main-content') setHash(location.hash); };
+    window.addEventListener('hashchange', update);
+    return () => window.removeEventListener('hashchange', update);
+  }, []);
+  return <FuelDemoProvider enabled={demoEnabled || route === 'demo-control'} role={route === 'demo-control' ? 'controller' : 'viewer'}>
+    <WorkspaceApp page={route} initialLotId={initialLotId} demoEnabled={demoEnabled} onDemoEnabled={updateDemoEnabled}/>
+  </FuelDemoProvider>;
+}
+function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;initialLotId:string|null;demoEnabled:boolean;onDemoEnabled:(enabled:boolean)=>void}) {
+  const demo = useFuelDemo();
+  const berthFeed = useBerthFeed(demo.status === "disabled", page === "berth");
+  const scenePage = page === 'yard' || page === 'berth';
+  const ownHeading = scenePage || ['demo-control','units','costs','procurement','connections','blend','vessels','inventory'].includes(page);
+  const [blendView,setBlendView]=useState<'diagram'|'analysis'>('diagram');
+  const [dataInitialTab, setDataInitialTab] = useState<'status'|'upload'>('status');
   const [overviewSource, setOverviewSource] = useState<"milp" | "synthetic">(
     () =>
       new URLSearchParams(location.search).get("source") === "synthetic" ||
@@ -195,10 +192,9 @@ function App() {
         ? "synthetic"
         : "milp",
   );
-  const [page, setPage] = useState<Page>("overview");
-  const isBackendSupplyView = (page === "overview" || page === "fuel") && overviewSource === "milp";
-  const isMilpOverview = page === "overview" && overviewSource === "milp";
-  const planning = usePlanning(isBackendSupplyView);
+  const isBackendSupplyView = ["overview", "fuel", "units", "simulation", "procurement", "costs"].includes(page) && overviewSource === "milp";
+  const isMilpOverview = (page === "overview" && overviewSource === "milp") || page === "simulation";
+  const planning = usePlanning(overviewSource === "milp" || ["simulation", "procurement", "costs", "connections", "units"].includes(page));
   const [supplyTarget, setSupplyTarget] = useState<SupplyTarget | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
@@ -266,7 +262,7 @@ function App() {
         (plants.find((x) => x.id === p.plantId)?.lowStockDays ?? 7),
     0,
   );
-  const currentPage = pages.find((p) => p.id === page)!;
+  const currentPage = pageInfo[page];
   const scenarioChanged = JSON.stringify(draft) !== JSON.stringify(applied);
   const detailPlant = plants.find((p) => p.id === detail?.plantId);
   const detailForecast = detailPlant
@@ -303,8 +299,9 @@ function App() {
       localStorage.setItem("ewp-theme", next);
     } catch {}
   };
-  const navigate = (next: Page) => {
-    setPage(next);
+  const navigate = (next: Page, lotId?: string) => {
+    const hash = pageHash(next) + (lotId ? '?lot=' + encodeURIComponent(lotId) : '');
+    if (location.hash !== hash) location.hash = hash;
     setMobileOpen(false);
     setAlertsOpen(false);
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -372,66 +369,11 @@ function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setMessage("현재 조건의 운영 전망 CSV를 내보냈습니다.");
   }
-  const nav = (
-    <>
-      <div className="nav-section-label">발전 운영</div>
-      {pages.slice(0, 3).map((p) => (
-        <button
-          key={p.id}
-          onClick={() => navigate(p.id)}
-          className={`nav-item ${page === p.id ? "active" : ""}`}
-          aria-current={page === p.id ? "page" : undefined}
-        >
-          <p.icon size={18} />
-          <span>{p.label}</span>
-          {p.id === "schedule" && (
-            <span className="nav-count">{outages.length}</span>
-          )}
-        </button>
-      ))}
-      <div className="nav-section-label nav-section-second">수급 관리</div>
-      {pages.slice(3, 5).map((p) => (
-        <button
-          key={p.id}
-          onClick={() => navigate(p.id)}
-          className={`nav-item ${page === p.id ? "active" : ""}`}
-          aria-current={page === p.id ? "page" : undefined}
-        >
-          <p.icon size={18} />
-          <span>{p.label}</span>
-        </button>
-      ))}
-      <div className="sidebar-bottom">
-        <div className="sidebar-note">
-          <div>
-            <span className="online-dot" />
-            {isBackendSupplyView ? "Python MILP 조회" : page === "vessels" ? "선박 관측 조회" : "오프라인 데모"}
-          </div>
-          <p>
-            {isBackendSupplyView
-              ? "당진 1~10호기 · 저장된 계획"
-              : page === "vessels" ? "선박별 출처·관측시각 확인" : "운영·정비계획 샘플 데이터"}
-          </p>
-          <span>
-            {isBackendSupplyView
-              ? "계산별 기간 · KST 일 단위"
-              : page === "vessels" ? "시각 표기 KST" : "시연 기준 2026.10.06 09:00 KST"}
-          </span>
-        </div>
-        <button
-          className="nav-item help-nav"
-          onClick={() => {
-            setHelpOpen(true);
-            setMobileOpen(false);
-          }}
-        >
-          <CircleHelp size={17} />
-          <span>데이터·계산 안내</span>
-          <ArrowUpRight size={14} />
-        </button>
-      </div>
-    </>
-  );
+  const nav = <OperationsNavigation observedBerths={berthFeed.status==="ready"?new Set(berthFeed.rows.filter(r=>r.estimated).map(r=>r.berth)).size:null} page={page} onNavigate={navigate} planning={planning} demo={demo} synthetic={["blend","schedule","scenario","models"].includes(page) || (overviewSource === "synthetic" && ["overview","fuel"].includes(page))} onHelp={() => {setHelpOpen(true);setMobileOpen(false);}}/>;
+  const navigateFromScreen = (next: string) => {
+    if (next === 'demo-control') { window.open('#demo-control', '_blank', 'noopener'); return; }
+    navigate(pageFromHash('#' + next));
+  };
 
   const plantTable = (
     <div className="table-scroll">
@@ -592,7 +534,7 @@ function App() {
 
   return (
     <TooltipProvider>
-      <div className="app-shell">
+      <div className={`app-shell gen4cast-app ${scenePage ? "gf-scene-page" : ""}`} data-page={page}>
         <a className="skip-link" href="#main-content">
           본문 바로가기
         </a>
@@ -607,20 +549,11 @@ function App() {
             >
               <Menu />
             </Button>
-            <div className="brand-mark">
-              G<span />
-            </div>
-            <div className="brand-name">GenForecast</div>
-            <div className="top-divider" />
-            <span className="top-breadcrumb">
-              운영 워크스페이스 <ChevronRight size={13} /> {currentPage.label}
-            </span>
+            <Gen4castBrand onClick={() => navigate('overview')}/>
           </div>
+          <OperationsGroups page={page} onNavigate={navigate}/>
           <div className="top-actions">
-            <span className="demo-label">
-              <span />
-              {isBackendSupplyView ? "MILP 계획 조회" : page === "vessels" ? "선박별 데이터" : "샘플 데이터"}
-            </span>
+            {demo.status !== 'disabled' && <span className="gf-mode-label">모의 운전</span>}
             <Button
               variant="ghost"
               size="icon"
@@ -650,9 +583,9 @@ function App() {
           <nav aria-label="주 메뉴">{nav}</nav>
         </aside>
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetContent side="left" className="mobile-sidebar">
+          <SheetContent side="left" className="mobile-sidebar gf-mobile-rail">
             <SheetHeader>
-              <SheetTitle>GenForecast</SheetTitle>
+              <SheetTitle>gen4cast</SheetTitle>
               <SheetDescription>운영 메뉴</SheetDescription>
             </SheetHeader>
             <nav aria-label="모바일 메뉴">{nav}</nav>
@@ -660,16 +593,16 @@ function App() {
         </Sheet>
         <main id="main-content" className="main-content">
           <AccountWorkspaceStatus />
-          <div className="page-heading">
+          {!ownHeading && <div className="page-heading">
             <div>
-              <h1>{currentPage.label}</h1>
+              <h1>{page === "overview" && overviewSource === "milp" ? "발전·수급 전망" : currentPage.label}</h1>
               <p>
                 {isBackendSupplyView
-                  ? "저장된 Python MILP 결과와 DB 수급 원장을 확인합니다."
+                  ? "발전계획과 연료 수급의 변화를 함께 확인합니다."
                   : currentPage.sub}
               </p>
             </div>
-            {page !== "vessels" && <div className="heading-actions">
+            {["overview","fuel","scenario","schedule"].includes(page) && !isBackendSupplyView && <div className="heading-actions">
               <Button
                 variant="outline"
                 className="export-button"
@@ -688,7 +621,7 @@ function App() {
                 시나리오 분석
               </Button>
             </div>}
-          </div>
+          </div>}
           {page === "overview" && (
             <div
               className="context-bar"
@@ -706,24 +639,24 @@ function App() {
                     setHelpOpen(false);
                   }}
                 >
-                  MILP 백엔드
+                  저장된 발전계획
                 </button>
                 <button
                   aria-pressed={overviewSource === "synthetic"}
                   className={overviewSource === "synthetic" ? "selected" : ""}
                   onClick={() => setOverviewSource("synthetic")}
                 >
-                  합성 데모
+                  별도 조건 전망
                 </button>
               </div>
               <span className="context-caption">
                 {isBackendSupplyView
                   ? "당진 저장계획 · 실적과 구분"
-                  : "기존 합성 데이터 시뮬레이션"}
+                  : "시연 데이터 · 실제 운영 정보 아님"}
               </span>
             </div>
           )}
-          {!isMilpOverview && page !== "vessels" && (
+          {!isMilpOverview && (["overview","fuel","scenario","schedule"].includes(page) || (page==='blend'&&blendView==='analysis')) && (
             <div className="context-bar">
               <div className="context-left">
                 <span className="context-caption">조회 범위</span>
@@ -779,7 +712,7 @@ function App() {
                 )}
                 <Clock3 size={13} />
                 <span>
-                  {page === "fuel" && overviewSource === "milp" && planning.query ? `${planning.query.start} 00:00 · ${planning.query.horizon}일` : "시연 기준 2026.10.06 09:00"} <b>KST</b>
+                  {page === "fuel" && overviewSource === "milp" && planning.query ? <>{`${planning.query.start} 00:00 · ${planning.query.horizon}일`} <b>KST</b></> : "기준시각 미확인"}
                 </span>
               </div>
             </div>
@@ -805,12 +738,24 @@ function App() {
               </Button>
             </div>
           )}
+          {page === 'yard' && <OperationsYard key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} onOpenLedger={()=>navigate('inventory')} onOpenSupply={id=>{setBlendView('diagram');navigate('blend',id);}} onNavigate={navigateFromScreen}/>}
+          {page === 'inventory' && <InventoryWorkspace mode="inventory" standalone onBack={()=>navigate('yard')}/>}
+          {page === 'berth' && <OperationsBerth feed={berthFeed} theme={theme} snapshot={demo.snapshot} status={demo.status} onOpenYard={id=>navigate('yard',id)} onNavigate={navigateFromScreen}/>}
+          {page === 'demo-control' && <FuelDemoControl theme={theme} onPlay={() => onDemoEnabled(true)}/>}
+          {page === 'units' && <UnitsWorkspace planning={planning} snapshot={demo.snapshot} status={demo.status} onNavigate={navigateFromScreen}/>}
+          {page === 'costs' && <AnalysisWorkspace planning={planning}/>}
+          {page === 'procurement' && <><div className="gf-workflow-tabs"><button onClick={()=>navigate('simulation')}><ArrowRight size={14}/>시뮬레이션 결과로 돌아가기</button></div><ProcurementWorkspace planning={planning} demoSnapshot={demo.snapshot} demoStatus={demo.status} demoCatalog={demo.catalog}/></>}
+          {page === 'connections' && <ConnectionsWorkspace planning={planning} status={demo.status} receivedAt={demo.receivedAt} onNavigate={navigateFromScreen}/>}
+          {page === 'members' && <MemberManagement/>}
+          {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
+          {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
+          {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onOpenYard={id=>navigate('yard',id)}/>}
           {isMilpOverview && (
-            <PlanningWorkspace state={planning}>
-              {(snapshot) => <MidtermDashboard snapshot={snapshot} theme={theme} onSupplyTarget={(target) => {
+            <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>} onOpenInputs={page === 'overview' ? () => { setDataInitialTab('upload'); navigate('data'); } : undefined} onOpenPurchasing={page === 'overview' ? () => navigate('procurement') : undefined}>
+              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} onSimulation={() => navigate("simulation")} onSupplyTarget={(target) => {
                 setSupplyTarget(target);
                 navigate("fuel");
-              }} />}
+              }} /></>}
             </PlanningWorkspace>
           )}
           {page === "overview" && overviewSource === "synthetic" && (
@@ -958,18 +903,13 @@ function App() {
             </>
           )}
           {page === "fuel" && (
-            <Stockyard
-              plants={selectedPlants}
-              theme={theme}
-              horizon={overviewSource === "milp" ? planning.query?.horizon ?? horizon : horizon}
-              planning={overviewSource === "milp" ? planning : undefined}
-              supplyTarget={supplyTarget}
-              onSupplyChanged={planning.refresh}
-            />
+            <SupplyLedger planning={planning} selectedDay={supplyTarget?.day} />
           )}
 
           {page === "vessels" && (
             <VesselTracking
+              berthFeed={demo.status === "disabled" ? berthFeed : undefined}
+              pageNavigation={<button onClick={()=>navigate('berth')}>접안·하역 배치<ArrowRight size={14}/></button>}
               plants={plants}
               theme={theme}
               scenario={applied}
@@ -981,7 +921,7 @@ function App() {
           {page === "models" && (
             <ModelsPage models={models} onModels={setModels} theme={theme} />
           )}
-          {page === "data" && <><MemberManagement /><DataPage plants={selectedPlants} onResult={(run) => {
+          {page === "data" && <><section className="gf-demo-data" aria-label="운전 데모 설정"><div><strong>운전 데모</strong><p>실제 운전 정보와 분리된 모사 데이터를 연결합니다.</p></div><div className="gf-demo-data-actions"><label className="gf-stream-toggle"><input aria-label="운전 데모 연결" type="checkbox" checked={demoEnabled} onChange={e=>onDemoEnabled(e.target.checked)}/><span>데모 연결</span><span className="gf-stream-state" aria-live="polite">{{disabled:'꺼짐',connecting:'연결 중',online:'수신 중',stale:'수신 지연',disconnected:'끊김'}[demo.status]}</span></label><a className="gf-control-link" href="#demo-control" target="_blank" rel="noopener"><Settings2 size={16}/><span>조작반 열기</span></a></div></section><DataPage plants={selectedPlants} initialTab={dataInitialTab} onResult={(run) => {
             planning.setQuery(initialPlanningQuery({ ...run, name: "", period: `${run.start} ~ ${run.end}` }));
             planning.refresh(); setOverviewSource("milp"); navigate("overview");
           }} /></>}
@@ -1192,14 +1132,14 @@ function App() {
               </Panel>
             </>
           )}
-          {!isMilpOverview && (
+          {!isMilpOverview && (!ownHeading || page === "vessels") && ["overview","fuel","vessels","schedule","scenario","models"].includes(page) && (
             <footer className="page-footer">
               <span>
                 <Layers3 size={13} />
-                {isBackendSupplyView ? "DB 수급 · Pile 표본" : page === "vessels" ? "선박별 관측·예보 기준 · KST" : "샘플 데이터 기반 운영 시뮬레이션"}
+                {isBackendSupplyView ? "기준재고 · 수급 전망" : page === "vessels" ? "선박별 관측·예보 기준 · KST" : "계획 및 운영 정보"}
               </span>
               <span>
-                {isBackendSupplyView ? "계획 시점의 DB 수급과 SIMULATED Pile을 구분합니다." : page === "vessels" ? "시연 표본은 별도 표시" : "시연 기준시각 고정 · 실제 운전 및 정지계획과 다를 수 있습니다."}
+                {isBackendSupplyView ? "기준재고와 발전계획의 기준시점을 확인하세요." : page === "vessels" ? "선박별 관측 시각 확인" : "계획과 실시간 운전 정보의 기준시각을 확인하세요."}
               </span>
               <button onClick={() => setHelpOpen(true)}>
                 산정 기준
@@ -1355,7 +1295,7 @@ function App() {
                 <h3>ETA와 항로 통과 예보</h3>
                 <p>기본 ETA는 선박 관측시각·속도와 예상 잔여 항로를 기준으로 계산합니다. 기상은 예보 발표·조회시각과 항로 통과 예상시각을 구분하며, 보정 ETA는 시연용 추정값입니다.</p>
                 <h3>시연 표본의 고정 날짜</h3>
-                <p>시연 표본은 2026.10.06 09:00 KST 기준의 합성 데이터입니다. 실제 관측으로 갱신하지 않으며, 선박별 출처에서 구분합니다.</p>
+                <p>시연 데이터는 2026.10.06 09:00 KST 기준입니다. 실제 관측으로 갱신하지 않으며, 선박별 출처에서 구분합니다.</p>
               </div>
             ) : isBackendSupplyView ? (
               <div className="help-copy">

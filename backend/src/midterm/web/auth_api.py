@@ -18,6 +18,9 @@ DEFAULT_ORIGINS = {f'http://{host}:{port}' for host in ('127.0.0.1', 'localhost'
 PUBLIC = {'/api/auth/bootstrap-status', '/api/auth/csrf', '/api/auth/session', '/api/auth/register', '/api/auth/login', '/api/auth/logout'}
 LIMITED = {'/api/auth/password'}
 READ_POST = {'/api/vessels/destinations/resolve', '/api/supply/forecast', '/api/outages/parse'}
+REGISTRY_WRITES = {('/api/voyage-registry/' + action, 'POST') for action in
+                   ('preview', 'commit', 'excel/preview', 'excel/commit',
+                   'inventory/receipts', 'inventory/balance', 'inventory/reconcile', 'inventory/baseline', 'receipt-plans', 'blend/recommend', 'blend/baseline-recommend')}
 ADMIN_WRITES = {('/api/settings', 'PUT'), ('/api/fuel-settings', 'PUT'), ('/api/run', 'POST'), ('/api/preview', 'POST'),
                 ('/api/supply/baselines', 'POST'), ('/api/supply/vessels', 'POST'), ('/api/supply/transfers', 'POST'),
                 ('/api/supply/config', 'PUT'), ('/api/supply/plans', 'POST'),
@@ -119,7 +122,8 @@ def install_access(app, store=None, origins=None, secure=None):
             request.state.session = session
             expected_account = request.headers.get('x-account-id')
             if session and ((expected_account and expected_account != session['user']['id']) or
-                            (path == '/api/me/vessel-workspace' and not expected_account)):
+                            ((path == '/api/me/vessel-workspace' or
+                              path.startswith('/api/voyage-registry/') and request.method == 'POST') and not expected_account)):
                 raise AccessError(403, 'account_changed', '다른 창에서 계정이 변경되었습니다. 다시 로그인해 주세요.')
             if path not in PUBLIC:
                 if not session:
@@ -136,7 +140,7 @@ def install_access(app, store=None, origins=None, secure=None):
                 if origin not in allowed or not await run_in_threadpool(db.check_csrf, request.cookies.get(CSRF_COOKIE), request.headers.get('x-csrf-token'), token):
                     raise AccessError(403, 'csrf_failed', '요청 확인 정보가 만료되었습니다. 다시 시도해 주세요.')
                 if path not in PUBLIC and path not in LIMITED:
-                    user_write = path in READ_POST and request.method == 'POST' or path == '/api/me/vessel-workspace' and request.method == 'PUT' or bool(re.fullmatch(r'/api/vessels/tracking/[^/]+', path)) and request.method == 'PUT' or path == '/api/auth/reauthenticate' and request.method == 'POST'
+                    user_write = (path, request.method) in REGISTRY_WRITES or path in READ_POST and request.method == 'POST' or path == '/api/me/vessel-workspace' and request.method == 'PUT' or bool(re.fullmatch(r'/api/vessels/tracking/[^/]+', path)) and request.method == 'PUT' or path == '/api/auth/reauthenticate' and request.method == 'POST'
                     admin_write = (path, request.method) in ADMIN_WRITES or bool(re.fullmatch(r'/api/supply/vessels/[^/]+/(unloading|schedule)', path)) and request.method in ('POST', 'PUT') or bool(re.fullmatch(r'/api/admin/users/[^/]+/actions', path)) and request.method == 'POST'
                     if not user_write and not (admin_write and session['user']['role'] == 'admin'):
                         raise AccessError(403, 'write_forbidden', '이 변경에는 관리자 권한이 필요하거나 지원되지 않는 요청입니다.')

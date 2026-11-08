@@ -1,0 +1,42 @@
+.gf-stock-conditions { min-width: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--card); color: var(--foreground); }
+.gf-stock-conditions-heading { display: flex; align-items: center; gap: 12px; padding: 16px 20px; }
+.gf-stock-conditions-heading > svg { color: var(--data-blue); flex-shrink: 0; }
+.gf-stock-conditions-heading > div { flex: 1; min-width: 0; }
+.gf-stock-conditions h3, .gf-stock-conditions h4, .gf-stock-conditions p { margin: 0; }
+.gf-stock-conditions h3 { font-size: 14px; font-weight: 600; }
+.gf-stock-conditions-heading p, .gf-stock-conditions-note, .gf-stock-conditions-actions p { font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
+.gf-stock-conditions-heading .is-open { transform: rotate(180deg); }
+.gf-stock-conditions-content { padding: 0 20px 20px; }
+.gf-stock-conditions-basis { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 16px 0; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; }
+.gf-stock-conditions-basis span { color: var(--muted-foreground); }
+.gf-stock-conditions fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.gf-stock-conditions-yards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.gf-stock-conditions-yard h4 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 12px; font-size: 15px; font-weight: 600; }
+.gf-stock-conditions-yard h4 span { font-size: 12px; color: var(--muted-foreground); font-weight: 400; }
+.gf-stock-conditions label { display: block; margin-bottom: 12px; font-size: 13px; }
+.gf-stock-conditions label > span { float: right; color: var(--muted-foreground); font-size: 12px; }
+.gf-stock-conditions input { display: block; width: 100%; min-width: 0; min-height: 44px; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); font-size: 15px; font-variant-numeric: tabular-nums; }
+.gf-stock-conditions input:focus-visible { outline: 2px solid var(--data-blue); outline-offset: 2px; }
+.gf-stock-conditions input:disabled { opacity: .65; }
+.gf-stock-conditions-quality { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); gap: 24px; padding-top: 16px; margin-top: 4px; border-top: 1px solid var(--border); }
+.gf-stock-conditions-quality h4 { font-size: 14px; font-weight: 600; }
+.gf-stock-conditions-quality p { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
+.gf-stock-conditions-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 8px; }
+.gf-stock-conditions-actions button { min-height: 44px; }
+.gf-stock-conditions-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; color: var(--destructive); font-size: 13px; }
+.gf-stock-conditions-yard dl { margin: 0 0 16px; }
+.gf-stock-conditions-yard dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 0; }
+.gf-stock-conditions-yard dt { font-size: 13px; color: var(--muted-foreground); }
+.gf-stock-conditions-yard dd { margin: 0; text-align: right; font-size: 16px; font-variant-numeric: tabular-nums; }
+.gf-stock-conditions-yard small { display: block; font-size: 12px; color: var(--muted-foreground); }
+@media (max-width: 1100px) {
+  .gf-stock-conditions-quality { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gf-stock-conditions-quality > div { grid-column: 1 / -1; }
+  .gf-stock-conditions-yards { gap: 16px; }
+}
+@media (max-width: 700px) {
+  .gf-stock-conditions-heading { flex-wrap: wrap; }
+  .gf-stock-conditions-heading > div { flex-basis: calc(100% - 32px); }
+  .gf-stock-conditions-yards, .gf-stock-conditions-quality { grid-template-columns: minmax(0, 1fr); }
+  .gf-stock-conditions-actions { align-items: stretch; flex-direction: column; gap: 12px; }
+}

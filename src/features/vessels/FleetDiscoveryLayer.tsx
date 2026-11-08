@@ -105,7 +105,7 @@ export function FleetDiscoveryLayer({ map, revision, theme, options, statusTarge
     setClusterNotice('');
     if (f.properties.kind === 'cluster') {
       if (map.getZoom() >= 17.99) setClusterNotice('최대 확대에서도 선박이 밀집해 있습니다. 관심 선박 구성 → 실제 AIS 검색에서 선박명·MMSI로 조회해 주세요.');
-      else map.easeTo({ center: f.geometry.coordinates as [number, number], zoom: Math.min(18, map.getZoom() + 2), duration: 350 });
+      else map.easeTo({ center: f.geometry.coordinates as [number, number], zoom: Math.min(18, map.getZoom() + 2), duration: 350 }, { userCamera: true });
     } else setSelected(f.properties.mmsi!);
   }
   const chooseRef = useRef(choose); chooseRef.current = choose;

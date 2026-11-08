@@ -65,9 +65,9 @@ export function VesselSearchDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm">
+        <Button size="sm" className="vessel-interest-manage" aria-label="관심 선박 구성" title="관심 선박 구성">
           <ListChecks size={14} aria-hidden="true" />
-          관심 선박 구성
+          <span>구성</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="vessel-workflow-dialog vessel-discovery-dialog">
@@ -202,7 +202,7 @@ export function VesselSearchDialog({
                       </span>
                       <small>
                         {v.source === "demo"
-                          ? "합성 표본 · 실제 선박 아님"
+                          ? "시연 자료 · 실제 선박 아님"
                           : v.ais
                             ? `${vesselSourceLabel(v)} · 저장된 관측`
                             : "직접 등록 · 위치 미수신"}

@@ -83,7 +83,9 @@ export function Stockyard({
   onSupplyChanged,
   planning,
   supplyTarget,
+  view,
 }: {
+  view?: "analysis";
   plants: Plant[];
   theme: string;
   /** 앱 공통 전망 기간 (30/60/90일). */
@@ -363,7 +365,7 @@ export function Stockyard({
   const alerts = useMemo(
     () => [
       ...stockyardAlerts({ forecasts: planning ? [] : forecasts, piles, vessels, transferOver, names }),
-      ...(planning ? [{ level: "info" as const, text: planning.failed || (planning.loading || planning.listLoading ? "DB 수급 조회 중" : planning.current ? `DB 수급 ${planning.current.start} · ${planning.current.horizon_days}일 · 더미 표본 미연계` : "DB 수급 미연계"), target: null }] : []),
+      ...(planning ? [{ level: "info" as const, text: planning.failed || (planning.loading || planning.listLoading ? "DB 수급 조회 중" : planning.current ? `DB 수급 ${planning.current.start} · ${planning.current.horizon_days}일 · 시연 구역 미연계` : "DB 수급 미연계"), target: null }] : []),
     ],
     [forecasts, piles, vessels, transferOver, names, planning?.current, planning?.failed, planning?.loading, planning?.listLoading],
   );
@@ -396,7 +398,7 @@ export function Stockyard({
       label: "운영 더미",
       value: piles.length,
       unit: "개",
-      note: `${groups.length}개 처·발전소${planning ? " · 더미 표본" : ""}`,
+      note: `${groups.length}개 처·발전소${planning ? " · 시연 구역" : ""}`,
       action: "원장으로 이동",
       onClick: () => scrollToRef(ledgerRef),
     },
@@ -446,7 +448,7 @@ export function Stockyard({
 
   const links: LinkChip[] = [
     {
-      label: live.source === "aisstream" ? "AIS 실시간" : "AIS 더미",
+      label: live.source === "aisstream" ? "AIS 실시간" : "AIS 시연",
       status:
         live.source === "aisstream"
           ? "online"
@@ -456,7 +458,7 @@ export function Stockyard({
       detail:
         live.source === "aisstream"
           ? "GET /api/v1/vessels · MMSI 일치 항차에 위치 반영"
-          : `GET /api/v1/vessels · ${ais.status === "online" ? "일치 MMSI 없음" : ais.error || "확인 중"} · 더미 표본 사용`,
+          : `GET /api/v1/vessels · ${ais.status === "online" ? "일치 MMSI 없음" : ais.error || "확인 중"} · 시연 자료 사용`,
     },
     {
       label:
@@ -511,6 +513,12 @@ export function Stockyard({
     () => ledgerRows(piles, plants, blend, attributions, horizon),
     [piles, plants, blend, attributions, horizon],
   );
+
+  if (view === 'analysis') return <div className="tower-page stockyard-page gf-blend-workspace">
+    <p className="gf-source-notice">원탄·소진량은 시연 자료입니다. 실제 배합 성상과 투입 지시는 아직 연결되지 않았습니다.</p>
+    <StockyardAnalysis theme={theme} tab={analysisTab} onTab={setAnalysisTab} blend={blend} groups={groups} piles={piles} heapName={nameOf} onSelectPile={id=>setSelection({kind:'pile',id})}/>
+    {activePile && <Section title={nameOf(activePile)} note="선택한 원탄 · 시연"><PileDetail pile={activePile} entries={historyForPile(activePile, attributions, horizon)} eligibleNames={eligibleNames(activePile)}/></Section>}
+  </div>;
 
   return (
     <div
@@ -787,6 +795,7 @@ export function Stockyard({
           groups={inventory}
           baseline={baseline}
           planning={planning ? planning.current : undefined}
+          selectedDay={supplyTarget?.section === "forecast" ? supplyTarget.day : undefined}
           db={Boolean(planning)}
           transfersActive={!planning && allTransfers.length > 0}
           onSelectGroup={(g) =>

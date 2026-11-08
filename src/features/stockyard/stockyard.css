@@ -2212,3 +2212,5 @@
     margin-left: 0;
   }
 }
+.stockyard-selected-day { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 11px 13px; margin-bottom: 12px; background: var(--muted); border-radius: 8px; font-size: 12px; color: var(--muted-foreground); }
+.stockyard-selected-day strong, .stockyard-selected-day b { color: var(--foreground); font-weight: 600; }

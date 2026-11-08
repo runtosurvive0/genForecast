@@ -34,7 +34,7 @@ export function ModelsPage({
     <div className="tower-page">
       <Section
         title="예측 실험"
-        note="고정 합성 시계열을 사용한 로컬 기준모델 · 실제 계통 예측 성능을 의미하지 않습니다"
+        note="시연 시계열을 사용한 로컬 기준모델 · 실제 계통 예측 성능을 의미하지 않습니다"
       >
         <div className="model-controls">
           <label>
@@ -73,7 +73,7 @@ export function ModelsPage({
       <ModelCard model={models.peak} theme={theme} />
       <Section
         title="90일 모델 출력"
-        note="지역별 실측 모델이 아닌 합성 계통 시계열 · 발전소 선택은 발전량 배분에 적용"
+        note="지역별 실측 모델이 아닌 시연 계통 시계열 · 발전소 선택은 발전량 배분에 적용"
       >
         <TowerChart
           theme={theme}

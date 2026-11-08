@@ -13,6 +13,8 @@ import type { WeatherEta } from "./vessel-weather-eta";
 import type { ForecastState } from "./vessel-weather";
 import { etaDate } from "./VesselEtaDetail";
 import { vesselSourceLabel } from "./vessel-source";
+import type { BerthRegistry, Observation } from "@/domain/berth-ais";
+import { berthDisplay } from "./vessel-berth-display";
 
 export function VesselArrivalSummary({
   vessel,
@@ -23,6 +25,9 @@ export function VesselArrivalSummary({
   forecast,
   unverifiedConnection,
   onShowBasis,
+  berthObservation,
+  registry,
+  observationLoading = false,
 }: {
   vessel: TrackingVessel;
   voyage?: TrackingVoyage;
@@ -32,10 +37,15 @@ export function VesselArrivalSummary({
   forecast?: ForecastState;
   unverifiedConnection?: boolean;
   onShowBasis: () => void;
+  berthObservation?: Observation;
+  registry?: BerthRegistry | null;
+  observationLoading?: boolean;
 }) {
+  const berth = berthDisplay(vessel, berthObservation, registry ?? null, now);
   const registered = voyage ? estimateArrival(voyage) : undefined;
   const baseline = basic ? basic.eta : registered?.eta;
   const eta = weather?.eta ?? baseline;
+  const loadingArrival = observationLoading && !berth && !eta;
   const position = vessel.ais?.position ?? voyage?.position;
   const distance = basic ? basic.distanceNm : voyage?.distanceNm;
   const speed = position?.sogKn;
@@ -43,7 +53,7 @@ export function VesselArrivalSummary({
     speed != null && Number.isFinite(speed) && speed >= 0 && speed < 102.3;
   const source =
     vessel.source === "demo"
-      ? "합성 표본 · 실제 운영 정보 아님"
+      ? "시연 자료 · 실제 운영 정보 아님"
       : vessel.source === "digitraffic"
         ? "Digitraffic · 핀란드"
         : vessel.ais
@@ -56,7 +66,13 @@ export function VesselArrivalSummary({
       : registered?.method === "actual"
         ? "등록 입항 시각"
         : "등록 가정 전망";
-  const reason = !position
+  const reason = berth
+    ? berth.observation.stale
+      ? "부두 인근의 마지막 위치입니다. 현재 접안 여부와 실제 시각은 확인이 필요합니다."
+      : berth.observation.estimated
+        ? "AIS 위치와 저속을 기준으로 접안을 추정합니다."
+        : "부두 인근에서 관측됐으나 접안 여부는 확인이 필요합니다."
+    : !position
     ? "실시간 위치 미수신 · 위치를 수신하면 지도에 표시합니다."
     : basic && basic.state !== "ready"
       ? basic.reason
@@ -80,24 +96,24 @@ export function VesselArrivalSummary({
       <h2 className="sr-only">도착 전망</h2>
       <div className="vessel-arrival-metrics">
         <Metric
-          label="입항 전망 · KST"
+          label={loadingArrival ? "도착 상태 확인 중" : berth ? `${berth.actualLabel ?? "부두 인근 상태"} · KST` : "입항 전망 · KST"}
           value={
             <span className="vessel-eta-primary">
-              {eta
+              {loadingArrival ? <span className="gf-voyage-skeleton" role="status" aria-label="정보 불러오는 중" /> : berth ? berth.actual ? etaDate(berth.actual) : berth.observation.stale ? "마지막 위치 · 확인 필요" : berth.observation.estimated ? "AIS 접안 추정" : "접안 판별 대기" : eta
                 ? etaDate(eta)
                 : basic?.state === "blocked"
                   ? "ETA 계산 보류"
                   : "ETA 계산 전"}
             </span>
           }
-          note={method}
+          note={loadingArrival ? "AIS 정보를 불러오고 있습니다." : berth ? berth.actual ? "공용 항차 원장에 등록된 시각" : "실제 입항·접안 시각 미확인" : method}
         />
         <div className="vessel-eta-baseline">
           <Metric
-            label={basic ? "기상으로 추가되는 시간" : "등록 계획 대비"}
+            label={berth ? "마지막 AIS 관측 · KST" : basic ? "기상으로 추가되는 시간" : "등록 계획 대비"}
             value={
               <span className="vessel-weather-eta-delay">
-                {basic
+                {loadingArrival ? <span className="gf-voyage-skeleton" role="status" aria-label="정보 불러오는 중" /> : berth ? etaDate(berth.observation.observedAt) : basic
                   ? weather?.delayH == null
                     ? "미확정"
                     : `+${n(weather.delayH, 1)}`
@@ -107,12 +123,12 @@ export function VesselArrivalSummary({
               </span>
             }
             unit={
-              (basic ? weather?.delayH : registered?.deltaH) != null
+              !loadingArrival && !berth && (basic ? weather?.delayH : registered?.deltaH) != null
                 ? "h"
                 : undefined
             }
             note={
-              weather?.eta
+              loadingArrival ? "정보 확인 중" : berth ? "관측 시각 · 도착 시각 아님" : weather?.eta
                 ? `기본 ETA ${etaDate(baseline)}`
                 : basic
                   ? "사용 가능한 예보 구간 기준"
@@ -123,7 +139,7 @@ export function VesselArrivalSummary({
         <div className="vessel-arrival-facts">
           <Metric
             label="관측 속도"
-            value={validSpeed ? `${n(speed, 1)} ` : "미수신"}
+            value={validSpeed ? `${n(speed, 1)} ` : loadingArrival ? <span className="gf-voyage-skeleton" role="status" aria-label="정보 불러오는 중" /> : "미수신"}
             unit={validSpeed ? "kn" : undefined}
             note={`${basic ? "예상" : "등록"} 잔여거리 ${distance == null ? "미확정" : `${n(distance)} nm`}`}
           />
@@ -142,7 +158,7 @@ export function VesselArrivalSummary({
       >
         <Info size={14} aria-hidden="true" />
         <p>
-          {reason}
+          {loadingArrival ? "AIS 정보를 확인하고 있습니다." : reason}
           {basic?.state === "ready" &&
             unverifiedConnection &&
             " 출발 연결 구간은 직선 거리 가정이며 실제 항해 경로는 미확인입니다."}
@@ -154,7 +170,7 @@ export function VesselArrivalSummary({
       </div>
       <div className="vessel-arrival-source">
         <span>{source}</span>
-        {position && (
+        {position && !berth && (
           <span>마지막 관측 {etaDate(position.observedAt)} KST</span>
         )}
       </div>

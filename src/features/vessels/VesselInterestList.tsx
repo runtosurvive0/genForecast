@@ -73,7 +73,7 @@ export function VesselInterestList({
             </span>
             <span className="vessel-manager-source">
               {vessel.source === "demo"
-                ? "합성 표본"
+                ? "시연 자료"
                 : vessel.source === "manual"
                   ? "직접 등록"
                   : vessel.source === "digitraffic"

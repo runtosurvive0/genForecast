@@ -1,0 +1,452 @@
+/* Operating workspace follows the yard's 12px panel rhythm and neutral surfaces. */
+.gen4cast-app[data-page="vessels"] .page-footer {
+  min-height: 32px;
+  padding: 8px 0;
+  font-size: 11px;
+}
+.gen4cast-app[data-page="vessels"] .page-footer > span:nth-child(2),
+.gen4cast-app[data-page="vessels"] .page-footer button {
+  font-size: 11px;
+}
+.gf-voyages.vessel-workflow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  font-size: 12px;
+}
+.gf-voyages-heading,
+.gf-voyages-heading > div,
+.gf-voyages-navigation {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.gf-voyages-heading {
+  min-height: 44px;
+  justify-content: space-between;
+}
+.gf-voyages-top { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.gf-voyages-related button { display:inline-flex; align-items:center; gap:6px; border:0; background:transparent; color:var(--muted-foreground); cursor:pointer; padding:8px; }
+.gf-voyages-navigation { border-bottom:1px solid var(--border); }
+.gf-voyages-heading h1 {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+.gf-voyages-heading p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.gf-voyages-navigation {
+  gap: 3px;
+  flex: none;
+  max-width: 100%;
+}
+.gf-voyages-navigation button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  background: transparent;
+  cursor: pointer;
+}
+.gf-voyages-navigation button[aria-current="page"] {
+  background: var(--card);
+  color: var(--primary);
+}
+.gf-voyages-navigation button:hover {
+  color: var(--primary);
+  background: var(--card);
+}
+.gf-voyages .vessel-workspace-heading {
+  align-items: center;
+}
+.gf-voyages .vessel-eta-workspace {
+  grid-template-columns: minmax(0, 1fr) 284px;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+  flex: 1;
+}
+.gf-voyages .vessel-watchlist-panel {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+  min-height: 0;
+}
+.gf-voyages .vessel-watchlist-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 160px;
+  padding: 0 10px 10px;
+}
+.gf-voyages .vessel-watchlist {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  align-content: start;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.gf-voyages .vessel-watchlist .shipment-card {
+  padding: 13px 10px;
+  border-radius: 8px;
+  gap: 8px;
+}
+.gf-voyages .vessel-watchlist .shipment-card + .shipment-card {
+  border-top: 1px solid var(--border);
+}
+.gf-voyages .vessel-watchlist .shipment-card.selected {
+  background: var(--accent);
+  color: var(--primary);
+}
+.gf-voyages .vessel-watchlist .shipment-card strong {
+  font-size: 13px;
+  line-height: 1.4;
+}
+.gf-voyages-list-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gf-voyages-list-meta > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.gf-voyages-list-meta > span:last-child {
+  flex: none;
+}
+.gf-voyages .vessel-eta-map-column {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  min-height: 0;
+}
+.gf-voyages .vessel-map-command-bar {
+  align-items: center;
+  padding: 0;
+  gap: 16px;
+}
+.gf-voyages-selected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+  min-width: 0;
+}
+.gf-voyages-selected > svg {
+  flex: none;
+  stroke-width: 1.5;
+  color: var(--muted-foreground);
+}
+.gf-voyages-selected strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.gf-voyages-selected small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.gf-voyages .vessel-arrival-panel {
+  margin: 0;
+  padding: 16px 20px 12px;
+  border-radius: 12px;
+  background: var(--card);
+}
+.gf-voyages .vessel-arrival-metrics {
+  gap: 20px;
+  grid-template-columns: 1.25fr 1fr 0.85fr;
+}
+.gf-voyages .vessel-arrival-metrics > div + div {
+  border-left: 1px solid var(--border);
+  padding-left: 20px;
+}
+.gf-voyages .vessel-arrival-metrics .tower-metric strong,
+.gf-voyages .vessel-arrival-metrics .vessel-eta-primary {
+  font-size: 25px;
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+.gf-voyages .vessel-arrival-insight {
+  margin-top: 10px;
+}
+.gf-voyages .vessel-arrival-source {
+  font-size: 11px;
+}
+.gf-voyages .vessel-map-stage {
+  flex: 1;
+  display: flex;
+  min-height: 320px;
+}
+.gf-voyages .vessel-map {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.gf-voyages .vessel-map-embedded .vessel-map-canvas {
+  flex: 1;
+  min-height: 280px;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.gf-voyages .vessel-map-context:empty {
+  display: none;
+}
+.gf-voyages .vessel-map-context {
+  padding-bottom: 0;
+}
+.gf-voyages .vessel-map-bottom {
+  flex: none;
+}
+.gf-voyages .vessel-data-details {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--card);
+}
+.gf-voyages .vessel-data-details > summary {
+  padding: 12px 16px;
+}
+.gf-voyages .vessel-data-details > [data-slot="tabs"] {
+  padding: 0 18px 18px;
+}
+.gf-voyages-cargo {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: 16px;
+}
+.gf-shared-voyages { border-top: 1px solid var(--border); padding: 12px 18px; }
+.gf-shared-voyages header, .gf-shared-voyages li button { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gf-shared-voyages h2 { font-size: 13px; font-weight: 600; margin: 0; }
+.gf-shared-voyages header button, .gf-shared-voyages li button { border: 0; background: transparent; color: inherit; cursor: pointer; }
+.gf-shared-voyages header button, .gf-shared-voyages li button > span:last-child { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-foreground); font-size: 11px; }
+.gf-shared-voyages p { margin: 8px 0 0; color: var(--muted-foreground); font-size: 12px; }
+.gf-shared-voyages ul { list-style: none; margin: 6px 0 0; padding: 0; max-height: 132px; overflow-y: auto; }
+.gf-shared-voyages li button { width: 100%; text-align: left; padding: 7px 0; }
+.gf-shared-voyages li button > span:first-child { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.gf-shared-voyages li strong { font-size: 12px; white-space: nowrap; }
+.gf-shared-voyages li small { color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gf-shared-voyages button:hover { color: var(--primary); }
+.gf-shared-voyages button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.gf-voyages-cargo header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gf-voyages-cargo header svg {
+  color: var(--muted-foreground);
+  stroke-width: 1.5;
+}
+.gf-voyages-cargo h2 {
+  font-size: 13px;
+  font-weight: 550;
+  margin: 0;
+}
+.gf-voyages-cargo header > span {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.gf-voyages-cargo-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 12px;
+}
+.gf-voyages-cargo-route span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.gf-voyages-cargo-route svg {
+  flex: none;
+  color: var(--muted-foreground);
+}
+.gf-voyages-cargo dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 12px;
+  margin: 0;
+}
+.gf-voyages-cargo dt {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+.gf-voyages-cargo dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.gf-voyages-cargo dl > div:nth-child(-n + 2) dd {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.gf-voyages-cargo small {
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted-foreground);
+}
+.gf-voyages-cargo p {
+  margin: 14px 0 0;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+}
+@media (min-width: 1500px) and (min-height: 850px) {
+  .gf-voyages.vessel-workflow {
+    height: calc(100dvh - 142px);
+    min-height: 740px;
+  }
+  .gf-voyages:has(.vessel-data-details[open]) {
+    height: auto;
+  }
+  .gf-voyages:has(.vessel-data-details[open]) .vessel-map-stage {
+    min-height: 490px;
+  }
+}
+@media (max-width: 1499px), (max-height: 849px) {
+  .gf-voyages .vessel-map-stage {
+    min-height: 0;
+    flex: none;
+  }
+  /* Selection notices and changing list length must not resize/reframe the globe. */
+  .gf-voyages .vessel-map-embedded .vessel-map-canvas {
+    height: clamp(400px, 56vh, 600px);
+    flex: none;
+  }
+  .gf-voyages .vessel-watchlist {
+    max-height: 540px;
+  }
+  .gf-voyages-heading > div {
+    display: block;
+  }
+  .gf-voyages-heading p {
+    margin-top: 5px;
+  }
+}
+@media (max-width: 1200px) {
+  .gf-voyages .vessel-eta-workspace {
+    grid-template-columns: minmax(0, 1fr) 250px;
+  }
+  .gf-voyages-heading {
+    flex-wrap: wrap;
+  }
+  .gf-voyages .vessel-map-command-bar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .gf-voyages-selected {
+    flex-basis: 100%;
+  }
+  .gf-voyages .vessel-arrival-metrics {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .gf-voyages .vessel-arrival-metrics > .vessel-arrival-facts {
+    grid-column: 1/-1;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding: 10px 0 0;
+  }
+  .gf-voyages .vessel-arrival-facts .tower-metric {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .gf-voyages .vessel-arrival-metrics .tower-metric strong,
+  .gf-voyages .vessel-arrival-metrics .vessel-eta-primary {
+    font-size: 22px;
+  }
+  .gf-voyages .vessel-arrival-insight {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 900px) {
+  .gf-voyages .vessel-map-embedded .vessel-map-canvas {
+    height: clamp(320px, 50vh, 460px);
+  }
+  .gf-voyages .vessel-eta-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gf-voyages .vessel-watchlist-panel,
+  .gf-voyages .vessel-eta-map-column {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .gf-voyages .vessel-watchlist-toggle {
+    padding: 14px 16px;
+  }
+  .gf-voyages .vessel-watchlist-content {
+    min-height: 0;
+  }
+  .gf-voyages .vessel-watchlist {
+    max-height: 220px;
+  }
+  .gf-voyages .vessel-watchlist-panel[data-collapsed="true"] .gf-voyages-cargo {
+    display: none;
+  }
+  .gf-voyages .vessel-map-command-bar {
+    flex-wrap: nowrap;
+  }
+  .gf-voyages-selected {
+    flex-basis: auto;
+  }
+}
+@media (max-width: 650px) {
+  .gf-voyages .vessel-workspace-heading {
+    flex-wrap: wrap;
+  }
+  .gf-voyages .vessel-map-command-bar {
+    flex-wrap: wrap;
+  }
+  .gf-voyages-selected {
+    flex-basis: 100%;
+  }
+  .gf-voyages-navigation {
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .gf-voyages-navigation button {
+    padding-inline: 8px;
+  }
+  .gf-voyages .vessel-arrival-panel {
+    padding: 14px;
+  }
+  .gf-voyages .vessel-arrival-metrics {
+    gap: 12px;
+  }
+  .gf-voyages .vessel-arrival-metrics > div + div {
+    padding-left: 12px;
+  }
+}

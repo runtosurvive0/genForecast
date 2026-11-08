@@ -1,41 +1,23 @@
-/* Linear's 2026 refresh principles: quiet navigation, fewer containers,
-   consistent header actions, and restrained color. Existing shell dimensions stay. */
+/* gen4cast application tokens; the approved operating shell is defined in components/operations-shell. */
 :root {
-  --background: #fcfcfb;
-  --foreground: #27272b;
-  --card: #fcfcfb;
-  --primary: #5c61b6;
-  --primary-foreground: #fff;
-  --secondary: #f0f0ef;
-  --muted: #f3f3f2;
-  --muted-foreground: #75757c;
-  --accent: #ededed;
-  --border: #e7e7e5;
-  --destructive: #bb5555;
-  --teal-soft: #f0f0f8;
-  --teal-ink: #565ba8;
-  --amber: #956319;
-  --amber-soft: #faf4e9;
-  --sidebar: #f5f5f4;
-  --shadow: none;
+  --brand-blue:#2447c5; --data-blue:var(--brand-blue);
+  --action:var(--brand-blue); --action-hover:#1d3cad; --ring:var(--primary);
+  --background:#edf1f6; --foreground:#172333; --card:#fff;
+  --primary:var(--brand-blue); --primary-foreground:#fff; --secondary:#e6edf6;
+  --muted:#e9eef5; --muted-foreground:#5a6a80; --accent:#e9f1ff;
+  --border:#d8e1ed; --destructive:#bb5555; --teal-soft:#edf4ff;
+  --teal-ink:var(--primary); --amber:#956319; --amber-soft:#faf4e9;
+  --sidebar:var(--brand-blue); --shadow:none;
+  font-family:Pretendard,'Malgun Gothic',system-ui,sans-serif;
 }
 .dark {
-  --background: #19191c;
-  --foreground: #e7e7ea;
-  --card: #19191c;
-  --primary: #a2a5ed;
-  --primary-foreground: #202137;
-  --secondary: #252528;
-  --muted: #222225;
-  --muted-foreground: #a1a1aa;
-  --accent: #2b2b30;
-  --border: #303034;
-  --destructive: #e99090;
-  --teal-soft: #292936;
-  --teal-ink: #afb1eb;
-  --amber: #dbb573;
-  --amber-soft: #332d23;
-  --sidebar: #151517;
+  --data-blue:#4f76e6;
+  --background:#17181b; --foreground:#eef0f4; --card:#222428;
+  --primary:#6b94ff; --primary-foreground:#17181b; --secondary:#2b2e34;
+  --muted:#2b2e34; --muted-foreground:#aaafb9; --accent:#222d4a;
+  --border:#373b44; --destructive:#e99090; --teal-soft:#222d4a;
+  --teal-ink:#6b94ff; --amber:#dbb573; --amber-soft:#332d23;
+  --sidebar:var(--brand-blue);
 }
 body {
   letter-spacing: -0.15px;

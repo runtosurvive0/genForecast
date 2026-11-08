@@ -5,6 +5,7 @@ import type { PlanningSnapshot } from "../../domain/planning";
 import type { SupplyTarget } from "../../domain/supply";
 import { fuelMetrics } from "./fuel-metrics";
 import { FuelSupplyOverview } from "./FuelSupplyOverview";
+import { ForecastDetails } from "./ForecastDetails";
 import "./fuel-dashboard.css";
 
 const fmt = (value: number | null, digits = 0) =>
@@ -55,11 +56,13 @@ export function FuelDashboard({
   theme,
   children,
   onSupplyTarget,
+  onSimulation,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
   children: ReactNode;
   onSupplyTarget: (target: SupplyTarget) => void;
+  onSimulation: () => void;
 }) {
   const metrics = fuelMetrics(s);
   const selectedMonth = (month: string) =>
@@ -71,11 +74,13 @@ export function FuelDashboard({
         snapshot={s}
         theme={theme}
         onSupplyTarget={onSupplyTarget}
+        onSimulation={onSimulation}
       />
+      <ForecastDetails title="연료 사용계획" note="일별·월별 사용량 · 발전량 비교 · 수치 내려보기">
       <div className="fuel-basis">
         <div>
           <Fuel size={17} aria-hidden="true" />
-          <strong>연료 대시보드</strong>
+          <strong>석탄 사용계획</strong>
           <span>당진 1~10호기 · 석탄 사용계획</span>
         </div>
         <div>
@@ -114,7 +119,7 @@ export function FuelDashboard({
             <div>
               <h2>일별 석탄 사용계획</h2>
               <p>
-                {s.start} ~ {s.end} · KST 00~24시 · MILP 발전계획의 톤 환산
+                {s.start} ~ {s.end} · KST 00~24시 · 발전계획을 석탄량으로 환산
               </p>
             </div>
             <span className="fuel-period-chip">{s.horizon_days}일</span>
@@ -286,6 +291,7 @@ export function FuelDashboard({
           </details>
         </section>
       </div>
+      </ForecastDetails>
       {children}
     </>
   );

@@ -5,7 +5,6 @@ import {
   ZoomableGroup,
   useMapContext,
 } from "react-simple-maps";
-import { MapDrawingOrb } from "./MapDrawingOrb";
 import {
   cycloneAt,
   metricText,
@@ -37,7 +36,6 @@ export type MapCanvasProps = Pick<
   | "navigationRoutes"
   | "weatherOverlay"
   | "weatherToolbar"
-  | "weatherBusy"
   | "fleetDiscovery"
 > & {
   visible: VesselMapProps["shipments"];
@@ -53,8 +51,6 @@ export function OfflineVesselCanvas({
   weatherPoints,
   weatherOverlay,
   weatherToolbar,
-  weatherBusy,
-  theme,
   navigationRoutes,
 }: MapCanvasProps) {
   const [view, setView] = useState(initialView);
@@ -181,7 +177,6 @@ export function OfflineVesselCanvas({
             })}
         </ZoomableGroup>
       </ComposableMap>
-      <MapDrawingOrb busy={!!weatherBusy} theme={theme} />
       <div className="vessel-map-toolbar" role="toolbar" aria-label="지도 도구">
         {weatherToolbar}
         <MapToolButton

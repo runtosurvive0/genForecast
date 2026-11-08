@@ -10,7 +10,7 @@ import { PasswordChange } from './AuthGate';
 export function AccountControls() {
   const account = useAccount();
   const [open, setOpen] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  if (!account) return <div className="top-avatar" title="오프라인 합성 시연">OP</div>;
+  if (!account) return <div className="top-avatar" title="오프라인 시연">OP</div>;
   return <><Button variant="ghost" size="icon" aria-label="내 계정" title={`${account.user.displayName} · ${account.user.role === 'admin' ? '관리자' : '회원'}`} onClick={() => setOpen(true)}><UserRound /></Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="gf-auth-account"><DialogHeader><DialogTitle>내 계정</DialogTitle><DialogDescription>{account.user.displayName} · {account.user.username} · {account.user.role === 'admin' ? '관리자' : '회원'}</DialogDescription></DialogHeader>
       {account.saving || account.error ? <p>관심 목록에 미저장 변경이 있습니다. 로그아웃 전에 저장 상태를 확인해 주세요.</p> : null}

@@ -19,6 +19,9 @@ import {
   type SupplyTarget,
 } from "../../domain/supply";
 import type { PlanningSnapshot } from "../../domain/planning";
+import { forecastSummary } from "./forecast-summary";
+import { ForecastFocus } from "./ForecastFocus";
+import { ForecastDetails } from "./ForecastDetails";
 
 const fmt = (value: number | null | undefined, digits = 0) =>
   value == null
@@ -121,7 +124,7 @@ function Models({
       value: gw(solarEnergy),
       unit: "GWh",
       label: "일 발전량",
-      note: "실적 기상·태양광 패턴 재생",
+      note: s.classification === "functional_demo" ? "계산에 사용한 기상·태양광 패턴" : "실적 기상·태양광 패턴 재생",
     },
     {
       name: "석탄 ML",
@@ -274,7 +277,7 @@ function GroupCards({ snapshot: s }: { snapshot: PlanningSnapshot }) {
                   </strong>
                   <p>
                     {g?.baseline
-                      ? `등록 기준 ${fmt(g.baseline.tonnes)} t`
+                      ? `${s.classification === 'functional_demo' ? '계산 기준' : '등록 기준'} ${fmt(g.baseline.tonnes)} t`
                       : "기준재고 미등록"}
                   </p>
                 </div>
@@ -306,7 +309,7 @@ function GroupCards({ snapshot: s }: { snapshot: PlanningSnapshot }) {
                   </strong>
                 </div>
                 <div>
-                  <span>등록 기준 대비</span>
+                  <span>{s.classification === 'functional_demo' ? '계산 기준 대비' : '등록 기준 대비'}</span>
                   <strong>
                     <NumberWithUnit value={g?.delta} />
                   </strong>
@@ -362,7 +365,7 @@ function GroupCards({ snapshot: s }: { snapshot: PlanningSnapshot }) {
               </div>
               <p className="tower-footnote">
                 {s.horizon_days}일 평균 · 호기별 t/h는{" "}
-                {fmt(s.fuel.calorific_kcal_kg)} kcal/kg 고정 기준. 처별 사용량은
+                {fmt(s.fuel.calorific_kcal_kg)} kcal/kg 고정 기준. 저탄장별 사용량은
                 혼합 열량 기준.
               </p>
               {(g?.stale || s.inventory.plan_stale) && (
@@ -380,7 +383,7 @@ function Flow({ snapshot: s }: { snapshot: PlanningSnapshot }) {
   return (
     <Panel
       title={`연료수급 흐름도 (${s.horizon_days}일)`}
-      note="DB 등록 입항·하역·배분 → 공통 수급 엔진 재고전망 → MILP 연료계획"
+      note={s.classification === 'functional_demo' ? '계산에 포함된 입항·하역·배분 → 재고 전망 → MILP 연료계획' : 'DB 등록 입항·하역·배분 → 공통 수급 엔진 재고전망 → MILP 연료계획'}
     >
       <div className="fuel-flow">
         <div className="fuel-flow-stage">
@@ -389,12 +392,12 @@ function Flow({ snapshot: s }: { snapshot: PlanningSnapshot }) {
           <strong>
             <NumberWithUnit value={k.arrivals} />
           </strong>
-          <span>등록 선박 {fmt(k.arrival_count)}척</span>
+          <span>{s.classification === 'functional_demo' ? '계산에 포함된 선박' : '등록 선박'} {fmt(k.arrival_count)}척</span>
         </div>
         <ArrowRight className="fuel-flow-arrow" aria-hidden="true" />
         <div className="fuel-flow-stage">
           <Anchor size={34} aria-hidden="true" />
-          <h3>하역 중</h3>
+          <h3>{s.classification === 'functional_demo' ? '계산상 하역' : '하역 중'}</h3>
           <strong>
             <NumberWithUnit value={k.unloading_remaining} />
           </strong>
@@ -402,7 +405,7 @@ function Flow({ snapshot: s }: { snapshot: PlanningSnapshot }) {
         </div>
         <ArrowRight className="fuel-flow-arrow" aria-hidden="true" />
         <div className="fuel-flow-stage">
-          <h3>처별 입하 배분</h3>
+          <h3>저탄장별 입하 배분</h3>
           {groups.map((group) => (
             <p key={group.id}>
               <i style={{ background: group.color }} />
@@ -424,7 +427,7 @@ function Flow({ snapshot: s }: { snapshot: PlanningSnapshot }) {
           <strong>
             <NumberWithUnit value={k.stock} />
           </strong>
-          <span>조회 시작시각 · DB 기준</span>
+          <span>{s.classification === 'functional_demo' ? '조회 시작시각 · 계산 기준' : '조회 시작시각 · DB 기준'}</span>
         </div>
         <ArrowRight className="fuel-flow-arrow" aria-hidden="true" />
         <div className="fuel-flow-stage">
@@ -520,30 +523,38 @@ export function FuelSupplyOverview({
   snapshot,
   theme,
   onSupplyTarget,
+  onSimulation,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
   onSupplyTarget: (target: SupplyTarget) => void;
+  onSimulation: () => void;
 }) {
+  const summary = forecastSummary(snapshot);
   return (
     <>
-      <header className="fuel-reference-header">
-        <div>
-          <span className="fuel-company">
-            <Factory size={24} aria-hidden="true" />
-            한국동서발전
-          </span>
-          <h2>
-            당진본부 연료수급 종합현황 <small>(POC)</small>
-          </h2>
-        </div>
-        <span>조회 기준 {snapshot.start} 00:00 KST</span>
-      </header>
-      <SupplyKpis snapshot={snapshot} onTarget={onSupplyTarget} />
-      <Models snapshot={snapshot} theme={theme} />
-      <GroupCards snapshot={snapshot} />
-      <Flow snapshot={snapshot} />
-      <Forecasts snapshot={snapshot} theme={theme} />
+      <section className="gf-forecast-summary" aria-label="발전·수급 전망 요약">
+        <div><span>기간 발전 계획</span><strong><NumberWithUnit value={summary.generation} unit="MWh" /></strong><small>{snapshot.horizon_days}일 계획 합계</small></div>
+        <div><span>기간 연료 사용계획</span><strong><NumberWithUnit value={summary.fuel} /></strong><small>발전계획 기반 · {snapshot.horizon_days}일</small></div>
+        <div><span>{summary.minimumStock && summary.minimumStock.tonnes < 0 ? "예상 최대 부족량" : "예상 최저 재고"}</span><strong><NumberWithUnit value={summary.minimumStock ? Math.abs(summary.minimumStock.tonnes) : null} /></strong><small>{summary.minimumStock ? `${summary.minimumStock.day} · 일말 계획 기준` : "전체 저탄장 일별 재고 확인 필요"}</small></div>
+      </section>
+      <ForecastFocus snapshot={snapshot} theme={theme} onSupplyTarget={onSupplyTarget} onSimulation={onSimulation} />
+      <section className="gf-forecast-units" aria-label="호기별 발전계획">
+        <header><h2>호기별 발전계획</h2><span>{snapshot.horizon_days}일 평균 출력 · 실제 출력 아님</span></header>
+        <div>{snapshot.units.map((unit) => {
+          const average = unit.generation_mwh === null || snapshot.horizon_days <= 0 ? null : unit.generation_mwh / (24 * snapshot.horizon_days);
+          return <div key={unit.unit_id}><span>{unit.unit_id.replace('dj-', '')}호기</span><strong>{fmt(average, 1)}{average !== null && <small> MW</small>}</strong><small>이용률 {unit.capacity_factor_pct == null ? '미확정' : `${fmt(unit.capacity_factor_pct, 1)}%`}</small></div>;
+        })}</div>
+      </section>
+      <ForecastDetails title="저탄장별 수급 상세" note="재고일수 · 입하 배분 · 호기별 사용량">
+        <SupplyKpis snapshot={snapshot} onTarget={onSupplyTarget} />
+        <Forecasts snapshot={snapshot} theme={theme} />
+        <GroupCards snapshot={snapshot} />
+        <Flow snapshot={snapshot} />
+      </ForecastDetails>
+      <ForecastDetails title="발전량 산정 근거" note="전국 수요 · 태양광 · 석탄 발전 전망">
+        <Models snapshot={snapshot} theme={theme} />
+      </ForecastDetails>
     </>
   );
 }

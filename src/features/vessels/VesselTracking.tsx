@@ -47,7 +47,7 @@ export function VesselTracking({
     <div className="tower-page">
       <div className="tower-context">
         <span>
-          더미 AIS · 수신시각 {fmtDate(BASE_TIME, true)} 전후의 고정 표본
+          시연 AIS · 수신시각 {fmtDate(BASE_TIME, true)} 전후의 고정 표본
         </span>
         <Button variant="outline" size="sm" onClick={() => setNow(Date.now())}>
           <RefreshCw size={13} />
@@ -63,7 +63,7 @@ export function VesselTracking({
       />
       <div className="tower-footnote">
         실시간 연결 없음 · 최신성은 현재 시각과 비교합니다. 지도 좌표는 마지막
-        더미 수신 위치이며 추정 이동을 표시하지 않습니다.
+        시연 수신 위치이며 추정 이동을 표시하지 않습니다.
       </div>
       <div className="vessel-cargo-list">
         {scoped.map((v) => (

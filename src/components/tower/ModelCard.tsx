@@ -15,8 +15,8 @@ export function ModelCard({
   return (
     <Section
       title={model.name + " 모델"}
-      note={model.version + " · 합성 데이터 / 선형 회귀"}
-      action={<span className="tower-tag">SYNTHETIC</span>}
+      note={model.version + " · 시연 데이터 / 선형 회귀"}
+      action={<span className="tower-tag">시연</span>}
     >
       <div className="model-metrics">
         <span>

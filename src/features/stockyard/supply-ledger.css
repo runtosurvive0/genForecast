@@ -1,0 +1,25 @@
+.gf-supply-ledger { display: grid; gap: 16px; }
+.gf-supply-ledger__section { padding: 20px; border-radius: 12px; background: var(--card); color: var(--foreground); }
+.gf-supply-ledger__section header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.gf-supply-ledger__section h2 { margin: 0; font-size: 15px; }
+.gf-supply-ledger__section header span, .gf-supply-ledger__section p { color: var(--muted-foreground); font-size: 12px; }
+.gf-supply-ledger__section > strong { display: block; margin-top: 16px; font-size: 24px; }
+.gf-supply-ledger__yards { display: flex; flex-wrap: wrap; gap: 20px 48px; margin-top: 14px; }
+.gf-supply-ledger__yards div { display: grid; gap: 6px; }
+.gf-supply-ledger__yards span { color: var(--muted-foreground); font-size: 12px; }
+.gf-supply-ledger__table { overflow: auto; max-height: 420px; margin-top: 16px; }
+.gf-supply-ledger__table table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.gf-supply-ledger__table th, .gf-supply-ledger__table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: right; }
+.gf-supply-ledger__table th:first-child { text-align: left; }
+.gf-supply-ledger__table thead { color: var(--muted-foreground); }
+.gf-supply-ledger__feeds { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:14px; }
+.gf-supply-ledger__feeds article { padding:13px; border:1px solid var(--border); border-radius:8px; }
+.gf-supply-ledger__feeds h3 { margin:0 0 8px; font-size:13px; }
+.gf-supply-ledger__feeds dl { margin:0; display:grid; gap:5px; font-size:12px; }
+.gf-supply-ledger__feeds dl div { display:flex; justify-content:space-between; gap:10px; }
+.gf-supply-ledger__feeds dt { color:var(--muted-foreground); }.gf-supply-ledger__feeds dd { margin:0; font-weight:600; }
+@media(max-width:700px){.gf-supply-ledger__feeds { grid-template-columns:1fr; }}
+.gf-supply-inputs { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.gf-supply-inputs label { display: grid; gap: 5px; font-size: 12px; color: var(--muted-foreground); }
+.gf-supply-inputs input, .gf-supply-inputs select { padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--foreground); }
+.gf-supply-inputs button { padding: 9px 14px; border-radius: 6px; border: 0; background: var(--primary); color: var(--primary-foreground); }

@@ -1,5 +1,6 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import { initialWatchlist } from '../src/data/vessel-workflow';
+import { referenceLots } from '../src/domain/fuel-reference';
 
 // Existing feature tests exercise an approved session through the same HTTP contracts.
 // Authentication itself is tested against a real isolated API in auth-ui.spec.ts.
@@ -8,6 +9,7 @@ export const test = base.extend({
     let snapshot: { revision: number; workspace: unknown; destinations: Record<string, string> } | null = null;
     // No test request may fall through to a developer's running operational server.
     await page.route('**/api/**', route => route.fulfill({ status: 503, json: { detail: 'No fixture for this API' } }));
+    await page.route('**/api/voyage-registry/inventory/baseline', route => route.fulfill({json:{revision:1,as_of:'2026-11-04',total_t:referenceLots.reduce((sum, lot) => sum + lot.tons, 0),lots:referenceLots.map(lot => ({source_id:lot.id,location:lot.pile ? `P${lot.pile}` : `${lot.shed}${lot.cell}`,coal_name:lot.coal,tonnes:lot.tons,voyage_number:lot.voyage,grade:lot.grade,age_days:lot.days}))}}));
     await page.route('**/api/auth/**', route => {
       const path = new URL(route.request().url()).pathname;
       return route.fulfill({ json: path.endsWith('/csrf') ? { token: 'fixture-csrf' } : path.endsWith('/bootstrap-status') ? { setupRequired: false } : {

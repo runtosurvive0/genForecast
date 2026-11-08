@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => {
       port: Number(localEnv.MIDTERM_DEV_PORT || "5173"),
       strictPort: true,
       proxy: {
+        "/demo-stream": { target: localEnv.MIDTERM_DEMO_WS_TARGET || "ws://127.0.0.1:61578", ws: true, changeOrigin: false },
         "/api": {
           target: backend.target,
           changeOrigin: true,
@@ -33,6 +34,7 @@ export default defineConfig(({ mode }) => {
         ],
       },
     },
+    preview: { proxy: { "/demo-stream": { target: localEnv.MIDTERM_DEMO_WS_TARGET || "ws://127.0.0.1:61578", ws: true, changeOrigin: false } } },
     build: { target: "es2022", chunkSizeWarningLimit: 1500 },
   };
 });

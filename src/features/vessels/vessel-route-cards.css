@@ -1,0 +1,499 @@
+/* Reference composition: route cards, map and the selected transport timeline. */
+.gf-voyages .vessel-eta-workspace {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+.gf-voyages .vessel-watchlist-panel {
+  grid-column: 1;
+  background: transparent;
+  overflow: visible;
+}
+.gf-voyages .vessel-workspace-header {
+  margin-bottom: 10px;
+}
+.gf-voyages .vessel-workspace-heading {
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.gf-voyages .vessel-workspace-title {
+  gap: 4px 7px;
+}
+.gf-voyages .vessel-workflow-actions {
+  gap: 3px;
+  flex-wrap: nowrap;
+}
+.gf-voyages .vessel-workflow-actions > button:first-child {
+  width: 32px;
+  padding-inline: 0;
+}
+.gf-voyages .vessel-eta-map-column {
+  grid-column: 2;
+}
+.gf-voyages .vessel-watchlist-content {
+  padding: 0;
+}
+.gf-voyages .vessel-watchlist {
+  gap: 10px;
+  padding: 2px 2px 16px;
+  grid-auto-rows: max-content;
+  mask-image: linear-gradient(to bottom, transparent, #000 10px, #000 calc(100% - 20px), transparent);
+  scroll-padding-bottom: 20px;
+  overflow-anchor: none;
+}
+.gf-voyage-card-wrap {
+  position: relative;
+  min-width: 0;
+}
+.gf-voyage-card-wrap[data-dragging="true"] { opacity: .48; }
+.gf-voyage-card-wrap[data-drop-side]::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 3px;
+  background: var(--primary);
+  border-radius: 2px;
+  z-index: 2;
+  pointer-events: none;
+}
+.gf-voyage-card-wrap[data-drop-side="before"]::before { top: -6px; }
+.gf-voyage-card-wrap[data-drop-side="after"]::before { bottom: -6px; }
+.gf-voyage-card-drag {
+  position: absolute;
+  top: 14px;
+  right: 38px;
+  width: 20px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: grab;
+  touch-action: none;
+}
+.gf-voyage-card-drag:active { cursor: grabbing; }
+.gf-voyage-card-drag:hover { color: var(--primary); background: var(--selection, #e9f1ff); }
+.gf-voyage-card-drag:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.gf-voyages-quick-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  padding: 0 12px;
+  min-height: 36px;
+}
+.gf-voyages-quick-search input {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  color: var(--foreground);
+  font: inherit;
+  outline: 0;
+}
+.gf-voyages .gf-voyages-quick-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.gf-voyages-quick-search input::placeholder {
+  color: var(--muted-foreground);
+}
+.gf-voyages-quick-search:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.gf-voyages .vessel-watchlist .gf-voyage-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  min-height: max-content;
+  gap: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  overflow: hidden;
+  flex: none;
+  width: 100%;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+.gf-voyages .vessel-watchlist .gf-voyage-card + .gf-voyage-card {
+  border-top-color: transparent;
+}
+.gf-voyages .vessel-watchlist .gf-voyage-card.selected,
+.gf-voyages .vessel-watchlist .gf-voyage-card:hover {
+  border-color: var(--primary);
+}
+.gf-voyages .vessel-watchlist .gf-voyage-card.selected {
+  background: var(--card);
+  color: var(--foreground);
+}
+.gf-voyages .gf-voyage-card > span {
+  flex-shrink: 0;
+}
+.gf-voyages .gf-voyage-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 15px 65px 5px 16px;
+}
+.gf-voyages .gf-voyage-card-head strong {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+}
+.gf-voyages .gf-voyage-card-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 16px 12px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.gf-voyage-card-source { display: flex; align-items: center; gap: 6px; }
+.gf-voyage-card-source .vessel-freshness-tag { border: 0; padding: 0; background: transparent; }
+.gf-voyages .gf-voyage-card-berth {
+  display: block;
+  padding: 0 16px 10px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 550;
+  text-align: left;
+}
+.gf-voyages .gf-voyage-card-route {
+  display: block;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--foreground);
+}
+.gf-voyage-card-route-ends { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.gf-voyage-card-route-ends > span { min-width: 0; }
+.gf-voyage-card-route-ends > span:last-child {
+  text-align: right;
+}
+.gf-voyages .gf-voyage-card small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+  margin-bottom: 4px;
+}
+.gf-voyage-card-route b {
+  display: block;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gf-voyage-card-route > span { min-width: 0; }
+.gf-voyages .gf-voyage-card-extra,
+.gf-voyages .gf-voyage-card-compact {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 240ms ease, opacity 180ms ease;
+}
+.gf-voyages .gf-voyage-card.selected .gf-voyage-card-extra,
+.gf-voyages .gf-voyage-card:not(.selected) .gf-voyage-card-compact {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.gf-voyage-card-extra-inner,
+.gf-voyage-card-compact-inner {
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+}
+.gf-voyage-card-compact-inner {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px 12px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.gf-voyage-card-compact-inner > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.gf-voyage-card-compact-inner > span:last-child { flex: none; }
+.gf-voyage-card-remove {
+  position: absolute;
+  top: 17px;
+  right: 18px;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: white;
+  background: transparent;
+  cursor: pointer;
+}
+.gf-voyage-card-remove svg {
+  width: 15px;
+  height: 15px;
+  padding: 3px;
+  border-radius: 50%;
+  background: #8b98a8;
+  transition: background-color 150ms ease;
+}
+.gf-voyage-card-remove::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  pointer-events: none;
+}
+.gf-voyage-card-remove svg path { opacity: 0; }
+.gf-voyage-card-remove:hover svg,
+.gf-voyage-card-remove:focus-visible svg {
+  background: #d64d59;
+}
+.gf-voyage-card-remove:hover::after,
+.gf-voyage-card-remove:focus-visible::after { opacity: 0; }
+.gf-voyage-card-remove:hover svg path,
+.gf-voyage-card-remove:focus-visible svg path { opacity: 1; }
+.gf-voyage-card-remove:focus-visible {
+  outline: 2px solid #d64d59;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gf-voyage-card-remove svg,
+  .gf-voyages .gf-voyage-card,
+  .gf-voyages .gf-voyage-card-extra,
+  .gf-voyages .gf-voyage-card-compact { transition: none; }
+}
+.gf-voyage-card-path {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.gf-voyage-card-path i {
+  border-top: 1px solid var(--border);
+  flex: 1;
+}
+.gf-voyage-card-path > span { display: flex; align-items: center; gap: 4px; }
+.gf-voyages .gf-voyage-card-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 2px 16px 14px;
+  color: var(--foreground);
+}
+.gf-voyage-card-facts b {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.gf-voyages .gf-voyage-card-facts small { display: flex; align-items: center; gap: 5px; }
+.gf-voyage-card-facts small svg { color: var(--primary); }
+.gf-voyage-card-facts em {
+  font-size: 10px;
+  font-weight: 400;
+  font-style: normal;
+  color: var(--muted-foreground);
+  letter-spacing: 0;
+}
+.gf-voyages .gf-voyage-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 16px;
+  background: var(--secondary);
+  color: var(--foreground);
+}
+.gf-voyage-card-footer b {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.gf-voyages .gf-voyage-card.selected .gf-voyage-card-footer {
+  background: var(--brand-blue);
+  color: #fff;
+}
+.gf-voyages .gf-voyage-card.selected .gf-voyage-card-footer small {
+  color: #dce7ff;
+}
+.gf-voyages-arrival-board {
+  background: var(--card);
+  border-radius: 12px;
+  flex: none;
+  overflow: hidden;
+}
+.gf-voyages .vessel-arrival-panel {
+  padding: 12px 18px 8px;
+  border-radius: 0;
+}
+.gf-voyages .vessel-arrival-metrics .tower-metric strong,
+.gf-voyages .vessel-arrival-metrics .vessel-eta-primary {
+  font-size: 22px;
+}
+.gf-voyages .vessel-arrival-insight {
+  margin-top: 6px;
+}
+.gf-voyages .vessel-arrival-source {
+  margin-top: 4px;
+}
+.gf-voyages-cargo {
+  border-top: 1px solid var(--border);
+  padding: 10px 18px 12px;
+}
+.gf-voyages-cargo header {
+  flex-wrap: wrap;
+}
+.gf-voyages-cargo header > span {
+  margin-left: 0;
+  font-size: 10px;
+}
+.gf-voyages-cargo-totals {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.gf-voyages-cargo-totals b {
+  font-weight: 500;
+  color: var(--foreground);
+  margin-left: 5px;
+}
+.gf-voyages-timeline {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  padding: 0;
+  margin: 12px 0 8px;
+}
+.gf-voyages-timeline li {
+  display: flex;
+  gap: 10px;
+  position: relative;
+  min-width: 0;
+}
+.gf-voyages-timeline li + li::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 16px;
+  width: 12px;
+  border-top: 1px dashed var(--border);
+}
+.gf-voyages-timeline-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+  flex: none;
+}
+.gf-voyages-timeline [data-known="true"] .gf-voyages-timeline-icon {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--primary);
+}
+.gf-voyages-timeline li > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.gf-voyages-timeline li > div > span {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.gf-voyages-timeline strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+.gf-voyages-timeline small {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.gf-voyages-cargo p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+@media (max-width: 1200px) {
+  .gf-voyages .vessel-eta-workspace {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+  .gf-voyages-timeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .gf-voyages-timeline li + li::before {
+    display: none;
+  }
+  .gf-voyages-cargo-totals {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+@media (max-width: 900px) {
+  .gf-voyages .vessel-eta-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gf-voyages .vessel-watchlist-panel,
+  .gf-voyages .vessel-eta-map-column {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .gf-voyages .vessel-watchlist-panel {
+    background: var(--card);
+  }
+  .gf-voyages .vessel-watchlist-content {
+    padding: 0 12px 12px;
+  }
+  .gf-voyages .vessel-watchlist {
+    max-height: 310px;
+  }
+  .gf-voyages .vessel-watchlist .gf-voyage-card {
+    border-color: var(--border);
+  }
+  .gf-voyages .vessel-watchlist .gf-voyage-card.selected {
+    border-color: var(--primary);
+  }
+  .gf-voyages-quick-search {
+    background: var(--muted);
+  }
+}
+.gf-voyage-skeleton {
+  display: inline-block;
+  width: 68px;
+  height: 0.85em;
+  vertical-align: middle;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  animation: gf-voyage-skeleton-pulse 1.4s ease-in-out infinite alternate;
+}
+@keyframes gf-voyage-skeleton-pulse { to { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .gf-voyage-skeleton { animation: none; } }

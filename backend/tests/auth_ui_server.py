@@ -11,6 +11,9 @@ db = Path(__file__).resolve().parents[2] / '.tooling-tmp' / f'auth-ui-{uuid4()}.
 store = AccessStore(db)
 store.init_admin('test-admin', 'Test Administrator', 'only-for-isolated-ui-tests-2026')
 app = FastAPI()
+from midterm.web.voyage_registry_api import router as voyage_registry_router
+app.state.voyage_registry_path = db.with_name(db.stem + '-voyages.sqlite3')
+app.include_router(voyage_registry_router)
 origins = {f'http://127.0.0.1:{os.getenv("MIDTERM_DEV_PORT", "5173")}', 'http://127.0.0.1:8097'}
 install_access(app, store, origins, secure=False)
 

@@ -4,9 +4,46 @@ import {
   loadPlanningRuns,
   loadPlanningSnapshot,
 } from "../src/domain/planning.ts";
-import { planningFixture } from "./planning-fixture.ts";
+import { planningFixture, suppliedPlanningFixture } from "./planning-fixture.ts";
 import { fuelMetrics } from "../src/features/plant/fuel-metrics.ts";
+import { forecastSummary } from "../src/features/plant/forecast-summary.ts";
+import { forecastDay } from "../src/features/plant/forecast-day.ts";
+import { sourceDescription } from "../src/domain/source-description.ts";
 import { minimumInventoryPoint } from "../src/domain/supply.ts";
+
+test("source labels use operator language without changing ordinary technical words", () => {
+  assert.equal(sourceDescription("사진 기반 합성 데이터 · 정합성 확인"), "참고 자료 기반 시연 데이터 · 정합성 확인");
+  assert.equal(sourceDescription("더미 AIS · 석탄 더미 2개"), "시연 AIS · 석탄 더미 2개");
+  assert.equal(sourceDescription("입력 적합성 점검"), "입력 적합성 점검");
+});
+
+test("selected forecast day preserves missing group data instead of summing a partial total", () => {
+  const snapshot = suppliedPlanningFixture("전망", "2027-01-01", 7);
+  for (const group of Object.values(snapshot.inventory.daily[2].groups)) group.receipts = 0;
+  snapshot.inventory.daily[2].groups.g14.receipts = 500;
+  const day = forecastDay(snapshot, "2027-01-03");
+  assert.equal(day.stock, 284000);
+  assert.equal(day.receipts, 500);
+  assert.equal(day.burn, 3000);
+  assert.equal(day.generation, 24000);
+  snapshot.inventory.daily[2].groups.g58.receipts = undefined;
+  snapshot.inventory.daily[2].groups.g910.stock = null;
+  assert.equal(forecastDay(snapshot, "2027-01-03").receipts, null);
+  assert.equal(forecastDay(snapshot, "2027-01-03").stock, null);
+  assert.equal(forecastDay(snapshot, "2027-02-01").generation, null);
+});
+
+test("forecast summary uses complete selected days and never fills missing yard stock", () => {
+  const snapshot = suppliedPlanningFixture("전망", "2027-01-01", 7);
+  snapshot.daily.forEach((day, i) => { day.generation_mwh = i * 100; });
+  const complete = forecastSummary(snapshot);
+  assert.equal(complete.generation, 2100);
+  assert.notEqual(complete.minimumStock, null);
+  snapshot.daily[0].generation_mwh = null;
+  assert.equal(forecastSummary(snapshot).generation, null);
+  snapshot.inventory.daily[0].groups.g58.stock = null;
+  assert.equal(forecastSummary(snapshot).minimumStock, null);
+});
 
 test("snapshot rejects an invalid per-unit daily generation value", async (t) => {
   const body = planningFixture();

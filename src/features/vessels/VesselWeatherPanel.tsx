@@ -29,7 +29,7 @@ export function VesselWeatherPanel({
             <Waves size={14} />
             항로 주변 기상
           </strong>
-          <span>합성 예시 · 선택 시각의 파고·바람</span>
+          <span>시연 예시 · 선택 시각의 파고·바람</span>
         </div>
         <Button
           variant={enabled ? "secondary" : "outline"}

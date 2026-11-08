@@ -17,7 +17,7 @@ test('fleet map queries viewport, opens clicked ship, registers interest and sur
   });
   await page.route('**/api/vessels/map/440000001', r => r.fulfill({ json: ship }));
   await page.goto('/?source=synthetic');
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(page.getByText('화면 범위 1척', { exact: true })).toBeVisible();
   const canvas = page.getByLabel('전 세계 선박 지도 · 방향키 이동, + 및 - 확대 축소');
   const box = await canvas.boundingBox();
@@ -101,7 +101,7 @@ test('cluster selection zooms to the group rather than registering a fictitious 
     const module = await import(/* @vite-ignore */ url); const original = module.Map.prototype.jumpTo;
     module.Map.prototype.jumpTo = function (...args: unknown[]) { (window as any).fleetTestMap = this; module.Map.prototype.jumpTo = original; return original.apply(this, args); };
   });
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(page.getByText('화면 범위 100척', { exact: true })).toBeVisible();
   const before = zoom;
   const clickCluster = async () => {

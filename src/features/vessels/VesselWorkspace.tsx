@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   CloudSun,
@@ -6,6 +6,8 @@ import {
   MoreHorizontal,
   RefreshCw,
   Upload,
+  Ship,
+  Search,
 } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { Button } from "@/components/ui/button";
@@ -39,12 +41,13 @@ import { watchStatus } from "./vessel-watch-status";
 import { VesselWeatherPanel } from "./VesselWeatherPanel";
 import { useVesselWorkspace } from "./useVesselWorkspace";
 import { useAccount } from "@/lib/account-context";
+import { authJson } from "@/lib/auth-client";
+import type { Records } from "./VoyageRegistry";
 import "./vessel-workflow.css";
 import { fetchVesselCatalog } from "./vessel-discovery";
 import { mapFleet } from "./vessel-navigation";
 import { useTrackedVessels, useVesselRoute } from "./useVesselNavigation";
 import { VesselRouteControls, VesselRouteSummary } from "./VesselRouteControls";
-import { VesselFreshnessTag } from "./VesselFreshnessTag";
 import { ROUTE_OFFSET_LIMIT_NM, usesAutomaticEta } from "./vessel-basic-eta";
 import { useVesselWeather } from "./useVesselWeather";
 import { VesselForecastPanel } from "./VesselForecastPanel";
@@ -53,6 +56,13 @@ import { useCyclones } from "./useCyclones";
 import { nearbyCyclones, type WeatherMetric } from "./vessel-weather-layers";
 import { VesselMapWeather } from "./VesselMapWeather";
 import { VesselPortVisits } from "./VesselPortVisits";
+import { VesselCargoSummary } from "./VesselCargoSummary";
+import { SharedVoyageSummary } from "./SharedVoyageSummary";
+import { VesselVoyageCard } from "./VesselVoyageCard";
+import type { BerthFeed } from "@/domain/use-berth-feed";
+import "./vessel-operations.css";
+import "./vessel-route-cards.css";
+import { VoyageRegistry } from './VoyageRegistry';
 
 export function VesselTracking({
   plants,
@@ -61,6 +71,8 @@ export function VesselTracking({
   selectedId,
   onSelect,
   onPlant,
+  pageNavigation,
+  berthFeed,
 }: {
   plants: Plant[];
   theme: "light" | "dark";
@@ -68,9 +80,23 @@ export function VesselTracking({
   selectedId: string | null;
   onSelect: (id: string) => void;
   onPlant: (id: string) => void;
+  pageNavigation?: ReactNode;
+  berthFeed?: BerthFeed;
 }) {
   const { workspace, save, error, setError } = useVesselWorkspace();
   const account = useAccount();
+  const [registryOpen, setRegistryOpen] = useState<'voyages' | 'cargo' | null>(null);
+  const [registryKey, setRegistryKey] = useState('');
+  const [registry, setRegistry] = useState<Records | null>(null);
+  const [registryStatus, setRegistryStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  useEffect(() => {
+    const controller = new AbortController();
+    setRegistryStatus('loading');
+    authJson<Records>('/api/voyage-registry/records', { signal: controller.signal })
+      .then(value => { setRegistry(value); setRegistryStatus('ready'); })
+      .catch(() => { if (!controller.signal.aborted) { setRegistry(null); setRegistryStatus('error'); } });
+    return () => controller.abort();
+  }, [registryOpen]);
   const latestWorkspace = useRef(workspace);
   latestWorkspace.current = workspace;
   const [, tick] = useState(0);
@@ -80,6 +106,7 @@ export function VesselTracking({
     return () => clearInterval(timer);
   }, []);
   const [filter, setFilter] = useState("all");
+  const [interestQuery, setInterestQuery] = useState("");
   const [listCollapsed, setListCollapsed] = useState(false);
   const [notice, setNotice] = useState("");
   const [weatherOn, setWeatherOn] = useState(false);
@@ -97,6 +124,10 @@ export function VesselTracking({
   const [dataTab, setDataTab] = useState<VesselDataTab>("ais");
   const [weatherModel, setWeatherModel] = useState({ key: "", sensitivity: 1 });
   const upload = useRef<HTMLInputElement>(null);
+  const watchlistRef = useRef<HTMLDivElement>(null);
+  const [draggingVessel, setDraggingVessel] = useState<string | null>(null);
+  const [dragTarget, setDragTarget] = useState<{ id: string; after: boolean } | null>(null);
+  const cardPositions = useRef(new Map<string, number>());
   useEffect(() => {
     if (!importing) {
       setShowOrb(false);
@@ -155,6 +186,14 @@ export function VesselTracking({
       workspace.watchlist.flatMap((id) => {
         const vessel = catalog.find((v) => v.id === id);
         if (!vessel) return [];
+        const query = interestQuery.trim().toLocaleLowerCase();
+        if (
+          query &&
+          !`${vessel.name} ${vessel.mmsi} ${vessel.imo}`
+            .toLocaleLowerCase()
+            .includes(query)
+        )
+          return [];
         const voyage = allVoyages.find((v) => v.vesselId === id);
         const state = watchStatus(vessel, voyage);
         const attention =
@@ -170,13 +209,58 @@ export function VesselTracking({
           return [];
         return [{ vessel, voyage }];
       }),
-    [workspace.watchlist, catalog, allVoyages, filter, now],
+    [workspace.watchlist, catalog, allVoyages, filter, now, interestQuery],
   );
   const selected =
     rows.find(
       (r) => r.vessel.id === selectedId || r.vessel.legacyId === selectedId,
     ) ?? rows[0];
+  const displayRows = useMemo(() => {
+    if (!draggingVessel || !dragTarget || draggingVessel === dragTarget.id) return rows;
+    const moving = rows.find(row => row.vessel.id === draggingVessel);
+    const rest = rows.filter(row => row.vessel.id !== draggingVessel);
+    const index = rest.findIndex(row => row.vessel.id === dragTarget.id);
+    if (!moving || index < 0) return rows;
+    rest.splice(index + (dragTarget.after ? 1 : 0), 0, moving);
+    return rest;
+  }, [rows, draggingVessel, dragTarget]);
+  const displayOrder = displayRows.map(row => row.vessel.id).join('|');
+  useLayoutEffect(() => {
+    const cards = watchlistRef.current?.querySelectorAll<HTMLElement>('.gf-voyage-card-wrap');
+    if (!cards) return;
+    const previous = cardPositions.current;
+    const next = new Map<string, number>();
+    for (const card of cards) {
+      const id = card.dataset.vesselId;
+      if (!id) continue;
+      const top = card.getBoundingClientRect().top;
+      next.set(id, top);
+      const old = previous.get(id);
+      if (old !== undefined && Math.abs(old - top) > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        card.getAnimations().forEach(animation => animation.cancel());
+        card.animate([{ transform: `translateY(${old - top}px)` }, { transform: 'translateY(0)' }], { duration: 240, easing: 'cubic-bezier(.16,1,.3,1)' });
+      }
+    }
+    cardPositions.current = next;
+  }, [displayOrder]);
   const select = (v: TrackingVessel) => onSelect(v.id);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const list = watchlistRef.current;
+      const card = list?.querySelector<HTMLElement>(".gf-voyage-card.selected");
+      if (!list || !card) return;
+      const frame = list.getBoundingClientRect(), item = card.getBoundingClientRect();
+      const available = frame.height - 32;
+      const offset = item.height > available || item.top < frame.top + 10
+        ? item.top - frame.top - 10
+        : Math.max(0, item.bottom - frame.bottom + 20);
+      if (offset) list.scrollTo({
+        top: list.scrollTop + offset,
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [selected?.vessel.id]);
   const navigation = useVesselRoute(
     selected?.vessel,
     tracking.owner,
@@ -326,6 +410,7 @@ export function VesselTracking({
     const next = registerVessel(workspace, vessel, vesselCatalog);
     save(next);
     setFilter("all");
+    setInterestQuery("");
     const canonical =
       [...next.vessels, ...catalog].find(
         (v) =>
@@ -347,6 +432,20 @@ export function VesselTracking({
       watchlist: current.watchlist.filter((vesselId) => vesselId !== id),
     });
     setNotice("관심만 해제했습니다. 항차와 화물은 보존됩니다.");
+  }
+  function reorderInterest(id: string, target: string, after: boolean) {
+    const current = latestWorkspace.current;
+    const visible = rows.map(row => row.vessel.id).filter(key => current.watchlist.includes(key));
+    if (id === target || !visible.includes(id) || !visible.includes(target)) return;
+    const nextVisible = visible.filter(key => key !== id);
+    nextVisible.splice(nextVisible.indexOf(target) + (after ? 1 : 0), 0, id);
+    const visibleSet = new Set(visible);
+    let index = 0;
+    const watchlist = current.watchlist.map(key => visibleSet.has(key) ? nextVisible[index++] : key);
+    const next = { ...current, watchlist };
+    latestWorkspace.current = next;
+    save(next);
+    setNotice('관심 선박 순서를 변경했습니다.');
   }
   function saveVoyage(voyage: TrackingVoyage) {
     save({
@@ -448,80 +547,17 @@ export function VesselTracking({
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  const workspaceNavigation = <div className="gf-voyages-top">
+    <div className="gf-voyages-heading"><div><h1>항차·화물</h1><p>선박 위치와 항차·화물 정보를 확인합니다.</p></div><div className="gf-voyages-related">{pageNavigation}</div></div>
+    <nav className="gf-voyages-navigation" aria-label="항차·화물 화면">
+      <button aria-current={!registryOpen ? 'page' : undefined} onClick={() => { setRegistryOpen(null); setRegistryKey(''); }}>선박 추적</button>
+      <button aria-current={registryOpen ? 'page' : undefined} onClick={() => { if (!registryOpen) setRegistryOpen('voyages'); }}>항차·화물 원장</button>
+    </nav>
+  </div>;
+  if (registryOpen) return <VoyageRegistry navigation={workspaceNavigation} initialEntity={registryOpen} initialKey={registryKey} interestVessels={catalog.filter(v => v.source !== 'demo' && workspace.watchlist.includes(v.id))} />;
   return (
-    <div className="tower-page vessel-workflow">
-      <header className="vessel-workspace-header" aria-label="관심 선박 관리">
-        <div className="vessel-workspace-heading">
-          <div className="vessel-workspace-summary">
-            <div className="vessel-workspace-title">
-              <h2>관심 선박</h2>
-              <span>
-                {workspace.watchlist.length}척
-                {rows.length !== workspace.watchlist.length &&
-                  ` · 현재 범위 ${rows.length}척`}
-                {account?.saving
-                  ? " · 저장 중"
-                  : account?.error
-                    ? " · 미저장 변경 있음"
-                    : ""}
-              </span>
-            </div>
-          </div>
-          <div className="vessel-workflow-actions">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={refreshingAis}
-              onClick={() => void refreshAis()}
-            >
-              <RefreshCw size={13} />
-              업데이트 확인
-            </Button>
-            <VesselSearchDialog
-              catalog={catalog}
-              interests={workspace.watchlist}
-              onAdd={add}
-              onRemove={removeInterest}
-              theme={theme}
-            />
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="관심 목록 더보기"
-                >
-                  <MoreHorizontal size={16} />
-                </Button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Content
-                className="vessel-workspace-menu"
-                align="end"
-                sideOffset={6}
-              >
-                <DropdownMenu.Item onSelect={exportFile}>
-                  <Download size={14} /> 내보내기
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  disabled={importing}
-                  onSelect={() => upload.current?.click()}
-                >
-                  <Upload size={14} /> 가져오기
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
-            <input
-              className="sr-only"
-              ref={upload}
-              type="file"
-              accept=".json,application/json"
-              aria-label="관심 목록 가져오기"
-              disabled={importing}
-              onChange={(e) => void importFile(e.target.files?.[0])}
-            />
-          </div>
-        </div>
-      </header>
+    <div className="tower-page vessel-workflow gf-voyages">
+      {workspaceNavigation}
       {showOrb && (
         <ProcessingOrb
           theme={theme}
@@ -544,6 +580,78 @@ export function VesselTracking({
           className="vessel-watchlist-panel"
           data-collapsed={listCollapsed}
         >
+          <header className="vessel-workspace-header" aria-label="관심 선박 관리">
+            <div className="vessel-workspace-heading">
+              <div className="vessel-workspace-summary">
+                <div className="vessel-workspace-title">
+                  <h2>관심 선박</h2>
+                  <span>
+                    {workspace.watchlist.length}척
+                    {rows.length !== workspace.watchlist.length &&
+                      ` · 현재 범위 ${rows.length}척`}
+                    {account?.saving
+                      ? " · 저장 중"
+                      : account?.error
+                        ? " · 미저장 변경 있음"
+                        : ""}
+                  </span>
+                </div>
+              </div>
+              <div className="vessel-workflow-actions">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={refreshingAis}
+                  onClick={() => void refreshAis()}
+                >
+                  <RefreshCw size={13} />
+                  <span className="sr-only">업데이트 확인</span>
+                </Button>
+                <VesselSearchDialog
+                  catalog={catalog}
+                  interests={workspace.watchlist}
+                  onAdd={add}
+                  onRemove={removeInterest}
+                  theme={theme}
+                />
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="관심 목록 더보기"
+                    >
+                      <MoreHorizontal size={16} />
+                    </Button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content
+                    className="vessel-workspace-menu"
+                    align="end"
+                    sideOffset={6}
+                  >
+                    <DropdownMenu.Item onSelect={exportFile}>
+                      <Download size={14} /> 내보내기
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      disabled={importing}
+                      onSelect={() => upload.current?.click()}
+                    >
+                      <Upload size={14} /> 가져오기
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+                <input
+                  className="sr-only"
+                  ref={upload}
+                  type="file"
+                  accept=".json,application/json"
+                  aria-label="관심 목록 가져오기"
+                  disabled={importing}
+                  onChange={(e) => void importFile(e.target.files?.[0])}
+                />
+              </div>
+            </div>
+          </header>
           <button
             type="button"
             className="vessel-watchlist-toggle"
@@ -552,7 +660,7 @@ export function VesselTracking({
             aria-label={`선박 목록 ${listCollapsed ? "펼치기" : "접기"}`}
             onClick={() => setListCollapsed(!listCollapsed)}
           >
-            <span>선박 목록 · {rows.length}척</span>
+            <span>선박 목록</span>
             <span>{selected?.vessel.name ?? "선택 없음"}</span>
             <ChevronDown size={14} />
           </button>
@@ -560,6 +668,15 @@ export function VesselTracking({
             id="vessel-watchlist-content"
             className="vessel-watchlist-content"
           >
+            <label className="gf-voyages-quick-search">
+              <Search size={16} aria-hidden="true" />
+              <input
+                aria-label="관심 선박 빠른 검색"
+                placeholder="선박명 또는 MMSI"
+                value={interestQuery}
+                onChange={(e) => setInterestQuery(e.target.value)}
+              />
+            </label>
             <div
               className="vessel-workflow-filters"
               role="group"
@@ -583,32 +700,57 @@ export function VesselTracking({
                 </Button>
               ))}
             </div>
-            <div className="vessel-watchlist" aria-label="관심 선박 목록">
-              {rows.map(({ vessel, voyage }) => {
-                const position = vessel.ais?.position ?? voyage?.position;
+            <div ref={watchlistRef} className="vessel-watchlist" aria-label="관심 선박 목록">
+              {displayRows.map(({ vessel, voyage }) => {
+                const ships = registry?.ships.filter(s => vessel.source !== 'demo' && vessel.mmsi && s.mmsi === vessel.mmsi) ?? [];
+                const matches = ships.length === 1 ? registry?.voyages.filter(v => v.ship_code === ships[0].ship_code && ['underway', 'arrived', 'berthed', 'unloading'].includes(String(v.status))) ?? [] : [];
+                const cargo = matches.length === 1 ? registry?.cargo.filter(c => c.voyage_no === matches[0].voyage_no) ?? [] : [];
+                const quality = cargo.length === 1 ? registry?.quality_selection[String(cargo[0].cargo_no)] : null;
                 return (
-                  <button
-                    className={`shipment-card ${selected?.vessel.id === vessel.id ? "selected" : ""}`}
-                    key={vessel.id}
-                    aria-pressed={selected?.vessel.id === vessel.id}
-                    onClick={() => select(vessel)}
-                  >
-                    <div>
-                      <strong>{vessel.name}</strong>
-                      <VesselFreshnessTag
-                        observedAt={position?.observedAt}
-                        now={now}
-                      />
-                    </div>
-                    {voyage && <span>{voyage.destination}</span>}
-                    {vessel.source === "demo" && <span>합성 표본</span>}
-                  </button>
-                );
-              })}
+                <VesselVoyageCard
+                  key={vessel.id}
+                  vessel={vessel}
+                  voyage={voyage}
+                  coalName={cargo.length === 1 ? String(cargo[0].coal_name || '') : cargo.length > 1 ? `복수 탄종 ${cargo.length}건` : undefined}
+                  cargoCv={typeof quality?.gcv_arb === 'number' ? quality.gcv_arb : undefined}
+                  sharedCargo={cargo.length > 0}
+                  registry={registry}
+                  registryStatus={registryStatus}
+                  observationLoading={vessel.source !== 'demo' && Boolean(berthFeed?.status === 'loading' || (!tracking.ready && !tracking.error))}
+                  now={now}
+                  selected={selected?.vessel.id === vessel.id}
+                  onSelect={() => select(vessel)}
+                  onRemove={() => removeInterest(vessel.id)}
+                  dragging={draggingVessel === vessel.id}
+                  dropSide={dragTarget?.id === vessel.id && draggingVessel !== vessel.id ? (dragTarget.after ? 'after' : 'before') : undefined}
+                  onDragStart={() => { setDraggingVessel(vessel.id); setDragTarget(null); }}
+                  onDragOver={(after) => { if (vessel.id !== draggingVessel) setDragTarget(previous => previous?.id === vessel.id && previous.after === after ? previous : { id: vessel.id, after }); }}
+                  onDrop={() => { if (draggingVessel && dragTarget) reorderInterest(draggingVessel, dragTarget.id, dragTarget.after); setDraggingVessel(null); setDragTarget(null); }}
+                  onDragEnd={() => { setDraggingVessel(null); setDragTarget(null); }}
+                  onMove={(direction) => {
+                    const visible = rows.map(row => row.vessel.id);
+                    const index = visible.indexOf(vessel.id);
+                    const target = visible[index + direction];
+                    if (target) reorderInterest(vessel.id, target, direction > 0);
+                  }}
+                  onTouchStart={() => { setDraggingVessel(vessel.id); setDragTarget(null); }}
+                  onTouchMove={(targetId, after) => { if (targetId !== vessel.id) setDragTarget(previous => previous?.id === targetId && previous.after === after ? previous : { id: targetId, after }); }}
+                  onTouchDrop={(targetId, after) => { const target = targetId === vessel.id ? dragTarget : targetId ? { id: targetId, after } : null; if (target) reorderInterest(vessel.id, target.id, target.after); setDraggingVessel(null); setDragTarget(null); }}
+                  onTouchCancel={() => { setDraggingVessel(null); setDragTarget(null); }}
+                  berthObservation={vessel.source !== "demo" && vessel.mmsi
+                    ? berthFeed?.rows.find(row => row.vessel.mmsi === vessel.mmsi)
+                    : undefined}
+                  basic={
+                    usesAutomaticEta(vessel)
+                      ? navigation.getBasicEta(vessel, now, voyage?.state)
+                      : undefined
+                  }
+                />
+              ); })}
               {!rows.length && (
                 <div className="vessel-workflow-empty">
-                  현재 상태에 해당하는 관심 선박이 없습니다. 선박을 추가하거나
-                  상태 필터를 바꿔 주세요.
+                  조건에 맞는 관심 선박이 없습니다. 검색어·상태 필터를 바꾸거나
+                  선박을 추가해 주세요.
                 </div>
               )}
             </div>
@@ -617,6 +759,13 @@ export function VesselTracking({
         <div className="vessel-eta-map-column">
           {selected && (
             <div className="vessel-map-command-bar">
+              <div className="gf-voyages-selected">
+                <Ship size={20} aria-hidden="true" />
+                <div>
+                  <strong>{selected.vessel.name}</strong>
+                  <small>MMSI {selected.vessel.mmsi || "미등록"}</small>
+                </div>
+              </div>
               {selected.vessel.source !== "demo" ? (
                 <VesselRouteControls
                   vessel={selected.vessel}
@@ -633,7 +782,7 @@ export function VesselTracking({
                 <p className="vessel-demo-destination">
                   목적항{" "}
                   <strong>{selected.voyage?.destination ?? "미확정"}</strong>
-                  <span className="tower-status">합성 표본</span>
+                  <span className="tower-status">시연 자료</span>
                 </p>
               )}
               <VesselSettings
@@ -653,20 +802,6 @@ export function VesselTracking({
                 onRemove={() => removeInterest(selected.vessel.id)}
               />
             </div>
-          )}
-          {selected && (
-            <VesselArrivalSummary
-              vessel={selected.vessel}
-              voyage={selected.voyage}
-              now={now}
-              basic={basicEta}
-              weather={weatherEta}
-              forecast={selectedForecast}
-              unverifiedConnection={
-                (navigation.route?.startOffsetNm ?? 0) > ROUTE_OFFSET_LIMIT_NM
-              }
-              onShowBasis={() => showData("basis")}
-            />
           )}
           <div className="vessel-map-stage">
             <VesselMap
@@ -695,9 +830,6 @@ export function VesselTracking({
                 selected?.vessel.source === "demo" ? weatherPoints : undefined
               }
               weatherOverlay={weatherOverlay}
-              weatherBusy={
-                forecastOn && (forecast.busy || (cycloneOn && cyclones.busy))
-              }
               weatherToolbar={
                 selected && selected.vessel.source !== "demo" ? (
                   <MapToolButton
@@ -741,6 +873,29 @@ export function VesselTracking({
               navigationRoutes={navigation.routes}
             />
           </div>
+          {selected && (
+            <div className="gf-voyages-arrival-board">
+              <VesselArrivalSummary
+                vessel={selected.vessel}
+                voyage={selected.voyage}
+                now={now}
+                basic={basicEta}
+                weather={weatherEta}
+                forecast={selectedForecast}
+                registry={registry}
+                observationLoading={selected.vessel.source !== 'demo' && Boolean(berthFeed?.status === 'loading' || (!tracking.ready && !tracking.error))}
+                berthObservation={selected.vessel.source !== "demo" && selected.vessel.mmsi
+                  ? berthFeed?.rows.find(row => row.vessel.mmsi === selected.vessel.mmsi)
+                  : undefined}
+                unverifiedConnection={
+                  (navigation.route?.startOffsetNm ?? 0) > ROUTE_OFFSET_LIMIT_NM
+                }
+                onShowBasis={() => showData("basis")}
+              />
+              {selected.vessel.source !== 'demo' && <SharedVoyageSummary vessel={selected.vessel} registry={registry} status={registryStatus} onOpen={(key) => { setRegistryKey(key ?? ''); setRegistryOpen('voyages'); }} />}
+              {selected.voyage && <VesselCargoSummary vessel={selected.vessel} voyage={selected.voyage} />}
+            </div>
+          )}
           {selected && (
             <VesselDataDetails
               key={selected.vessel.id}
@@ -819,7 +974,7 @@ export function VesselTracking({
                     {account
                       ? "관심 목록은 로그인한 계정에 저장됩니다."
                       : "관심 목록은 이 브라우저에 저장됩니다."}{" "}
-                    합성 선박은 예시 항로, 실제 선박은 수집 항적과 예상 항로를
+                    시연 선박은 예시 항로, 실제 선박은 수집 항적과 예상 항로를
                     구분합니다. 기본 ETA는 실제 AIS와 예상 항로 기준이며, 등록
                     항차 일정·접안·하역 가정과 재고 원장은 별도입니다.
                     {scenario.arrivalDelayDays !== 0
