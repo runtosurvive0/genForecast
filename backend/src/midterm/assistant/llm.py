@@ -54,11 +54,6 @@ class OpenAiLlm:
         self._client = client
 
     def step(self, system: str, messages: list[dict], tools: list[dict], final_schema: dict, timeout_s: float) -> LlmTurn:
-        client = self._client
-        if client is None:
-            import openai  # 선택 기능이라 필요할 때만 불러온다.
-
-            client = openai.OpenAI(timeout=timeout_s, max_retries=1)
         kwargs: dict[str, Any] = {
             "model": os.getenv("GENFORECAST_ASSISTANT_MODEL", DEFAULT_MODEL),
             "instructions": system,
@@ -73,7 +68,12 @@ class OpenAiLlm:
                 for t in tools
             ]
         try:
-            response = client.responses.create(**kwargs)
+            client = self._client
+            if client is None:
+                import openai  # 선택 기능이라 필요할 때만 불러온다.
+
+                client = openai.OpenAI(timeout=timeout_s, max_retries=0)
+            response = client.responses.create(**kwargs, timeout=timeout_s)
         except AssistantUnavailable:
             raise
         except Exception as exc:
@@ -92,7 +92,10 @@ class OpenAiLlm:
                     raise AssistantUnavailable("LLM 도구 인자 형식이 올바르지 않습니다.") from exc
                 if not isinstance(args, dict):
                     raise AssistantUnavailable("LLM 도구 인자 형식이 올바르지 않습니다.")
-                calls.append(ToolCall(_get(item, "call_id"), _get(item, "name"), args))
+                call_id, name = _get(item, "call_id"), _get(item, "name")
+                if not call_id or not name:
+                    raise AssistantUnavailable("LLM 도구 호출 형식이 올바르지 않습니다.")
+                calls.append(ToolCall(call_id, name, args))
         if calls:
             return LlmTurn(calls, None)
         for item in output:
@@ -113,7 +116,7 @@ class OpenAiLlm:
 
 
 def default_llm() -> Llm:
-    if os.getenv("GENFORECAST_ASSISTANT_LLM") != "1":
+    if os.getenv("GENFORECAST_ASSISTANT_LLM") != "1" or not os.getenv("OPENAI_API_KEY"):
         raise AssistantUnavailable("도우미가 설정되지 않았습니다")
     return OpenAiLlm()
 

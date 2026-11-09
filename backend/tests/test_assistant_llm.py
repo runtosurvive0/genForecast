@@ -1,3 +1,4 @@
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -96,3 +97,28 @@ def test_fake_llm_scripts_turns_and_records_calls():
     with pytest.raises(AssistantUnavailable, match='가짜 응답 소진'):
         llm.step('s', msgs, [], {}, 5)
     assert len(llm.calls[0]) == 1 and len(llm.calls[1]) == 2
+
+
+def test_default_llm_requires_key(monkeypatch):
+    monkeypatch.setenv('GENFORECAST_ASSISTANT_LLM', '1')
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    with pytest.raises(AssistantUnavailable, match='설정되지 않았습니다'):
+        default_llm()
+    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+    assert isinstance(default_llm(), OpenAiLlm)
+
+
+def test_missing_sdk_is_unavailable(monkeypatch):
+    monkeypatch.setitem(sys.modules, 'openai', None)
+    with pytest.raises(AssistantUnavailable):
+        OpenAiLlm().step('sys', [{'role': 'user', 'content': 'q'}], [], {'type': 'object'}, 20)
+
+
+def test_timeout_passed_per_call_and_incomplete_call_rejected():
+    client = FakeOpenAiClient([[{'type': 'message', 'text': '{"answer":"a"}'}],
+                               [{'type': 'function_call', 'call_id': '', 'name': 'x', 'arguments': '{}'}]])
+    llm = OpenAiLlm(client=client)
+    llm.step('sys', [{'role': 'user', 'content': 'q'}], [], {'type': 'object'}, 20)
+    assert client.kwargs[0]['timeout'] == 20
+    with pytest.raises(AssistantUnavailable):
+        llm.step('sys', [{'role': 'user', 'content': 'q'}], [], {'type': 'object'}, 20)
