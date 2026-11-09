@@ -1,0 +1,11 @@
+# GenForecast ZGX 자동 갱신 주기: 부팅 3분 뒤, 이후 마지막 실행 5분 뒤마다.
+[Unit]
+Description=GenForecast ZGX auto-update timer
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Unit=genforecast-update.service
+
+[Install]
+WantedBy=timers.target

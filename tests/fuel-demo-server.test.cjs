@@ -227,3 +227,202 @@ test("a superficially local prefix does not bypass the exact browser-origin allo
     });
   }
 });
+
+function upgradeStatus(port, origin) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/demo-stream?role=viewer`,
+      { origin },
+    );
+    ws.on("unexpected-response", (_req, res) => {
+      res.resume();
+      ws.terminate();
+      resolve(res.statusCode);
+    });
+    ws.on("error", () => {});
+    ws.on("open", () => {
+      ws.close();
+      resolve(101);
+    });
+  });
+}
+test("DEMO_ALLOWED_ORIGINS adds exact deployment origins while other origins stay forbidden", async (t) => {
+  const previous = process.env.DEMO_ALLOWED_ORIGINS;
+  process.env.DEMO_ALLOWED_ORIGINS =
+    " https://zgx-6660.tailec6d33.ts.net , ,ftp://files.test,not-a-url,https://bad.test/path";
+  t.after(() => {
+    if (previous === undefined) delete process.env.DEMO_ALLOWED_ORIGINS;
+    else process.env.DEMO_ALLOWED_ORIGINS = previous;
+  });
+  const app = createDemoServer({ port: 0 });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  assert.equal(await upgradeStatus(port, "https://zgx-6660.tailec6d33.ts.net"), 101);
+  assert.equal(await upgradeStatus(port, "http://127.0.0.1:5173"), 101);
+  for (const origin of [
+    "http://zgx-6660.tailec6d33.ts.net",
+    "https://zgx-6660.tailec6d33.ts.net.evil.test",
+    "ftp://files.test",
+    "https://bad.test",
+    "https://example.com",
+  ])
+    assert.equal(await upgradeStatus(port, origin), 403, origin);
+});
+test("parseAllowedOrigins keeps only well-formed http(s) origins", () => {
+  const { parseAllowedOrigins } = require("../scripts/fuel-demo/server.cjs");
+  assert.deepEqual(parseAllowedOrigins(undefined), []);
+  assert.deepEqual(parseAllowedOrigins(""), []);
+  assert.deepEqual(
+    parseAllowedOrigins(
+      " https://a.test ,http://b.test:8080,, https://c.test/,https://d.test/x,javascript:alert(1),b.test,https://user@e.test",
+    ),
+    ["https://a.test", "http://b.test:8080", "https://c.test"],
+  );
+});
+
+function openStatus(url, options = {}) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(url, options);
+    ws.on("unexpected-response", (_req, res) => {
+      res.resume();
+      ws.terminate();
+      resolve(res.statusCode);
+    });
+    ws.on("error", () => resolve("error"));
+    ws.on("open", () => {
+      ws.close();
+      resolve(101);
+    });
+  });
+}
+test("a configured controller token is required for controllers but not for viewers", async (t) => {
+  const app = createDemoServer({ port: 0, controllerToken: "s3cret-token-value" });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const base = `ws://127.0.0.1:${port}/demo-stream`;
+  assert.equal(await openStatus(`${base}?role=controller`), 403);
+  assert.equal(await openStatus(`${base}?role=controller&token=wrong`), 403);
+  assert.equal(await openStatus(`${base}?role=controller&token=s3cret-token-valuX`), 403);
+  assert.equal(await openStatus(`${base}?role=controller&token=s3cret-token-value-longer`), 403);
+  assert.equal(await openStatus(`${base}?role=controller&token=s3cret-token-value`), 101);
+  assert.equal(await openStatus(`${base}?role=viewer`), 101);
+});
+test("without a controller token the local development controller stays open", async (t) => {
+  const previous = process.env.DEMO_CONTROLLER_TOKEN;
+  delete process.env.DEMO_CONTROLLER_TOKEN;
+  t.after(() => { if (previous !== undefined) process.env.DEMO_CONTROLLER_TOKEN = previous; });
+  const app = createDemoServer({ port: 0 });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  assert.equal(await openStatus(`ws://127.0.0.1:${port}/demo-stream?role=controller`), 101);
+});
+test("DEMO_CONTROLLER_TOKEN from the environment is enforced", async (t) => {
+  const previous = process.env.DEMO_CONTROLLER_TOKEN;
+  process.env.DEMO_CONTROLLER_TOKEN = "from-env-token";
+  t.after(() => { if (previous === undefined) delete process.env.DEMO_CONTROLLER_TOKEN; else process.env.DEMO_CONTROLLER_TOKEN = previous; });
+  const app = createDemoServer({ port: 0 });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const base = `ws://127.0.0.1:${port}/demo-stream?role=controller`;
+  assert.equal(await openStatus(base), 403);
+  assert.equal(await openStatus(`${base}&token=from-env-token`), 101);
+});
+test("connections without Origin are rejected once deployment origins are configured", async (t) => {
+  const previous = process.env.DEMO_ALLOWED_ORIGINS;
+  process.env.DEMO_ALLOWED_ORIGINS = "https://zgx-6660.tailec6d33.ts.net";
+  t.after(() => { if (previous === undefined) delete process.env.DEMO_ALLOWED_ORIGINS; else process.env.DEMO_ALLOWED_ORIGINS = previous; });
+  const app = createDemoServer({ port: 0 });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const url = `ws://127.0.0.1:${port}/demo-stream?role=viewer`;
+  assert.equal(await openStatus(url), 403);
+  assert.equal(await openStatus(url, { origin: "https://zgx-6660.tailec6d33.ts.net" }), 101);
+});
+test("the number of concurrent connections is capped", async (t) => {
+  const app = createDemoServer({ port: 0, maxClients: 2 });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const url = `ws://127.0.0.1:${port}/demo-stream?role=viewer`;
+  const open = [];
+  for (let i = 0; i < 2; i++) {
+    const ws = new WebSocket(url);
+    await new Promise((resolve, reject) => { ws.on("open", resolve); ws.on("error", reject); });
+    open.push(ws);
+  }
+  t.after(() => open.forEach((ws) => ws.terminate()));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(await openStatus(url), 503);
+  open.pop().close();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(await openStatus(url), 101);
+});
+test("viewers cannot crowd out controllers, which have their own small cap", async (t) => {
+  const app = createDemoServer({ port: 0, maxClients: 2, maxControllers: 1, controllerToken: "tok" });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const base = `ws://127.0.0.1:${port}/demo-stream`;
+  const open = [];
+  t.after(() => open.forEach((ws) => ws.terminate()));
+  const keep = async (url) => {
+    const ws = new WebSocket(url);
+    await new Promise((resolve, reject) => { ws.on("open", resolve); ws.on("error", reject); });
+    open.push(ws);
+  };
+  await keep(`${base}?role=viewer`);
+  await keep(`${base}?role=viewer`);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(await openStatus(`${base}?role=viewer`), 503);
+  await keep(`${base}?role=controller&token=tok`);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(await openStatus(`${base}?role=controller&token=tok`), 503);
+  assert.equal(await openStatus(`${base}?role=viewer`), 503);
+});
+test("controllers fail closed when deployment origins are set but no controller token is", async (t) => {
+  const previous = process.env.DEMO_ALLOWED_ORIGINS;
+  process.env.DEMO_ALLOWED_ORIGINS = "https://zgx-6660.tailec6d33.ts.net";
+  t.after(() => { if (previous === undefined) delete process.env.DEMO_ALLOWED_ORIGINS; else process.env.DEMO_ALLOWED_ORIGINS = previous; });
+  const origin = { origin: "https://zgx-6660.tailec6d33.ts.net" };
+  const open = createDemoServer({ port: 0, controllerToken: "" });
+  const { port } = await open.listen();
+  t.after(() => open.close());
+  const base = `ws://127.0.0.1:${port}/demo-stream`;
+  assert.equal(await openStatus(`${base}?role=controller`, origin), 403);
+  assert.equal(await openStatus(`${base}?role=controller&token=anything`, origin), 403);
+  assert.equal(await openStatus(`${base}?role=viewer`, origin), 101);
+  const locked = createDemoServer({ port: 0, controllerToken: "tok" });
+  const second = await locked.listen();
+  t.after(() => locked.close());
+  assert.equal(await openStatus(`ws://127.0.0.1:${second.port}/demo-stream?role=controller&token=tok`, origin), 101);
+});
+test("controller commands beyond five per second are ignored and a flood closes the connection", async (t) => {
+  const app = createDemoServer({ port: 0, interval: 1000 });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const c = client(port, "controller");
+  t.after(() => c.ws.terminate());
+  await c.wait((m) => m.type === "snapshot");
+  for (let i = 0; i < 6; i++) c.send(`burst-${i}`, { op: "speed", value: 60 });
+  for (let i = 0; i < 5; i++) assert.equal((await c.wait((m) => m.id === `burst-${i}`)).ok, true);
+  await assert.rejects(c.wait((m) => m.id === "burst-5"), /timeout/);
+  const closed = new Promise((resolve) => c.ws.once("close", (code) => resolve(code)));
+  for (let i = 0; i < 100; i++) c.send(`flood-${i}`, { op: "speed", value: 60 });
+  assert.equal(await closed, 1008);
+});
+test("the simulation store keeps only recent rows and the latest checkpoint", () => {
+  const { openSimulationStore } = require("../scripts/fuel-demo/simulation-store.cjs");
+  const now = Date.now();
+  const store = openSimulationStore(":memory:", { maxRows: 5, maxAgeMs: 60_000, pruneEvery: 1 });
+  store.record({ source: "demo", n: 0 }, now - 3_600_000);
+  for (let i = 1; i <= 12; i++) store.record({ source: "demo", n: i }, now - 12 + i, { n: i });
+  assert.equal(store.count(), 5);
+  assert.equal(store.latest().state.n, 12);
+  const aged = openSimulationStore(":memory:", { maxRows: 100, maxAgeMs: 60_000, pruneEvery: 1 });
+  aged.record({ source: "demo", n: 1 }, now - 3_600_000);
+  aged.record({ source: "demo", n: 2 }, now - 1_800_000);
+  assert.equal(aged.count(), 1, "even an old latest row is kept");
+  assert.equal(aged.latest().state.n, 2);
+  aged.record({ source: "demo", n: 3 }, now);
+  assert.equal(aged.count(), 1);
+  store.close();
+  aged.close();
+});

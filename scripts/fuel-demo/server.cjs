@@ -7,11 +7,44 @@ const { loadCatalog } = require("./demo-catalog.cjs");
 const { openSimulationStore } = require("./simulation-store.cjs");
 const { resolve } = require("node:path");
 
-const allowedOrigins = new Set(
-  [5173, 5174, 4173, 61577].flatMap((port) =>
-    ["127.0.0.1", "localhost"].map((host) => `http://${host}:${port}`),
-  ),
+const devOrigins = [5173, 5174, 4173, 61577].flatMap((port) =>
+  ["127.0.0.1", "localhost"].map((host) => `http://${host}:${port}`),
 );
+
+/** Parse DEMO_ALLOWED_ORIGINS (comma separated); malformed or non-http(s) entries are ignored. */
+function parseAllowedOrigins(value) {
+  const origins = [];
+  for (const raw of String(value ?? "").split(",")) {
+    const candidate = raw.trim().replace(/\/$/, "");
+    if (!/^https?:\/\//.test(candidate)) continue;
+    let url;
+    try {
+      url = new URL(candidate);
+    } catch {
+      continue;
+    }
+    if (url.origin !== candidate) continue;
+    if (!origins.includes(candidate)) origins.push(candidate);
+  }
+  return origins;
+}
+
+function positiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+
+/** Constant-time token comparison; different lengths are rejected without comparing contents. */
+function tokenMatches(expected, given) {
+  const a = Buffer.from(String(expected)),
+    b = Buffer.from(String(given ?? ""));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+const reject = (socket, status) => {
+  socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
+  socket.destroy();
+};
 
 /** Local simulation; optional telemetry history is stored separately from operational records. */
 function createDemoServer({
@@ -19,11 +52,18 @@ function createDemoServer({
   host = "127.0.0.1",
   interval = 250,
   storePath = null,
+  controllerToken = process.env.DEMO_CONTROLLER_TOKEN || "",
+  maxClients = positiveInteger(process.env.DEMO_MAX_CLIENTS, 100),
+  maxControllers = positiveInteger(process.env.DEMO_MAX_CONTROLLERS, 5),
+  commandsPerSecond = 5,
 } = {}) {
   const catalog = loadCatalog(),
     engine = createEngine(catalog),
     serverId = crypto.randomUUID(),
-    store = storePath ? openSimulationStore(storePath) : null;
+    store = storePath ? openSimulationStore(storePath) : null,
+    deploymentOrigins = parseAllowedOrigins(process.env.DEMO_ALLOWED_ORIGINS),
+    allowedOrigins = new Set([...devOrigins, ...deploymentOrigins]),
+    requireOrigin = deploymentOrigins.length > 0;
   const previous = store?.latest();
   if (previous?.checkpoint) engine.restore(previous.checkpoint);
   if (store) store.record(engine.snapshot(), Date.now(), engine.checkpoint());
@@ -79,13 +119,24 @@ function createDemoServer({
       return;
     }
     const role = url.searchParams.get("role");
+    const origin = req.headers.origin;
     if (
       !["/demo-stream", "/demo"].includes(url.pathname) ||
       !["viewer", "controller"].includes(role) ||
-      (req.headers.origin && !allowedOrigins.has(req.headers.origin))
+      (origin ? !allowedOrigins.has(origin) : requireOrigin) ||
+      (role === "controller" &&
+        (controllerToken
+          ? !tokenMatches(controllerToken, url.searchParams.get("token"))
+          : requireOrigin)) // 배포 주소가 있는데 토큰이 없으면 조작반을 닫는다.
     ) {
-      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
-      socket.destroy();
+      reject(socket, "403 Forbidden");
+      return;
+    }
+    // 시청자와 조작반은 상한을 따로 둔다. 시청자가 많아도 조작반 자리는 남는다.
+    let sameRole = 0;
+    for (const peer of wss.clients) if (peer.role === role) sameRole++;
+    if (sameRole >= (role === "controller" ? maxControllers : maxClients)) {
+      reject(socket, "503 Service Unavailable");
       return;
     }
     wss.handleUpgrade(req, socket, head, (peer) => {
@@ -103,7 +154,38 @@ function createDemoServer({
     update();
     send(peer, packet());
     const seen = new Map();
+    let windowStart = Date.now(),
+      rawCount = 0,
+      commandCount = 0,
+      strikes = 0;
+    const rollWindow = () => {
+      const now = Date.now();
+      if (now - windowStart < 1000) return;
+      strikes = commandCount > commandsPerSecond ? strikes : 0;
+      windowStart = now;
+      rawCount = 0;
+      commandCount = 0;
+    };
+    // Any message: a burst beyond ten times the command rate closes the connection.
+    const allowMessage = () => {
+      rollWindow();
+      rawCount += 1;
+      if (rawCount <= commandsPerSecond * 10) return true;
+      peer.close(1008, "rate limit");
+      return false;
+    };
+    // State-changing controller commands: extras in a one-second window are ignored;
+    // three consecutive over-limit windows close the connection.
+    const allowCommand = () => {
+      rollWindow();
+      commandCount += 1;
+      if (commandCount <= commandsPerSecond) return true;
+      if (commandCount === commandsPerSecond + 1) strikes += 1;
+      if (strikes >= 3) peer.close(1008, "rate limit");
+      return false;
+    };
     peer.on("message", (raw) => {
+      if (!allowMessage()) return;
       let message;
       try {
         message = JSON.parse(raw.toString());
@@ -121,6 +203,7 @@ function createDemoServer({
         }
         if (peer.role !== "controller")
           throw new Error("조회 연결에서는 조작할 수 없습니다.");
+        if (!allowCommand()) return;
         update();
         engine.command(message.command);
         store?.record(engine.snapshot(), Date.now(), engine.checkpoint());
@@ -195,6 +278,9 @@ if (require.main === module) {
     process.exit(1);
   }
   const app = createDemoServer({ port, storePath: resolve(process.env.SIMULATION_DB_PATH || 'backend/data/operating-simulation.sqlite3') });
+  if (process.env.DEMO_CONTROLLER_TOKEN) console.log("조작반 연결은 DEMO_CONTROLLER_TOKEN이 필요합니다.");
+  else if (parseAllowedOrigins(process.env.DEMO_ALLOWED_ORIGINS).length)
+    console.log("DEMO_ALLOWED_ORIGINS는 있는데 DEMO_CONTROLLER_TOKEN이 없어 조작반 연결을 막습니다.");
   app
     .listen()
     .then((address) =>
@@ -214,4 +300,4 @@ if (require.main === module) {
   for (const signal of ["SIGTERM", "SIGINT"])
     process.on(signal, () => app.close().then(() => process.exit(0)));
 }
-module.exports = { createDemoServer };
+module.exports = { createDemoServer, parseAllowedOrigins };

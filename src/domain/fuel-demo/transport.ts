@@ -17,8 +17,71 @@ export const disabledDemoState: FuelDemoConnectionState = {
 export function demoStreamUrl(
   location: Pick<Location, "protocol" | "host">,
   role: FuelDemoRole = "viewer",
+  token: string | null = null,
 ) {
-  return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/demo-stream?role=${role}`;
+  const auth = role === "controller" && token ? `&token=${encodeURIComponent(token)}` : "";
+  return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/demo-stream?role=${role}${auth}`;
+}
+
+const TOKEN_KEY = "gf-demo-controller-token";
+type TokenStorage = Pick<Storage, "getItem" | "setItem">;
+
+/** Removes `token` from a query string; returns the remaining query (with "?" when non-empty) or null if absent. */
+function withoutToken(query: string): { token: string | null; rest: string } {
+  const params = new URLSearchParams(query);
+  const token = params.get("token");
+  params.delete("token");
+  const rest = params.toString();
+  return { token, rest: rest ? `?${rest}` : "" };
+}
+
+/**
+ * Controller access token from `#demo-control?token=…` or `?token=…`. A token found in the URL is kept in
+ * session storage and `scrubbed` gives the URL suffix (search + hash) without it, so it is not left visible.
+ */
+export function takeControllerToken(
+  location: Pick<Location, "hash" | "search">,
+  storage: TokenStorage | null,
+): { token: string | null; scrubbed: string | null } {
+  const mark = location.hash.indexOf("?");
+  const hashPath = mark < 0 ? location.hash : location.hash.slice(0, mark);
+  const hashQuery = mark < 0 ? "" : location.hash.slice(mark + 1);
+  const fromHash = withoutToken(hashQuery);
+  const fromSearch = withoutToken(location.search.replace(/^\?/, ""));
+  const found = fromHash.token || fromSearch.token;
+  if (found) {
+    try {
+      storage?.setItem(TOKEN_KEY, found);
+    } catch {
+      /* storage blocked: keep the token only for this connection */
+    }
+    return { token: found, scrubbed: `${fromSearch.rest}${hashPath}${fromHash.rest}` };
+  }
+  let stored: string | null = null;
+  try {
+    stored = storage?.getItem(TOKEN_KEY) ?? null;
+  } catch {
+    stored = null;
+  }
+  return { token: stored, scrubbed: null };
+}
+
+function browserControllerToken(): string | null {
+  let storage: TokenStorage | null = null;
+  try {
+    storage = window.sessionStorage;
+  } catch {
+    storage = null;
+  }
+  const { token, scrubbed } = takeControllerToken(window.location, storage);
+  if (scrubbed !== null) {
+    try {
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}${scrubbed}`);
+    } catch {
+      /* ignore: the URL stays as typed */
+    }
+  }
+  return token;
 }
 const record = (value: unknown): value is Record<string, any> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -94,7 +157,8 @@ export function createFuelDemoTransport(
     let current: WebSocket;
     try {
       current = new WebSocket(
-        options.url?.() ?? demoStreamUrl(window.location, role),
+        options.url?.() ??
+          demoStreamUrl(window.location, role, role === "controller" ? browserControllerToken() : null),
       );
     } catch {
       disconnected(token);
