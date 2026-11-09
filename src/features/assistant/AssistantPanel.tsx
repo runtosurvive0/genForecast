@@ -17,10 +17,12 @@ function factValue(fact: AssistantFact): string {
   return typeof fact.value === 'number' ? fact.value.toLocaleString('ko-KR', { maximumFractionDigits: 20 }) : fact.value;
 }
 
-function AnswerDetail({ result }: { result: AssistantAnswer }) {
+// 명세 4.3 순서: 답 문장 → 근거 표 → 확인 필요 → 제안.
+function AnswerDetail({ answer, result }: { answer: string; result: AssistantAnswer }) {
   return (
     <>
       {result.partial && <p className="gf-asst-partial">일부만 확인됨</p>}
+      <p className="gf-asst-text">{answer}</p>
       {result.facts.length > 0 && (
         <section className="gf-asst-section">
           <h3>근거</h3>
@@ -128,8 +130,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
           <p key={m.id} className="gf-asst-user">{m.content}</p>
         ) : (
           <div key={m.id} className="gf-asst-answer">
-            <AnswerDetail result={m.result} />
-            <p className="gf-asst-text">{m.content}</p>
+            <AnswerDetail answer={m.content} result={m.result} />
           </div>
         ))}
         {sending && <p className="gf-asst-status" role="status">확인하는 중입니다…</p>}

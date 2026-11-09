@@ -29,6 +29,16 @@ test('운영 질문 패널은 답·근거·확인 필요를 보여 주고 다른
   await page.getByLabel('질문', { exact: true }).fill('5~8호기 재고일수는?');
   await page.getByRole('button', { name: '보내기' }).click();
   await expect(page.getByText('5~8호기 최소 재고일수는 4.3일입니다.')).toBeVisible();
+  // 명세 4.3: 답 문장 → 근거 표 → 확인 필요 → 제안 순서.
+  const order = await page.evaluate(() => {
+    const answer = document.querySelector('.gf-asst-answer') as HTMLElement;
+    const pick = (selector: string) => answer.querySelector(selector);
+    const items = [pick('.gf-asst-text'), pick('.gf-asst-table'), [...answer.querySelectorAll('h3')].find(h => h.textContent === '확인 필요'),
+      [...answer.querySelectorAll('h3')].find(h => h.textContent === '제안')];
+    if (items.some(el => !el)) return false;
+    return items.every((el, i) => i === 0 || !!(items[i - 1]!.compareDocumentPosition(el!) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  expect(order).toBe(true);
   const row = page.getByRole('row', { name: /5~8호기 최소 재고일수/ });
   await expect(row).toContainText('2026-11-09 06:00');
   await expect(row).toContainText('가정 계산');
