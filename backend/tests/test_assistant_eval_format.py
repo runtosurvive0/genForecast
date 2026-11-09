@@ -98,7 +98,7 @@ def test_main_refuses_operational_db_via_dotdot(ops_dir, capsys):
 @pytest.mark.skipif(os.name != "nt", reason="대소문자 무시는 Windows에서만 의미가 있다")
 def test_main_refuses_operational_db_with_swapped_case(ops_dir, capsys):
     mod, d = ops_dir
-    assert mod.main(["--db", str(d).upper() + "\PLANNING.SQLITE3"]) == 2
+    assert mod.main(["--db", str(d / "PLANNING.SQLITE3").upper()]) == 2
     assert "운영 DB" in capsys.readouterr().err
 
 
