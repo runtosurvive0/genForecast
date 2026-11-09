@@ -1,4 +1,6 @@
 // 운영 도우미 응답 형식·검증·호출(ZGX). 실패를 로컬·합성 답으로 대신하지 않는다.
+import type { AssistantContext } from './assistant-checks.ts';
+
 export type AssistantSource = 'actual' | 'plan' | 'simulation' | 'optimization';
 
 export interface AssistantFact {
@@ -65,7 +67,8 @@ const CLIENT_TIMEOUT_MS = 65000;
 const TIMEOUT_MESSAGE = '응답이 늦어 질문을 멈췄습니다. 잠시 후 다시 시도해 주세요.';
 
 export async function askAssistant(
-  question: string, history: AssistantTurn[], signal?: AbortSignal, timeoutMs: number = CLIENT_TIMEOUT_MS,
+  question: string, history: AssistantTurn[], signal?: AbortSignal, context?: AssistantContext,
+  timeoutMs: number = CLIENT_TIMEOUT_MS,
 ): Promise<AssistantAnswer> {
   const timeout = AbortSignal.timeout(timeoutMs);
   try {
@@ -73,7 +76,7 @@ export async function askAssistant(
     const response = await fetch('/api/assistant/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify(context ? { question, history, context } : { question, history }),
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     const value = await response.json().catch((e: unknown) => {

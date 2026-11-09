@@ -8,6 +8,7 @@ export interface YardBaselineLot {
   tonnes: number;
   voyage_number?: string | null;
   grade?: string | null;
+  dummy_fields?: string | null;
   age_days?: number | null;
   start_m?: number | null;
   end_m?: number | null;
