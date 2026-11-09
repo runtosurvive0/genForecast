@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from midterm.supply import KST, timestamp
-from midterm.voyage_registry import snapshot
+from midterm.voyage_registry import STATUSES, snapshot
 from midterm.vessels.waiting import waiting_candidates
 
 MAX_VOYAGES = 50
@@ -140,15 +140,10 @@ def _waiting_vessels(args: dict, ctx: ToolContext) -> dict:
         if vessels_api.waiting is None:
             return _fail("대기 선박 수집이 꺼져 있습니다")
         epoch = ctx.now.timestamp()
-        answers: dict = {}
-        if ctx.request is not None:
-            _, answers, _, found = vessels_api._waiting_view(ctx.request, epoch)
-        else:
-            points, heads = vessels_api.waiting.snapshot(epoch)
-            found = waiting_candidates(points, heads, epoch, set())
+        points, heads = vessels_api.waiting.snapshot(epoch)
+        found = waiting_candidates(points, heads, epoch, set())
         candidates = [{
             "mmsi": c["mmsi"], "name": c["name"], "distance_km": c["distanceKm"], "dwell_hours": c["dwellHours"],
-            "answer": (answers.get(c["mmsi"]) or (None,))[0],
         } for c in found]
         return _ok(ctx.now.isoformat(), "actual", {"candidates": candidates})
     except Exception as exc:
@@ -199,7 +194,7 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
     ToolSpec("list_voyages", "당진행 항차 목록(예정·항해·완료)을 계획 입항 순으로 조회한다. 모의 항차는 제외한다.", {
         "type": "object",
         "properties": {
-            "status": {"type": ["string", "null"], "enum": ["planned", "underway", "completed", None]},
+            "status": {"type": ["string", "null"], "enum": [*STATUSES, None]},
             "from_day": {**_DAY, "description": "계획 입항일 시작(YYYY-MM-DD)"},
             "to_day": {**_DAY, "description": "계획 입항일 끝(YYYY-MM-DD)"},
         }, "required": []}, _list_voyages),
