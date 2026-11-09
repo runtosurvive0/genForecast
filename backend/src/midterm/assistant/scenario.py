@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 from typing import Callable
 
@@ -21,7 +22,7 @@ class ScenarioError(ValueError):
 
 def _number(change: dict, key: str) -> float:
     value = change.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ScenarioError(f"조건 값이 올바르지 않습니다: {key}")
     return value
 
@@ -30,6 +31,8 @@ def _check(change) -> None:
     if not isinstance(change, dict):
         raise ScenarioError("조건 형식이 올바르지 않습니다")
     kind = change.get("kind")
+    if not isinstance(kind, str):
+        raise ScenarioError("조건 종류가 올바르지 않습니다")
     if kind == "delay":
         if not isinstance(change.get("vesselId"), str) or not change["vesselId"]:
             raise ScenarioError("조건 값이 올바르지 않습니다: vesselId")
@@ -57,7 +60,8 @@ def apply_changes(changes: list[dict], as_of: datetime) -> tuple[Callable[[dict,
             unsupported.append(text)
     delays = [c for c in changes if c["kind"] == "delay"]
     loads = [c for c in changes if c["kind"] == "load"]
-    origin = timestamp(as_of).date()
+    origin_at = timestamp(as_of)
+    origin = origin_at.date()
 
     def adjust(data: dict, plan: dict) -> tuple[dict, dict]:
         vessels = list(data["vessels"])
@@ -65,6 +69,12 @@ def apply_changes(changes: list[dict], as_of: datetime) -> tuple[Callable[[dict,
             index = next((i for i, v in enumerate(vessels) if str(v["id"]) == change["vesselId"]), None)
             if index is None:
                 raise ScenarioError(f"선박을 찾을 수 없습니다: {change['vesselId']}")
+            visited = {r["vessel_id"] for r in data.get("port_visits", []) if timestamp(r["arrived_at"]) <= origin_at}
+            if vessels[index]["id"] in visited:
+                note = f"이미 입항이 관측된 선박은 입항 지연을 반영하지 않습니다: {vessels[index].get('name')}"
+                if note not in unsupported:
+                    unsupported.append(note)
+                continue
             shift = timedelta(days=change["days"])
             moved = dict(vessels[index])
             for key in ("arrival_at", "start_at"):
@@ -77,12 +87,18 @@ def apply_changes(changes: list[dict], as_of: datetime) -> tuple[Callable[[dict,
             plan = {hour: dict(rows) for hour, rows in plan.items()}
             for change in loads:
                 factor = 1 + change["pct"] / 100
+                applied = 0
                 for hour, rows in plan.items():
                     offset = (timestamp(hour).date() - origin).days
                     if change["fromDay"] <= offset <= change["toDay"]:
                         for unit, row in rows.items():
                             if row.get("online"):
                                 rows[unit] = {**row, "mw": row["mw"] * factor}
+                                applied += 1
+                if not applied:
+                    note = f"발전량 변경을 적용할 계획 구간이 없습니다 (D+{change['fromDay']}~D+{change['toDay']})"
+                    if note not in unsupported:
+                        unsupported.append(note)
         return data, plan
 
     return adjust, unsupported
