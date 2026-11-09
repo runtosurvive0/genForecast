@@ -9,6 +9,10 @@ from midterm.supply import KST
 
 logger = logging.getLogger(__name__)
 
+
+class CheckError(ValueError):
+    """이 모듈이 직접 만든 검증 오류. 메시지는 응답에 그대로 실어도 된다."""
+
 SCREENS = ('blend', 'forecast', 'simulation', 'planning_input', 'scenario')
 SCREEN_LABELS = {'blend': '상탄·혼탄', 'forecast': '수급 예측', 'simulation': '통합 시뮬레이션',
                  'planning_input': '전망 입력·계산', 'scenario': '시나리오 분석'}
@@ -99,6 +103,20 @@ def _blend(params, ctx):
     return [i for i in items if i], {'lots': details}
 
 
+def _horizon(run_id, ctx):
+    """계산 기간 이하에서 snapshot이 허용하는 가장 큰 조회 기간(최대 30일). 기간을 모르면 30."""
+    for record in milp_store.stored_runs(ctx.db_path):
+        if record.get('id') != run_id:
+            continue
+        scenario = ((record.get('summary') or {}).get('scenario')) or {}
+        try:
+            days = (date.fromisoformat(str(scenario['end'])[:10]) - date.fromisoformat(str(scenario['start'])[:10])).days + 1
+        except (KeyError, ValueError):
+            return 30
+        return 30 if days >= 30 else 7
+    return 30
+
+
 def _simulation(params, ctx):
     from midterm.web import planning_api
     run_id = params.get('run_id')
@@ -110,7 +128,7 @@ def _simulation(params, ctx):
                          action={'page': 'data', 'label': '전망 입력·계산 열기'}, count=1)
             return [item], None
         run_id = done[0]['id']
-    issues = planning_api.snapshot(run_id, None, 30)['issues']
+    issues = planning_api.snapshot(run_id, None, _horizon(run_id, ctx))['issues']
     items = []
     for n, text in enumerate(issues):
         kind = 'stale' if ('경과' in text or 'stale' in text.lower()) else 'missing'
@@ -128,7 +146,10 @@ def _planning_input(params, ctx):
                          action={'page': 'data', 'label': '전망 입력·계산 열기'}, count=1)
             return [item], None
         input_id = saved[0]['id']
-    payload = milp_store.get_input(input_id, ctx.db_path)['payload']
+    try:
+        payload = milp_store.get_input(input_id, ctx.db_path)['payload']
+    except ValueError:
+        raise CheckError('저장된 입력 세트가 없습니다') from None
     scenario = payload.get('scenario') or {}
     reference = payload.get('input_reference')
     units = load_coal_units(rows=reference['coal_units']) if reference else load_coal_units()
@@ -163,7 +184,7 @@ def _forecast(params, ctx):
     if not sample:
         return [], None
     return [_item('forecast.sample_inputs', 'sample', f'표본 자료로 계산하는 입력 {len(sample)}건',
-                  '실제 수신 자료가 연결되지 않은 입력은 표본 값으로 계산합니다.', sample)], None
+                  '운전 연결값이 없는 입력은 표본 값으로 계산합니다.', sample)], None
 
 
 def _scenario(params, ctx):
@@ -177,15 +198,15 @@ _RULES = {'blend': _blend, 'forecast': _forecast, 'simulation': _simulation,
 
 def _validate(screen, params):
     if screen not in SCREENS:
-        raise ValueError(f'알 수 없는 화면: {screen}')
+        raise CheckError(f'알 수 없는 화면: {screen}')
     if screen == 'forecast':
         live = params.get('live') or []
         if not isinstance(live, (list, tuple)) or any(not isinstance(n, str) or n not in LIVE_INPUTS for n in live):
-            raise ValueError('알 수 없는 live 입력 이름: 허용 값은 ' + ', '.join(LIVE_INPUTS))
+            raise CheckError('알 수 없는 live 입력 이름: 허용 값은 ' + ', '.join(LIVE_INPUTS))
 
 
 def _reason(exc):
-    if isinstance(exc, ValueError):
+    if isinstance(exc, CheckError):
         return str(exc)
     detail = getattr(exc, 'detail', None)  # fastapi HTTPException messages are ours
     if isinstance(detail, str):

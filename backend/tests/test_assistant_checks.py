@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -155,10 +155,19 @@ def test_rule_exception_goes_to_errors(db, monkeypatch):
 
 def test_rule_value_error_message_is_kept(db, monkeypatch):
     def bad(params, ctx):
-        raise ValueError('저장된 입력 세트가 없습니다')
+        raise checks.CheckError('저장된 입력 세트가 없습니다')
     monkeypatch.setitem(checks._RULES, 'blend', bad)
     result = run_checks('blend', {}, ctx_for(db))
     assert result['errors'] == ['상탄·혼탄 점검 실패: 저장된 입력 세트가 없습니다']
+
+
+def test_foreign_value_error_message_hidden(db, monkeypatch):
+    def bad(params, ctx):
+        date.fromisoformat('not-a-date')  # ValueError: Invalid isoformat string
+    monkeypatch.setitem(checks._RULES, 'blend', bad)
+    result = run_checks('blend', {}, ctx_for(db))
+    assert 'isoformat' not in repr(result) and 'not-a-date' not in repr(result)
+    assert result['errors'] == ['상탄·혼탄 점검 실패: 내부 오류(서버 로그 확인)']
 
 
 def test_rule_os_error_path_not_in_response(db, monkeypatch):
@@ -309,3 +318,22 @@ def test_live_non_string_is_value_error(db):
     for bad in ([1], [['stock']], [{'a': 1}], 'stock'):
         with pytest.raises(ValueError):
             run_checks('forecast', {'live': bad}, ctx_for(db))
+
+
+@pytest.mark.parametrize('days,horizon', [(7, 7), (14, 7), (29, 7), (30, 30), (90, 30)])
+def test_simulation_short_run_uses_allowed_horizon(db, monkeypatch, days, horizon):
+    """snapshot의 실제 기간 검사를 거친다: 계산 기간 이하의 조회 기간이면 400이 나지 않는다."""
+    end = date(2027, 1, 1) + timedelta(days=days - 1)
+    monkeypatch.setattr(milp_store, 'stored_runs', lambda path=None: [
+        {'id': 'r1', 'state': 'done', 'summary': {'scenario': {'start': '2027-01-01', 'end': end.isoformat()}}}])
+    monkeypatch.setattr(planning_api, 'run_plan',
+                        lambda run_id: (None, None, {'start': '2027-01-01', 'end': end.isoformat()}))
+    reached = []
+
+    def dashboard(horizon, at, plan_key):
+        reached.append(horizon)
+        raise RuntimeError('기간 검사를 통과했다')
+    monkeypatch.setattr(planning_api, 'dashboard', dashboard)
+    got = run_checks('simulation', {}, ctx_for(db))
+    assert reached == [horizon]  # HTTPException(400)이었다면 dashboard에 닿지 못한다
+    assert '벗어납니다' not in repr(got) and '조회 기간은' not in repr(got)

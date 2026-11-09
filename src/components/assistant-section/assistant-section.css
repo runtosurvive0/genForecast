@@ -27,3 +27,4 @@
 .gf-as-questions { display: flex; flex-wrap: wrap; gap: 6px; }
 .gf-as-question { max-width: 100%; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--secondary); color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .gf-as-question:disabled { opacity: 0.5; cursor: not-allowed; }
+.gf-as-truncated { color: var(--muted-foreground, inherit); font-style: italic; }

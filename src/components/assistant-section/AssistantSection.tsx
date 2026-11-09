@@ -47,6 +47,7 @@ function Item({ item, onNavigate }: { item: CheckItem; onNavigate: (page: string
       </div>
       {showTargets && (
         <ul className="gf-as-targets">
+          {item.count > item.targets.length && <li className="gf-as-truncated">{item.count}건 중 {item.targets.length}건 표시</li>}
           {item.targets.map((t, i) => <li key={`${t.label}-${i}`}><span>{t.label}</span> <span className="gf-as-reason">{t.reason}</span></li>)}
         </ul>
       )}

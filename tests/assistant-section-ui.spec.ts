@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
+import { createRequire } from 'node:module';
 import { planningFixture } from './planning-fixture';
+
+const require = createRequire(import.meta.url);
+const { createEngine } = require('../scripts/fuel-demo/demo-engine.cjs');
+const { loadCatalog } = require('../scripts/fuel-demo/demo-catalog.cjs');
 
 // assistant-ui.spec.ts와 같은 방식: 격리된 테스트 서버(8097)로 /api를 보내고 test-admin으로 로그인한다.
 async function loginAndOpen(page: Page, path: string) {
@@ -280,4 +285,33 @@ test('forecast live param follows demo status and planning input sends input_id'
   await gotoScreen(page, '#data');
   await page.getByLabel('기준으로 가져올 입력').selectOption('5');
   await expect.poll(() => seen.some(s => new URLSearchParams(s).get('input_id') === '5')).toBe(true);
+});
+
+test('forecast live param follows the 기준 표본 toggle when the demo is connected', async ({ page }) => {
+  const seen: string[] = [];
+  await mockChecks(page, seen);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  const catalog = loadCatalog(), engine = createEngine(catalog);
+  const timers = new Set<ReturnType<typeof setInterval>>();
+  await page.routeWebSocket(/\/demo-stream\?/, socket => {
+    let seq = 0;
+    socket.send(JSON.stringify({ type: 'hello', serverId: 'assistant-live', catalog }));
+    const tick = () => socket.send(JSON.stringify({ type: 'snapshot', serverId: 'assistant-live', seq: ++seq, state: engine.snapshot() }));
+    tick(); const timer = setInterval(tick, 500); timers.add(timer); socket.onClose(() => { clearInterval(timer); timers.delete(timer); });
+  });
+  try {
+    await loginAndOpen(page, '/?demo=1#forecast');
+    const live = page.getByRole('button', { name: '현재 운전 상태' });
+    await expect(live).toBeEnabled();
+    const forecastLive = () => seen.filter(s => s.includes('screen=forecast')).map(s => new URLSearchParams(s).get('live') ?? '');
+    // 연결 + 실시간 사용: 세 입력 이름이 모두 간다.
+    await expect.poll(() => forecastLive().some(v => v === 'stock,ships,units')).toBe(true);
+    // 기준 표본 선택: 이후 요청에는 live가 없다.
+    seen.length = 0;
+    await page.getByRole('button', { name: '기준 표본' }).click();
+    await expect.poll(() => forecastLive().length).toBeGreaterThan(0);
+    expect(forecastLive().every(v => v === '')).toBe(true);
+  } finally {
+    for (const t of timers) clearInterval(t);
+  }
 });

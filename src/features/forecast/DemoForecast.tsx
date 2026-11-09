@@ -394,7 +394,7 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate }: {
         </div>
 
         <div className="dfc-side">
-        <AssistantSection screen="forecast" params={{ live: status === "online" || status === "stale" ? ["stock", "ships", "units"] : [] }}
+        <AssistantSection screen="forecast" params={{ live: live ? ["stock", "ships", "units"] : [] }}
           context={{ screen: "forecast" }} questions={SCREEN_QUESTIONS.forecast} onAsk={onAsk} onNavigate={onNavigate} />
         <aside className="dfc-panel dfc-assist" aria-label="조건 해석">
           <header><h2><Bot size={15} />조건 해석</h2><span>{parsed?.source === "llm" ? "LLM 해석" : "LLM · 규칙 해석"}</span></header>

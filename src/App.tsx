@@ -75,6 +75,7 @@ import {
   towerSummary,
   defaultModels,
   shiftForecastTimes,
+  shiftSampleTime,
 } from "@/domain/control-tower";
 import { PlantOverview } from "@/features/plant/PlantOverview";
 import { SupplyLedger } from "@/features/stockyard/SupplyLedger";
@@ -319,6 +320,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
   const detailPlant = plants.find((p) => p.id === detail?.plantId);
   // 시나리오 화면에서는 표와 같은 옮긴 날짜를 대화상자에도 쓴다.
   const shownTime = (f: Forecast) => (page === "scenario" ? shiftForecastTimes(f, sampleToday) : f);
+  const shownIso = (iso: string) => (page === "scenario" ? shiftSampleTime(iso, BASE_TIME, sampleToday) : iso);
   const detailForecast = detailPlant
     ? scenarioView.forecast.byPlant.find((p) => p.plantId === detailPlant.id)
     : undefined;
@@ -1223,7 +1225,9 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
             <DialogHeader>
               <DialogTitle>{detailPlant?.name} 운영 상세</DialogTitle>
               <DialogDescription>
-                시연 기준 2026.10.06 09:00 KST · 샘플 운영 및 정비계획
+                {page === "scenario"
+                  ? "오늘 09:00 KST 기준으로 옮긴 날짜 · 샘플 운영 및 정비계획"
+                  : "시연 기준 2026.10.06 09:00 KST · 샘플 운영 및 정비계획"}
               </DialogDescription>
             </DialogHeader>
             {detailPlant && (
@@ -1306,8 +1310,8 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                             <div>
                               <b>{o.title}</b>
                               <span>
-                                {fmtDate(o.startAt, true)} ~{" "}
-                                {fmtDate(o.endAt, true)}
+                                {fmtDate(shownIso(o.startAt), true)} ~{" "}
+                                {fmtDate(shownIso(o.endAt), true)}
                               </span>
                               <small>{o.reason} · 입력된 샘플 계획</small>
                             </div>

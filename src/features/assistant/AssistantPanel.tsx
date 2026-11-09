@@ -112,7 +112,7 @@ export function AssistantPanel({ open, onClose, pending = null, onPendingSent, s
     if (canSend) await send(trimmed);
   }
 
-  async function send(asked: string, context?: AssistantContext) {
+  async function send(asked: string, context?: AssistantContext, fromPending = false) {
     const history: AssistantTurn[] = messages.slice(-HISTORY_MESSAGES).map(m => ({ role: m.role, content: m.content }));
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -126,7 +126,7 @@ export function AssistantPanel({ open, onClose, pending = null, onPendingSent, s
         { id: nextId.current++, role: 'user', content: asked, context },
         { id: nextId.current++, role: 'assistant', content: result.answer, result },
       ]);
-      setQuestion('');
+      if (!fromPending) setQuestion(''); // 섹션에서 온 질문은 사용자가 입력칸에 쓰던 글을 건드리지 않는다.
     } catch (e) {
       if (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
       setError(e instanceof Error ? e.message : '질문을 처리하지 못했습니다.');
@@ -144,7 +144,7 @@ export function AssistantPanel({ open, onClose, pending = null, onPendingSent, s
   useEffect(() => {
     if (!open || !pending || sending || llm === 'loading') return;
     onPendingSent?.();
-    if (llm !== 'off') void sendRef.current(pending.question, pending.context);
+    if (llm !== 'off') void sendRef.current(pending.question, pending.context, true);
     else setQuestion(pending.question); // 연결 안 됨: 질문을 버리지 않고 입력칸에 남겨 안내와 함께 보여 준다.
   }, [open, pending, sending, llm, onPendingSent]);
 
