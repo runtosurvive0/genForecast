@@ -121,36 +121,35 @@ export const SCREEN_QUESTIONS: Record<AssistantScreen, { label: string; question
 // 진입·params 변경·reload에서만 조회한다. 폴링하지 않는다.
 export function useAssistantChecks(screen: AssistantScreen, params: ChecksParams) {
   const [state, setState] = useState<ChecksState>('loading');
-  const [result, setResult] = useState<ChecksResult | null>(null);
+  // 결과에 조회 주소를 함께 저장해, 조회가 바뀌면 이전 조회의 목록을 보여 주지 않는다.
+  const [held, setHeld] = useState<{ url: string; result: ChecksResult } | null>(null);
   const [tick, setTick] = useState(0);
   const latest = useRef(0);
   const url = checksQuery(screen, params);
-  const lastUrl = useRef(url);
 
   useEffect(() => {
     const requestId = ++latest.current;
     const controller = new AbortController();
     setState('loading');
-    setResult((prev) => resultWhileLoading(prev, lastUrl.current, url));
-    lastUrl.current = url;
     (async () => {
       try {
         const response = await fetch(url, { signal: controller.signal });
         const body: unknown = await response.json().catch(() => null);
         if (controller.signal.aborted || !acceptResponse(requestId, latest.current)) return;
-        if (!response.ok) { setResult(null); setState(statusAfterError(response.status)); return; }
-        if (!isChecksResult(body)) { setResult(null); setState('error'); return; }
-        setResult({ ...body, items: sortChecks(body.items) });
+        if (!response.ok) { setHeld(null); setState(statusAfterError(response.status)); return; }
+        if (!isChecksResult(body)) { setHeld(null); setState('error'); return; }
+        setHeld({ url, result: { ...body, items: sortChecks(body.items) } });
         setState('ready');
       } catch {
         if (controller.signal.aborted || !acceptResponse(requestId, latest.current)) return;
-        setResult(null);
+        setHeld(null);
         setState('error');
       }
     })();
     return () => controller.abort();
   }, [url, tick]);
 
+  const result = resultWhileLoading(held?.result ?? null, held?.url ?? '', url);
   const reload = useCallback(() => setTick((n) => n + 1), []);
   return { state, result, reload };
 }
@@ -161,7 +160,7 @@ export type LlmStatus = 'loading' | 'on' | 'off' | 'unknown';
 export function useLlmStatus(active: boolean): LlmStatus {
   const [status, setStatus] = useState<LlmStatus>('loading');
   useEffect(() => {
-    if (!active) return;
+    if (!active) { setStatus('loading'); return; }
     const controller = new AbortController();
     setStatus('loading');
     (async () => {

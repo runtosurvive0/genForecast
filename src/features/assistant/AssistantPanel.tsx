@@ -97,6 +97,8 @@ export function AssistantPanel({ open, onClose, pending = null, onPendingSent, s
     if (!open) controllerRef.current?.abort();
   }, [open]);
   useEffect(() => () => controllerRef.current?.abort(), []);
+  // 닫을 때 남은 질문을 비워 다음에 열 때 오래된 질문이 나가지 않게 한다.
+  useEffect(() => { if (!open && pending) onPendingSent?.(); }, [open, pending, onPendingSent]);
 
   useEffect(() => {
     const el = logRef.current;
@@ -143,6 +145,7 @@ export function AssistantPanel({ open, onClose, pending = null, onPendingSent, s
     if (!open || !pending || sending || llm === 'loading') return;
     onPendingSent?.();
     if (llm !== 'off') void sendRef.current(pending.question, pending.context);
+    else setQuestion(pending.question); // 연결 안 됨: 질문을 버리지 않고 입력칸에 남겨 안내와 함께 보여 준다.
   }, [open, pending, sending, llm, onPendingSent]);
 
   const examples = screen ? SCREEN_QUESTIONS[screen].slice(0, 3).map(q => q.question) : COMMON_EXAMPLES;

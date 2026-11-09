@@ -63,3 +63,9 @@ test('다시 점검하는 동안 같은 조회면 이전 목록을 유지하고 
   assert.equal(resultWhileLoading(prev, '/u1', '/u2'), null);
   assert.equal(resultWhileLoading(null, '/u1', '/u1'), null);
 });
+
+test('조회가 바뀌면 이전 조회의 목록은 보이지 않는다(저장된 주소와 비교)', () => {
+  const held = { url: '/a?screen=blend&yard=1', result: { items: [1] } };
+  assert.equal(resultWhileLoading(held.result, held.url, '/a?screen=blend&yard=2'), null);
+  assert.equal(resultWhileLoading(held.result, held.url, held.url), held.result);
+});

@@ -19,6 +19,11 @@ function readOpen(screen: AssistantScreen): boolean | null {
   } catch { return null; }
 }
 
+function checkedAtLabel(asOf: string): string {
+  const t = formatAsOf(asOf);
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(t) ? `점검 ${t.slice(-5)}` : '점검 시각 미확인';
+}
+
 function Item({ item, onNavigate }: { item: CheckItem; onNavigate: (page: string) => void }) {
   const [showTargets, setShowTargets] = useState(false);
   return (
@@ -62,7 +67,7 @@ export function AssistantSection({ screen, params, context, questions, onAsk, on
   if (state === 'hidden') return null;
 
   const hasMissing = !!result?.items.some(i => i.kind === 'missing');
-  const open = userOpen ?? hasMissing;
+  const open = userOpen ?? (hasMissing || state === 'error');
   const toggle = () => {
     const next = !open;
     setUserOpen(next);
@@ -74,11 +79,11 @@ export function AssistantSection({ screen, params, context, questions, onAsk, on
   return (
     <section className="gf-as" aria-label="도우미">
       <header className="gf-as-head">
-        <button type="button" className="gf-as-toggle" aria-expanded={open} aria-controls={bodyId} onClick={toggle}>
+        <button type="button" className="gf-as-toggle" aria-expanded={open} aria-controls={open ? bodyId : undefined} onClick={toggle}>
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           <span className="gf-as-title">도우미</span>
         </button>
-        {state === 'ready' && result && <span className="gf-as-time">점검 {formatAsOf(result.as_of).slice(-5)}</span>}
+        {state === 'ready' && result && <span className="gf-as-time">{checkedAtLabel(result.as_of)}</span>}
         <button type="button" className="gf-as-refresh" onClick={reload} disabled={state === 'loading'}>
           <RefreshCw size={13} aria-hidden="true" />다시 점검
         </button>
