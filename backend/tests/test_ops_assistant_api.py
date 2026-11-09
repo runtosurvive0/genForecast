@@ -98,3 +98,15 @@ def test_log_boundary_with_mixed_timezones(tmp_path):
 def test_log_rejects_naive_datetime(tmp_path):
     with pytest.raises(ValueError):
         record(tmp_path / 'n.db', 'u', 'q', [], {}, datetime(2026, 11, 9, 12, 0))
+
+
+def test_unavailable_after_tool_limit_returns_partial_200(auth_client):
+    from midterm.assistant.llm import AssistantUnavailable, ToolCall
+    turns = [LlmTurn([ToolCall(f'c{i}', 'list_voyages', {})], None) for i in range(6)]
+    turns.append(AssistantUnavailable('LLM 호출에 실패했습니다.'))
+    app.dependency_overrides[ops_assistant_api.get_llm] = lambda: FakeLlm(turns)
+    r = auth_client.post('/api/assistant/ask', json={'question': '계속', 'history': []})
+    assert r.status_code == 200
+    body = r.json()
+    assert body['partial'] is True and body['facts'] == [] and len(body['tool_calls']) == 6
+    assert '도구 호출 한도 또는 시간 초과' in body['gaps']
