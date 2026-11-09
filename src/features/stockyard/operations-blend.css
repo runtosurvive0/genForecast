@@ -23,3 +23,4 @@
 /* 섹션이 숨겨져(null) 있어도 각 자식이 제 행에 들어가도록 행을 명시한다. */
 .gf-operations-blend:not(.is-analysis)>.gf-bl-heading{grid-row:1}.gf-operations-blend:not(.is-analysis)>.gf-as{grid-row:2}.gf-operations-blend:not(.is-analysis)>.gf-bl-command{grid-row:3}.gf-operations-blend:not(.is-analysis)>.gf-bl-stage{grid-row:4}.gf-operations-blend:not(.is-analysis)>.gf-bl-bottom{grid-row:5}.gf-operations-blend:not(.is-analysis)>.gf-bl-caption{grid-row:6}
 .gf-operations-blend.is-analysis>.gf-as{margin:12px 0 0}
+.gf-bl-offline{margin-left:8px;padding:1px 8px;border:1px solid color-mix(in srgb,var(--amber) 55%,transparent);border-radius:999px;background:var(--amber-soft);color:var(--amber);font-style:normal;font-weight:600;white-space:nowrap}

@@ -181,7 +181,7 @@ export function StockyardSite({
         <div>
           <h2 id={titleId}>당진 항만 · 저탄장 현황</h2>
           <p>
-            선박 대기·접안·하역 → 저탄장 Pile 저탄 → 발전소 상탄 · 더미에 마우스를
+            선박 대기·접안·하역 → 저탄장 Pile 저탄 → 발전소 상탄 · 원탄에 마우스를
             올리면 탄질과 하역 이력, 선택하면 우측 패널에 상세 · Pile 이름을 누르면 Pile 요약
           </p>
         </div>
@@ -309,7 +309,7 @@ export function StockyardSite({
                             {!shed && <span>{group.heaps[0].coal_type}</span>}
                           </button>
                           <span className="site-pile-meta">
-                            · {shed ? "Cell" : "더미"} {group.heaps.length} · <b>{n(sum)} t</b>
+                            · {shed ? "Cell" : "원탄"} {group.heaps.length} · <b>{n(sum)} t</b>
                           </span>
                           <span className="site-pile-reach" aria-label={`${group.label} 하역 가능 부두`}>
                             {UNLOAD_LINES.map((line) => {

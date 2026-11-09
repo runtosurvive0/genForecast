@@ -105,7 +105,7 @@ export function StockyardAnalysis({
                 }}
               />
               <div>
-                <strong className="stockyard-list-title">소진 상위 더미</strong>
+                <strong className="stockyard-list-title">소진 상위 원탄</strong>
                 <ol className="stockyard-top-list">
                   {top.map((r) => (
                     <li key={r.stockpile_id}>
@@ -147,7 +147,7 @@ export function StockyardAnalysis({
           <>
             <TowerChart
               theme={theme}
-              label="더미 적치일수와 위험 점수 산점도"
+              label="원탄 적치일수와 위험 점수 산점도"
               option={{
                 tooltip: {
                   trigger: "item",

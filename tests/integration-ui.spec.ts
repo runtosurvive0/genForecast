@@ -486,7 +486,7 @@ test('yard displays manual inventory separately from the photographic scene', as
   await page.goto('/#yard');
   const manual = page.getByLabel('수기 원장 구역별 잔량');
   await expect(manual).toContainText('Pile 1 150 t · 재확인');
-  await expect(manual).toContainText('더미 위치 미확인');
+  await expect(manual).toContainText('적치 위치 미확인');
   await expect(page.locator('.gf-oy-map-caption')).toContainText('참고 배치');
   await page.getByRole('tab', {name:'3저탄장옥내'}).click();
   await expect(manual).toContainText('A3 셀 50 t');

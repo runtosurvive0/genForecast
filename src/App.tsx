@@ -700,7 +700,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
               </Button>
             </div>}
           </div>}
-          {!isMilpOverview && (["overview","fuel","scenario","schedule"].includes(page) || (page==='blend'&&blendView==='analysis')) && (
+          {!isMilpOverview && (["overview","fuel","scenario","schedule"].includes(page)) && (
             <div className="context-bar">
               <div className="context-left">
                 <span className="context-caption">조회 범위</span>

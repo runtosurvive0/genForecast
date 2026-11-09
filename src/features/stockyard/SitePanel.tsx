@@ -27,7 +27,7 @@ export type PanelTab = "vessel" | "yard" | "pile";
 const TABS: { id: PanelTab; label: string }[] = [
   { id: "vessel", label: "선박" },
   { id: "yard", label: "처" },
-  { id: "pile", label: "Pile·더미" },
+  { id: "pile", label: "Pile·원탄" },
 ];
 const YARDS = ["P1", "P2", "P3"] as const;
 /** datetime-local 값(KST) ↔ ISO 8601. */
@@ -522,7 +522,7 @@ function PileSummary({
     group.heaps.map((p) => ({ tons: p.on_hand_t, cv: p.calorific_value_kcal_kg })),
   );
   const high = group.heaps.filter((p) => pileRisk(p).label === "높음").length;
-  const unit = group.pileNo === null ? "Cell" : "더미";
+  const unit = group.pileNo === null ? "Cell" : "원탄";
   return (
     <section className="site-pile-summary" aria-label={`${group.label} 요약`}>
       <h3>{group.label} 요약</h3>
@@ -565,7 +565,7 @@ function PileTab({
   onShowInLedger,
 }: Parameters<typeof SitePanel>[0]) {
   if (!activePile)
-    return <p className="site-empty">약도에서 Pile 이름이나 더미를, 원장에서 더미를 선택하면 탄질·센서·하역 이력이 여기에 표시됩니다.</p>;
+    return <p className="site-empty">약도에서 Pile 이름이나 원탄을, 원장에서 원탄을 선택하면 탄질·센서·하역 이력이 여기에 표시됩니다.</p>;
   return (
     <>
       {activeGroup && <PileSummary group={activeGroup} activeId={activePile.stockpile_id} onSelectPile={onSelectPile} />}

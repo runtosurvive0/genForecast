@@ -291,7 +291,7 @@ export function OperationsYard({
                   {item.location.startsWith('P') ? `Pile ${item.location.slice(1)}` : `${item.location[0]}${item.location.slice(1)} 셀`}
                   {' '}<b>{number(item.tonnes)} t</b>{item.review > 0 && ' · 재확인'}
                 </button>)}
-            <span className="gf-oy-manual-note">수기 배분 잔량 · 더미 위치 미확인 · 기준재고와 별도</span>
+            <span className="gf-oy-manual-note">수기 배분 잔량 · 적치 위치 미확인 · 기준재고와 별도</span>
           </div>
           <div className="gf-oy-scene">
             {baseline.data?.as_of && <FuelScene

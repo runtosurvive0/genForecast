@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import {
   checksQuery, useAssistantChecks, useLlmStatus,
-  type AssistantContext, type AssistantScreen, type CheckItem, type CheckKind,
+  type AssistantContext, type AssistantScreen, type CheckItem, type CheckKind, type ChecksResult,
 } from '@/domain/assistant-checks';
 import { formatAsOf } from '@/domain/assistant';
 import './assistant-section.css';
@@ -53,16 +53,18 @@ function Item({ item, onNavigate }: { item: CheckItem; onNavigate: (page: string
   );
 }
 
-export function AssistantSection({ screen, params, context, questions, onAsk, onNavigate }: {
+export function AssistantSection({ screen, params, context, questions, onAsk, onNavigate, onResult }: {
   screen: AssistantScreen;
   params: Parameters<typeof checksQuery>[1];
   context: AssistantContext;
   questions: { label: string; question: string }[];
   onAsk: (question: string, context: AssistantContext) => void;
   onNavigate: (page: string) => void;
+  onResult?: (result: ChecksResult | null) => void;
 }) {
   const { state, result, reload } = useAssistantChecks(screen, params);
   const llm = useLlmStatus(state !== 'hidden');
+  useEffect(() => { onResult?.(result); }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
   const [userOpen, setUserOpen] = useState<boolean | null>(() => readOpen(screen));
   if (state === 'hidden') return null;
 
