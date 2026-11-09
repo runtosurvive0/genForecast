@@ -18,3 +18,13 @@ def seed_baselines_and_plan(client) -> tuple[datetime, str]:
                        'as_of': at.isoformat(), 'rows': rows})
     assert batch.status_code == 200
     return at, f'db:{batch.json()["id"]}'
+
+
+def seed_incoming_vessel(client, arrival: datetime, group: str, tonnes: float) -> int:
+    """해당 그룹 100% 배분 입항 예정선을 /api/supply/vessels로 등록하고 id를 돌려준다."""
+    allocations = {g: (1 if g == group else 0) for g in ('g14', 'g58', 'g910')}
+    result = client.post('/api/supply/vessels', json={'name': '테스트선', 'cargo': tonnes, 'incoming_cv': 5800,
+        'arrival_at': arrival.isoformat(), 'start_at': arrival.isoformat(), 'allocations': allocations,
+        'berth_id': 'BD-1'})
+    assert result.status_code == 200
+    return result.json()['id']

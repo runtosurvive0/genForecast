@@ -187,6 +187,41 @@ def _plan_for_day(args: dict, ctx: ToolContext) -> dict:
         return _fail(f"발전계획 조회 실패: {exc}")
 
 
+# ---------------------------------------------------------------- simulate_scenario
+def _group_view(g: dict) -> dict:
+    return {"id": g["id"], "name": g["name"], "stock_t": g["stock"], "days": g["days"],
+            "min_days": g["min_days"], "min_stock_t": g["min_stock"], "risk": g["risk"]}
+
+
+def _view(result: dict) -> dict:
+    return {"groups": [_group_view(g) for g in result["groups"]], "kpis": result["kpis"]}
+
+
+def _delta(after, before):
+    return None if after is None or before is None else after - before
+
+
+def _simulate_scenario(args: dict, ctx: ToolContext) -> dict:
+    from midterm.assistant.scenario import ScenarioError, apply_changes
+    try:
+        from midterm.web.supply_api import build_dashboard
+        adjust, unsupported = apply_changes(args["changes"], ctx.now)
+        horizon = args["horizon_days"]
+        base = build_dashboard(horizon, ctx.now, None)
+        scenario = build_dashboard(horizon, ctx.now, None, adjust)
+        baseline, changed = _view(base), _view(scenario)
+        before = {g["id"]: g for g in baseline["groups"]}
+        diff = {g["id"]: {"min_days": _delta(g["min_days"], before[g["id"]]["min_days"]),
+                          "min_stock_t": _delta(g["min_stock_t"], before[g["id"]]["min_stock_t"])}
+                for g in changed["groups"]}
+        data = {"baseline": baseline, "scenario": changed, "diff": diff, "unsupported": unsupported}
+        return _ok(scenario["as_of"], "simulation", data)
+    except ScenarioError as exc:
+        return _fail(str(exc))
+    except Exception as exc:
+        return _fail(f"가정 계산 실패: {exc}")
+
+
 # ---------------------------------------------------------------- 등록
 _DAY = {"type": ["string", "null"], "pattern": DAY_PATTERN}
 
@@ -208,6 +243,14 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
         "type": "object",
         "properties": {"day": {"type": "string", "pattern": DAY_PATTERN, "description": "날짜(YYYY-MM-DD, KST)"}},
         "required": ["day"]}, _plan_for_day),
+    ToolSpec("simulate_scenario", "도착 지연(delay)·부하 증감(load) 가정을 적용한 재고 전망을 현재 전망과 비교한다. "
+             "정지(outage)·상탄 전략(strategy)은 계산하지 않고 unsupported로 알린다.", {
+        "type": "object",
+        "properties": {
+            "changes": {"type": "array", "description": "조건 목록. delay: {kind,vesselId,days(-10~30)}, "
+                        "load: {kind,fromDay,toDay,pct(-60~60)}, outage/strategy는 미지원"},
+            "horizon_days": {"type": "integer", "enum": [7, 30, 60, 90]},
+        }, "required": ["changes", "horizon_days"]}, _simulate_scenario),
 ]}
 
 

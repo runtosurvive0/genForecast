@@ -116,5 +116,5 @@ def test_waiting_vessels_same_with_or_without_request(monkeypatch, tmp_registry)
 def test_tool_schemas_cover_registry():
     schemas = tool_schemas()
     assert [s['name'] for s in schemas] == list(TOOLS)
-    assert set(TOOLS) == {'list_voyages', 'waiting_vessels', 'stock_snapshot', 'plan_for_day'}
+    assert set(TOOLS) == {'list_voyages', 'waiting_vessels', 'stock_snapshot', 'plan_for_day', 'simulate_scenario'}
     assert all(s['description'] and s['parameters']['type'] == 'object' for s in schemas)
