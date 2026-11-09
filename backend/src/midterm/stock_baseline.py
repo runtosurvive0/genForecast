@@ -45,7 +45,7 @@ def save_baseline(value, revision, actor, path):
     rows = value['lots']
     if not isinstance(rows, list) or not rows or len(rows) > 1000:
         raise ValueError('적치 내역을 확인하세요')
-    allowed = {'source_id', 'location', 'coal_name', 'tonnes', 'voyage_number', 'grade', 'age_days', 'start_m', 'end_m'}
+    allowed = {'source_id', 'location', 'coal_name', 'tonnes', 'voyage_number', 'grade', 'age_days', 'start_m', 'end_m', 'temperature_c', 'dummy_fields'}
     clean = []
     for row in rows:
         if not isinstance(row, dict) or set(row) - allowed or row.get('location') not in LOCATIONS:
@@ -59,6 +59,11 @@ def save_baseline(value, revision, actor, path):
             item = row.get(key)
             if item is not None and (isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item) or item < 0):
                 raise ValueError('적치 이력과 위치를 확인하세요')
+        temp = row.get('temperature_c')
+        if temp is not None and (isinstance(temp, bool) or not isinstance(temp, (int, float)) or not math.isfinite(temp) or not 0 <= temp <= 150):
+            raise ValueError('더미 표시와 온도를 확인하세요')
+        if row.get('dummy_fields') is not None and (not isinstance(row['dummy_fields'], str) or len(row['dummy_fields']) > 200):
+            raise ValueError('더미 표시와 온도를 확인하세요')
         if row.get('start_m') is not None and row.get('end_m') is not None and row['start_m'] > row['end_m']:
             raise ValueError('적치 구간의 시작과 끝을 확인하세요')
         if any(row.get(key) is not None and (not isinstance(row[key], str) or len(row[key]) > 100) for key in ('source_id', 'voyage_number', 'grade')):
