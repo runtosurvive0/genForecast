@@ -68,12 +68,14 @@ def _scenario_from(body: dict) -> Scenario:
         raise HTTPException(400, f"입력 오류: {error}") from None
 
 
-def _check_units(scenario: Scenario) -> None:
+def _check_units(scenario: Scenario, input_reference: dict | None = None) -> None:
     problems = []
-    unknown = validate_units(scenario.nuclear_oh, [u.name for u in load_nuclear_units()], "원전")
+    nuclear = load_nuclear_units(rows=input_reference['nuclear_units']) if input_reference else load_nuclear_units()
+    coal = load_coal_units(rows=input_reference['coal_units']) if input_reference else load_coal_units()
+    unknown = validate_units(scenario.nuclear_oh, [u.name for u in nuclear], "원전")
     if unknown:
         problems.append(f"원전 호기 이름 확인: {', '.join(unknown)}")
-    unknown = validate_units(scenario.coal_oh, [u.name for u in load_coal_units()], "석탄")
+    unknown = validate_units(scenario.coal_oh, [u.name for u in coal], "석탄")
     if unknown:
         problems.append(f"석탄 호기 이름 확인: {', '.join(unknown)}")
     if scenario.end < scenario.start:
@@ -102,14 +104,22 @@ def meta() -> dict:
     scenario = Scenario.from_json(load_settings()["scenario"])
     net = load_net_demand_model()
     coal = load_coal_curve_model()
+    from midterm.milp_store import active_input
+    active = active_input()
+    defaults = default_scenario().to_json()
+    if active:
+        defaults = {**active['payload']['scenario'], 'start': defaults['start'], 'end': defaults['end']}
+    reference = active['payload'].get('input_reference') if active else None
+    coal_fleet = load_coal_units(rows=reference['coal_units']) if reference else load_coal_units()
+    nuclear_fleet = load_nuclear_units(rows=reference['nuclear_units']) if reference else load_nuclear_units()
     return {
         "nuclear_units": [{"unit": u.name, "available_mw": u.available_mw, "active": u.active}
-                          for u in load_nuclear_units()],
+                          for u in nuclear_fleet],
         "coal_units": [{"unit": u.name, "plant": u.plant, "installed_mw": u.installed_mw,
                         "max_mw": u.max_mw, "min_mw": u.min_mw}
-                       for u in load_coal_units()],
+                       for u in coal_fleet],
         "scenario": scenario.to_json(),
-        "default_scenario": default_scenario().to_json(),
+        "default_scenario": defaults, "active_input_id": active['id'] if active else None,
         "quality": {k: {"time_limit_s": v[0], "gap": v[1]} for k, v in QUALITY.items()},
         "models": {
             "net_demand": {"trained": f"{net.trained_from} ~ {net.trained_through}",
@@ -257,7 +267,10 @@ def _run_job(scenario: Scenario, run_id: str, input_record: dict) -> None:
             _job.update({k: v for k, v in event.items() if k != "stage"}, stage=event.get("stage"))
 
     try:
-        result = run_annual(scenario, progress, heat_prices=input_record["payload"]["heat_prices"])
+        params = {'heat_prices': input_record['payload']['heat_prices']}
+        if input_record['payload'].get('input_reference'):
+            params['input_reference'] = input_record['payload']['input_reference']
+        result = run_annual(scenario, progress, **params)
         summary = save_run(result, RUNS / run_id)
         summary.update(input_id=input_record["id"], fuel_settings=input_record["payload"]["fuel"],
                        classification="scenario_forecast", classification_note="업로드 입력 기반 예측 시뮬레이션 · 운영 실적 아님")
@@ -274,17 +287,24 @@ def _run_job(scenario: Scenario, run_id: str, input_record: dict) -> None:
 
 @app.post("/api/run")
 def run(body: dict | None = None) -> dict:
-    from midterm.milp_store import begin_run, clean_input, get_input, save_input
+    from midterm.milp_store import active_input, begin_run, clean_input, get_input, save_input
     from midterm.fleet import load_heat_prices
     config = load_settings()
     try:
-        input_record = (get_input(body["input_id"]) if body and "input_id" in body else
-                        save_input(clean_input(body if body is not None else config["scenario"],
-                                               load_heat_prices(), config["fuel"])))
+        if body and 'input_id' in body:
+            input_record = get_input(body['input_id'])
+        else:
+            active = active_input()
+            if active:
+                original = active['payload']
+                input_record = save_input(clean_input(body if body is not None else config['scenario'],
+                    original['heat_prices'], original['fuel'], original.get('files'), original.get('input_reference')))
+            else:
+                input_record = save_input(clean_input(body if body is not None else config['scenario'], load_heat_prices(), config['fuel']))
     except (ValueError, TypeError, KeyError) as e:
         raise HTTPException(400, str(e)) from None
     scenario = _scenario_from(input_record["payload"]["scenario"])
-    _check_units(scenario)
+    _check_units(scenario, input_record['payload'].get('input_reference'))
     with _job_lock:
         if _job.get("state") == "running":
             raise HTTPException(409, "이미 실행 중입니다")

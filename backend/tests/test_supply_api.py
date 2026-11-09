@@ -47,6 +47,22 @@ def saved_snapshot_run(tmp_path, monkeypatch):
     return folder
 
 
+def test_snapshot_fuel_uses_the_saved_master_curve(client, saved_snapshot_run):
+    from test_reference_data import reference_fixture
+    path = saved_snapshot_run / 'summary.json'
+    data = jsonlib.loads(path.read_text(encoding='utf-8'))
+    reference = reference_fixture()
+    unit = next(u for u in reference['coal_units'] if u['unit']=='당진1')
+    unit.update(heat_a2=0.,heat_a1=1.,heat_a0=0.)
+    data['input_reference'] = reference
+    path.write_text(jsonlib.dumps(data),encoding='utf-8')
+    response = client.get('/api/planning/runs/snapshot-test/snapshot?start=2027-01-03&horizon=7')
+    assert response.status_code == 200
+    result = response.json()
+    unit = next(u for u in result['units'] if u['unit_id']=='dj-1')
+    assert unit['fuel_tonnes'] == pytest.approx(100.*24*7*1000/5500)
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     from midterm.auth.store import AccessStore

@@ -59,11 +59,12 @@ class NuclearUnit:
     installed_mw: float
     available_mw: float
     active: bool
+    active_from: date | None = None
 
 
-def load_coal_units(path: Path = COAL_UNITS) -> list[CoalUnit]:
+def load_coal_units(path: Path = COAL_UNITS, *, rows: list[dict] | None = None) -> list[CoalUnit]:
     units = []
-    for row in _read_csv(path):
+    for row in _read_csv(path) if rows is None else rows:
         units.append(CoalUnit(
             name=row["unit"], plant=row["plant"] or plant_of(row["unit"]),
             installed_mw=float(row["installed_mw"] or row["max_mw"]),
@@ -84,10 +85,11 @@ def load_heat_prices(path: Path = HEAT_PRICE) -> dict[str, list[float]]:
     return out
 
 
-def load_nuclear_units(path: Path = NUCLEAR_UNITS) -> list[NuclearUnit]:
+def load_nuclear_units(path: Path = NUCLEAR_UNITS, *, rows: list[dict] | None = None) -> list[NuclearUnit]:
     return [NuclearUnit(row["unit"], float(row["installed_mw"]), float(row["available_mw"]),
-                        row["active"].strip() in ("1", "true", "True", "Y"))
-            for row in _read_csv(path)]
+                        str(row["active"]).strip() in ("1", "true", "True", "Y"),
+                        date.fromisoformat(row["active_from"]) if row.get("active_from") else None)
+            for row in (_read_csv(path) if rows is None else rows)]
 
 
 def hours_of(days: list[date]) -> list[datetime]:
@@ -104,9 +106,11 @@ def nuclear_hourly(units: list[NuclearUnit], outages: list[Outage], hours: list[
     total = np.zeros(len(hours))
     running = {}
     for unit in units:
-        if not unit.active:
+        if not unit.active and unit.active_from is None:
             continue
         off = np.asarray(outage_hours(outages, unit.name, hours), bool)
+        if unit.active_from is not None:
+            off |= np.asarray([h.date() < unit.active_from for h in hours])
         running[unit.name] = ~off
         total += np.where(off, 0.0, unit.available_mw)
     return total * NUCLEAR_OUTPUT_FACTOR, running
@@ -139,7 +143,7 @@ class CoalInputs:
 
 
 def coal_inputs(units: list[CoalUnit], prices: dict[str, list[float]], outages: list[Outage],
-                hours: list[datetime]) -> CoalInputs:
+                hours: list[datetime], *, prices_by_month: dict | None = None) -> CoalInputs:
     h, n = len(hours), len(units)
     months = np.asarray([at.month - 1 for at in hours])
     outage = np.zeros((h, n), bool)
@@ -149,7 +153,8 @@ def coal_inputs(units: list[CoalUnit], prices: dict[str, list[float]], outages: 
             outage[:, j] |= np.asarray([at.date() >= unit.retire_on for at in hours])
     minimum = np.tile([u.min_mw for u in units], (h, 1)).astype(float)
     maximum = np.tile([u.max_mw for u in units], (h, 1)).astype(float)
-    price = np.asarray([prices[u.name] for u in units], float).T[months]       # (h, n)
+    price = (np.asarray([[prices_by_month[u.name][at.strftime('%Y-%m')] for u in units] for at in hours], float)
+             if prices_by_month is not None else np.asarray([prices[u.name] for u in units], float).T[months])
     heat = np.asarray([u.heat for u in units], float)                          # (n, 3)
     fuel_curve = heat[None, :, :] * price[:, :, None]
     a, b, c = fuel_curve[..., 0], fuel_curve[..., 1], fuel_curve[..., 2]

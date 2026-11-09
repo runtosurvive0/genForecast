@@ -1,3 +1,5 @@
+import { kstDay } from './operations-status.ts';
+
 /** Stored Python MILP snapshot. Missing measurements and forecasts remain null. */
 export interface PlanningRun {
   id: string;
@@ -129,6 +131,12 @@ export function addDays(day: string, days: number): string {
   return new Date(Date.parse(day + "T00:00:00Z") + days * 86400000)
     .toISOString()
     .slice(0, 10);
+}
+
+/** Prefer today only when at least a supported 7-day slice exists in this run. */
+export function initialPlanningQuery(run: PlanningRun, today = kstDay(new Date())) {
+  const start = run.start <= today && addDays(today, 6) <= run.end ? today : run.start;
+  return { runId: run.id, start, horizon: addDays(start, 29) <= run.end ? 30 : 7 };
 }
 
 async function readJson(path: string, signal?: AbortSignal): Promise<unknown> {

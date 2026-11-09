@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from midterm.outages import Outage, load_outages
@@ -15,11 +15,15 @@ ROOT = Path(__file__).resolve().parents[2]
 QUALITY = {"fast": (12.0, 0.02), "normal": (30.0, 0.005), "precise": (90.0, 0.001)}
 
 
+def today_kst() -> date:
+    return datetime.now(timezone(timedelta(hours=9))).date()
+
+
 @dataclass(slots=True)
 class Scenario:
     name: str = "기본"
-    start: date = date(2027, 1, 1)
-    end: date = date(2027, 12, 31)
+    start: date = field(default_factory=lambda: today_kst())
+    end: date = field(default_factory=lambda: today_kst() + timedelta(days=89))
     #: "normal" = 평년기상, 정수 = 그 해의 실측 기상(기온·태양광)을 재생
     weather: str | int = "normal"
     #: None 이면 학습자료에서 잰 값(기온보정 전년비)
@@ -75,7 +79,7 @@ class Scenario:
 
 
 def default_scenario() -> Scenario:
-    """기본 입력: 2027년, 원전정비는 KPX 2026-10 계획에서 2027년까지 이어지는 7건, 석탄정비 없음."""
+    """오늘(KST)부터 90일. 기존 공개 정비 자료는 날짜를 옮기지 않고 사용한다."""
     from midterm.outages import parse_outage_rows
     from midterm.storage import exists, read_table
 
@@ -86,5 +90,7 @@ def default_scenario() -> Scenario:
         return parse_outage_rows([["unit", "start", "end", "note"]] + [
             [r.get("unit", ""), r.get("start", ""), r.get("end", ""), r.get("note", "")] for r in table])
 
-    return Scenario(nuclear_oh=rows(ROOT / "inputs" / "nuclear_oh_2027.csv"),
+    start = today_kst()
+    return Scenario(start=start, end=start + timedelta(days=89),
+                    nuclear_oh=rows(ROOT / "inputs" / "nuclear_oh_2027.csv"),
                     coal_oh=rows(ROOT / "inputs" / "coal_oh_2027.csv"))

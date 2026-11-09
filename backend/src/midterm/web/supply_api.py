@@ -313,7 +313,11 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
     selected_run = chosen["key"][4:] if chosen and chosen["key"].startswith("mip:") else None
     data["baselines"] = [b for b in data["baselines"] if b.get("run_id") is None or b.get("run_id") == selected_run]
     data["vessels"] = [v for v in data["vessels"] if v.get("run_id") is None or v.get("run_id") == selected_run]
-    result = simulate(data, plan, as_of, horizon, fallback["calorific_kcal_kg"])
+    reference = (source or {}).get('input_reference')
+    from midterm.fleet import load_coal_units
+    master = {u.name: u for u in load_coal_units(rows=reference['coal_units']) if u.is_dangjin} if reference else None
+    result = (simulate(data, plan, as_of, horizon, fallback['calorific_kcal_kg'], master=master)
+              if master else simulate(data, plan, as_of, horizon, fallback['calorific_kcal_kg']))
     first, last = as_of.date().isoformat(), (as_of + timedelta(days=horizon - 1)).date().isoformat()
     saved_forecast = latest_forecast()
     if not model_rows and saved_forecast:
@@ -346,7 +350,7 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
     forecast_source = source if chosen and chosen["key"].startswith("mip:") else saved_forecast
     model_stale = bool(forecast_source and (now() - timestamp(forecast_source["as_of"])).total_seconds() / 3600 > data["config"]["plan_stale_hours"])
     result.update({"plans": plans, "plan_key": chosen["key"] if chosen else "", "plan_source": source,
-        "fuel_calendar": fuel_calendar(plan, as_of.year, data["config"], fallback),
+        "fuel_calendar": fuel_calendar(plan, as_of.year, data["config"], fallback, master),
         "plan_stale": stale, "models": model_rows, "model_source": forecast_source,
         "model_stale": model_stale,
         "config": data["config"], "fuel": fallback, "issues": issues,

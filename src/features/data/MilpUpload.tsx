@@ -119,9 +119,13 @@ export function MilpUpload({
         onLoad={async id => {
           if (id !== 0) return api<PlanningInputDetail>(`/api/planning/inputs/${id}`);
           const [meta, settings] = await Promise.all([
-            api<{default_scenario:PlanningInputDetail['payload']['scenario']}>("/api/meta"),
+            api<{default_scenario:PlanningInputDetail['payload']['scenario']; active_input_id?:number}>("/api/meta"),
             api<{fuel:PlanningInputDetail['payload']['fuel']}>("/api/settings"),
           ]);
+          if (meta.active_input_id) {
+            const active = await api<PlanningInputDetail>(`/api/planning/inputs/${meta.active_input_id}`);
+            return {id:0,payload:{...active.payload,scenario:meta.default_scenario}};
+          }
           const heat_prices = Object.fromEntries(baselinePrices.rows.map(row => {
             const fields = row as Record<string,string>;
             return [fields.unit, Array.from({length:12}, (_,i) => Number(fields[`${i+1}월`]))];

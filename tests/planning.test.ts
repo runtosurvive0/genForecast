@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   loadPlanningRuns,
   loadPlanningSnapshot,
+  initialPlanningQuery,
 } from "../src/domain/planning.ts";
 import { planningFixture, suppliedPlanningFixture } from "./planning-fixture.ts";
 import { fuelMetrics } from "../src/features/plant/fuel-metrics.ts";
@@ -10,6 +11,16 @@ import { forecastSummary } from "../src/features/plant/forecast-summary.ts";
 import { forecastDay } from "../src/features/plant/forecast-day.ts";
 import { sourceDescription } from "../src/domain/source-description.ts";
 import { minimumInventoryPoint } from "../src/domain/supply.ts";
+
+test('저장 계획은 오늘을 포함하면 오늘부터 조회하고, 미래·과거 결과는 날짜를 옮기지 않는다', () => {
+  const run = { id:'rolling', name:'계획', period:'', start:'2026-11-01', end:'2027-02-06' };
+  assert.deepEqual(initialPlanningQuery(run, '2026-11-09'), {runId:'rolling',start:'2026-11-09',horizon:30});
+  assert.deepEqual(initialPlanningQuery(run, '2027-01-31'), {runId:'rolling',start:'2027-01-31',horizon:7});
+  for (const today of ['2026-10-01','2027-02-01','2027-03-01']) {
+    assert.equal(initialPlanningQuery(run, today).start, run.start);
+  }
+  assert.equal(initialPlanningQuery({...run,start:'2027-01-01'}, '2026-11-09').start, '2027-01-01');
+});
 
 test("source labels use operator language without changing ordinary technical words", () => {
   assert.equal(sourceDescription("사진 기반 합성 데이터 · 정합성 확인"), "참고 자료 기반 시연 데이터 · 정합성 확인");

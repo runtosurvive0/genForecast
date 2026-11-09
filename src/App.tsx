@@ -84,6 +84,7 @@ import { ForecastInputPanel } from "@/features/data/ForecastInputPanel";
 import { usePlanning, initialPlanningQuery } from "@/domain/use-planning";
 import type { SupplyTarget } from "@/domain/supply";
 import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
+import { OutageSchedule } from '@/features/plant/OutageSchedule';
 import { OperationsStatus } from "@/features/plant/OperationsStatus";
 import { number as n, date as fmtDate, shiftDate } from "@/lib/format";
 
@@ -770,7 +771,8 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
             />
           )}
 
-          {page === "schedule" && (
+          {page === 'schedule' && overviewSource === 'milp' && <OutageSchedule/>}
+          {page === "schedule" && overviewSource === 'synthetic' && (
             <>
               <div className="section-intro">
                 <div className="intro-icon">

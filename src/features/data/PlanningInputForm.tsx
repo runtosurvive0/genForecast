@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { addDays } from '@/domain/planning';
+import { kstDay } from '@/domain/operations-status';
 
 type Outage = { unit: string; start: string; end: string; note?: string };
 type Scenario = { name: string; start: string; end: string; weather: string | number; demand_growth_pct: number | null; solar_growth_pct: number | null; coal_adjust_pct: number[]; reserve_ratio: number; quality: string; workers: number | null; coal_oh: Outage[]; nuclear_oh: Outage[]; [key: string]: unknown };
-export type PlanningInputDetail = { id: number; payload: { scenario: Scenario; heat_prices: Record<string, number[]>; fuel: { calorific_kcal_kg: number; is_assumption: boolean } } };
+type InputReference = { heat_prices_by_month: Record<string, Record<string, number>>; price_overrides?: Record<string, {value:number;source:string}>; [key:string]:unknown };
+export type PlanningInputDetail = { id: number; payload: { scenario: Scenario; heat_prices: Record<string, number[]>; fuel: { calorific_kcal_kg: number; is_assumption: boolean }; input_reference?: InputReference } };
 type InputSet = { id: number; name: string; start: string; end: string };
 
 export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false, readOnly = false, initialId }: {
@@ -19,6 +22,7 @@ export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false
   const request = useRef(0);
   useEffect(() => { if (initialId && !initialized.current) { initialized.current = true; void load(String(initialId)); } }, [initialId]);
   const scenario = base?.payload.scenario;
+  const reference = base?.payload.input_reference;
   const updateScenario = (change: Partial<Scenario>) => setBase(old => old && ({...old, payload: {...old.payload, scenario: {...old.payload.scenario, ...change}}}));
   const updateFuel = (change: Partial<PlanningInputDetail['payload']['fuel']>) => setBase(old => old && ({...old, payload: {...old.payload, fuel: {...old.payload.fuel, ...change}}}));
   const numberOrNull = (value: string) => value === "" ? null : Number(value);
@@ -45,6 +49,7 @@ export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false
     form.append("heat_prices", new Blob([JSON.stringify({columns,rows})], {type:"application/json"}), "월별단가.json");
     form.append("calorific", String(base.payload.fuel.calorific_kcal_kg));
     form.append("assumption", String(base.payload.fuel.is_assumption));
+    if (reference) form.append('input_reference', new Blob([JSON.stringify(reference)], {type:'application/json'}), '계산기준.json');
     void onSave(form, run);
   }
   return <section className="tower-section planning-input" aria-labelledby="planning-input-title">
@@ -52,7 +57,8 @@ export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false
     <label className="planning-input-base">기준으로 가져올 입력
       <select aria-label="기준으로 가져올 입력" value={base?.id ?? ""} disabled={busy || loading} onChange={e => void load(e.target.value)}><option value="">기준 선택</option>{!simple && <option value="0">기본 조건에서 작성 · 2026년 10월 단가 확인 필요</option>}{inputs.map(item => <option key={item.id} value={item.id}>{item.name} · {item.start} ~ {item.end}</option>)}</select>
     </label>
-    {base?.id === 0 && <p className="planning-input-note">기준 단가는 2026년 10월 자료를 12개월에 적용한 값입니다. 전망에 맞게 각 호기·월별 단가와 정비 일정을 확인하고 수정하세요.</p>}
+    {base?.id === 0 && !reference && <p className="planning-input-note">기준 단가는 2026년 10월 자료를 12개월에 적용한 값입니다. 전망에 맞게 각 호기·월별 단가와 정비 일정을 확인하고 수정하세요.</p>}
+    {reference && <p className="planning-input-note">DB에 저장된 호기 제원과 연월별 단가를 적용합니다. 2026년 11·12월은 과거 단가의 회귀 추정값입니다.</p>}
     {error && <p role="alert">{error}</p>}
     {loading && <p role="status">저장된 조건을 불러오는 중…</p>}
     {base && scenario && <form onInvalid={e => { const details = (e.target as HTMLElement).closest('details'); if (details) details.open = true; }} onSubmit={e => {e.preventDefault(); submit(false);}}>
@@ -63,6 +69,7 @@ export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false
         <label>종료일<input type="date" required value={scenario.end} onChange={e => updateScenario({end:e.target.value})}/></label>
       </div>
       <p className="planning-input-note">7일~2년 · KST · 시작일과 종료일 포함. 저장하면 새 조건으로 보관되며 기존 결과는 바뀌지 않습니다.</p>
+      {!readOnly && <Button type="button" variant="outline" onClick={() => { const start = kstDay(new Date()); updateScenario({start, end:addDays(start, 89)}); }}>오늘부터 90일</Button>}
       {simple && <div className="planning-input-inherited" aria-label="DB에서 가져온 조건"><span>열량단가 <b>{Object.keys(base.payload.heat_prices).length}개 호기</b></span><span>정비 일정 <b>{scenario.coal_oh.length + scenario.nuclear_oh.length}건</b></span><span>연료 환산 <b>{base.payload.fuel.calorific_kcal_kg.toLocaleString()} kcal/kg</b></span><span>기상 <b>{scenario.weather === 'normal' ? '평년' : `${scenario.weather}년`}</b></span></div>}
       <details open={!simple}><summary>저장 이름·연료 환산 기준</summary><div className="planning-input-grid">
         {simple && <label>전망 이름<input required maxLength={100} value={scenario.name} onChange={e => updateScenario({name:e.target.value})}/></label>}
@@ -79,7 +86,11 @@ export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false
         {!simple && <label>병렬 작업자 수<input type="number" min={1} max={32} value={scenario.workers ?? ''} onChange={e => updateScenario({workers:numberOrNull(e.target.value)})}/><small>빈칸은 서버 설정을 따릅니다.</small></label>}
       </div><h3>월별 석탄 목표 보정 (%)</h3><div className="planning-input-months">{scenario.coal_adjust_pct.map((value,i) => <label key={i}>{i+1}월<input type="number" required min={-100} max={300} step="any" value={value} onChange={e => updateScenario({coal_adjust_pct:scenario.coal_adjust_pct.map((n,j) => i===j ? Number(e.target.value) : n)})}/></label>)}</div></details>
       <details><summary>정비 일정 · 원전 {scenario.nuclear_oh.length}건 / 석탄 {scenario.coal_oh.length}건</summary><p className="planning-input-note">종료일은 정비에 포함됩니다. 기존 일정은 그대로 가져오며 필요한 항목을 직접 수정할 수 있습니다.</p>{(['nuclear_oh','coal_oh'] as const).map(kind => <div key={kind} className="planning-input-outages"><h3>{kind === 'nuclear_oh' ? '원전' : '석탄'} 정비</h3>{scenario[kind].map((row,i) => <div className="planning-input-outage" key={i}>{(['unit','start','end','note'] as const).map(field => <label key={field}>{({unit:'호기',start:'시작',end:'종료',note:'내용'})[field]}<input value={row[field] ?? ''} onChange={e => updateScenario({[kind]:scenario[kind].map((x,j) => j===i ? {...x,[field]:e.target.value} : x)})}/></label>)}<Button type="button" variant="outline" onClick={() => updateScenario({[kind]:scenario[kind].filter((_,j)=>j!==i)})}>삭제</Button></div>)}<Button type="button" variant="outline" onClick={() => updateScenario({[kind]:[...scenario[kind],{unit:'',start:'',end:'',note:''}]})}>정비 추가</Button></div>)}</details>
-      <details><summary>호기별 월 열량단가 · {Object.keys(base.payload.heat_prices).length}개 호기</summary><p className="planning-input-note">단위: 원/Gcal. 표시된 호기 외의 단가도 기준 입력에서 그대로 유지됩니다.</p><label>단가를 볼 호기<select aria-label="단가를 볼 호기" value={unit} onChange={e=>setUnit(e.target.value)}>{Object.keys(base.payload.heat_prices).map(name=><option key={name}>{name}</option>)}</select></label><div className="planning-input-months">{(base.payload.heat_prices[unit] ?? []).map((price,i)=><label key={i}>{i+1}월<input type="number" step="any" value={price} onChange={e=>setBase(old=>old && ({...old,payload:{...old.payload,heat_prices:{...old.payload.heat_prices,[unit]:old.payload.heat_prices[unit].map((v,j)=>j===i?Number(e.target.value):v)}}}))}/></label>)}</div></details>
+      <details><summary>호기별 월 열량단가 · {Object.keys(base.payload.heat_prices).length}개 호기</summary><p className="planning-input-note">단위: 원/Gcal. 표시된 호기 외의 단가도 기준 입력에서 그대로 유지됩니다.</p><label>단가를 볼 호기<select aria-label="단가를 볼 호기" value={unit} onChange={e=>setUnit(e.target.value)}>{Object.keys(base.payload.heat_prices).map(name=><option key={name}>{name}</option>)}</select></label><div className="planning-input-months">{reference ? Object.entries(reference.heat_prices_by_month[unit] ?? {}).filter(([month])=>month>=scenario.start.slice(0,7) && month<=scenario.end.slice(0,7)).sort(([a],[b])=>a.localeCompare(b)).map(([month,price])=><label key={month}>{month}<input type="number" min={0.01} step="any" value={price} onChange={e=>setBase(old=>{
+        if (!old?.payload.input_reference) return old;
+        const ref=old.payload.input_reference, value=Number(e.target.value);
+        return {...old,payload:{...old.payload,input_reference:{...ref,heat_prices_by_month:{...ref.heat_prices_by_month,[unit]:{...ref.heat_prices_by_month[unit],[month]:value}},price_overrides:{...ref.price_overrides,[`${unit}|${month}`]:{value,source:'manual'}}}}};
+      })}/></label>) : (base.payload.heat_prices[unit] ?? []).map((price,i)=><label key={i}>{i+1}월<input type="number" step="any" value={price} onChange={e=>setBase(old=>old && ({...old,payload:{...old.payload,heat_prices:{...old.payload.heat_prices,[unit]:old.payload.heat_prices[unit].map((v,j)=>j===i?Number(e.target.value):v)}}}))}/></label>)}</div></details>
       {!readOnly && <div className="planning-input-actions"><Button type="submit" variant="outline" disabled={busy}>입력 저장</Button><Button type="button" disabled={busy} onClick={e=>{const form=e.currentTarget.form;if(form?.reportValidity()) submit(true);}}>저장 후 전망 실행</Button></div>}
       </fieldset>
     </form>}

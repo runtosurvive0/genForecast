@@ -120,6 +120,9 @@ def parse_outage_rows(rows: list[list]) -> list[Outage]:
         unit = str(row[index["unit"]] or "").strip() if index["unit"] < len(row) else ""
         if not unit or unit.startswith("#"):
             continue
+        # 양식의 날짜 없는 호기 행은 일정 미등록이다. 한쪽만 빈 일정은 아래에서 오류로 보고한다.
+        if all(index[k] < len(row) and not str(row[index[k]] or '').strip() for k in ('start', 'end')):
+            continue
         try:
             start = _parse_moment(row[index["start"]], is_end=False)
             end = _parse_moment(row[index["end"]], is_end=True)

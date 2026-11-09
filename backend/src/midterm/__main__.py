@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,10 +22,19 @@ def _cmd_run(args) -> None:
     from midterm.outages import load_outages
     from midterm.report import format_summary, save_run
     from midterm.scenario import Scenario, default_scenario
+    from midterm.milp_store import active_input, begin_run, clean_input, finish_run, get_input, save_input
 
-    scenario = Scenario.load(Path(args.scenario)) if args.scenario else default_scenario()
+    input_id = getattr(args, 'input_id', None)
+    record = get_input(input_id) if input_id is not None else (active_input() if not args.scenario else None)
+    scenario = (Scenario.from_json(record['payload']['scenario']) if record else
+                Scenario.load(Path(args.scenario)) if args.scenario else default_scenario())
+    if record and input_id is None:
+        defaults = default_scenario()
+        scenario.start, scenario.end = defaults.start, defaults.end
     if args.start:
         scenario.start = date.fromisoformat(args.start)
+        if not args.scenario and not args.end:
+            scenario.end = scenario.start + timedelta(days=89)
     if args.end:
         scenario.end = date.fromisoformat(args.end)
     if args.nuclear_oh:
@@ -40,6 +49,10 @@ def _cmd_run(args) -> None:
         scenario.workers = args.workers
     if args.name:
         scenario.name = args.name
+    if record:
+        payload = record['payload']
+        record = save_input(clean_input(scenario.to_json(), payload['heat_prices'], payload['fuel'],
+                                        payload.get('files'), payload.get('input_reference')))
     last = [0.0]
 
     def progress(event):
@@ -52,9 +65,27 @@ def _cmd_run(args) -> None:
         elif event.get("message"):
             print(f"- {event['message']}", flush=True)
 
-    result = run_annual(scenario, progress)
-    folder = ROOT / "runs" / (args.name or datetime.now().strftime("%Y%m%d-%H%M%S"))
-    summary = save_run(result, folder)
+    safe_name = ''.join(c for c in scenario.name if c.isalnum() or c in '-_')[:40]
+    run_id = datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '-' + safe_name
+    folder = ROOT / 'runs' / run_id
+    if record:
+        begin_run(run_id, record['id'])
+    try:
+        params = {'heat_prices': record['payload']['heat_prices']} if record else {}
+        if record and record['payload'].get('input_reference'):
+            params['input_reference'] = record['payload']['input_reference']
+        result = run_annual(scenario, progress, **params)
+        summary = save_run(result, folder)
+        if record:
+            import json
+            summary.update(input_id=record['id'], fuel_settings=record['payload']['fuel'], classification='scenario_forecast',
+                           classification_note='DB 입력 기반 발전 전망 · 운영 실적 아님')
+            (folder / 'summary.json').write_text(json.dumps(summary, ensure_ascii=False), encoding='utf-8')
+            finish_run(run_id, summary, (folder / 'hourly.npz').read_bytes())
+    except Exception as error:
+        if record:
+            finish_run(run_id, error=f'{type(error).__name__}: {error}')
+        raise
     print(format_summary(summary))
     print(f"저장: {folder}")
 
@@ -75,6 +106,7 @@ def main(argv: list[str] | None = None) -> None:
     back.add_argument("--cutoff", default="2025-09-30")
     run = sub.add_parser("run")
     run.add_argument("--scenario")
+    run.add_argument('--input-id', type=int, help='DB에 저장된 제원·단가·정비 입력 ID')
     run.add_argument("--start")
     run.add_argument("--end")
     run.add_argument("--nuclear-oh")

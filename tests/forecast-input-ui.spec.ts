@@ -47,6 +47,100 @@ test('전망에서 시작재고를 저장하고 실패 시 입력을 보존하�
 const scenario = {name:'월간 전망',start:'2027-01-01',end:'2027-12-31',weather:'normal',demand_growth_pct:null,solar_growth_pct:null,coal_adjust_pct:Array(12).fill(0),reserve_ratio:.12,quality:'normal',workers:null,coal_oh:[],nuclear_oh:[]};
 const detail = {id:5,payload:{scenario,heat_prices:{'당진1':Array(12).fill(30000)},fuel:{calorific_kcal_kg:5500,is_assumption:true}}};
 
+test('연월별 단가를 수정해도 호기 제원과 회귀 이력이 저장 입력에 함께 남는다', async ({page}) => {
+  const reference = {coal_units:[{unit:'당진1',heat_a1:1}],nuclear_units:[{unit:'원전A',active_from:'2027-01-01'}],
+    heat_prices_by_month:{'당진1':{'2026-11':12000,'2026-12':12500,'2027-01':13000,'2027-02':14000}},
+    price_regression:{'당진1':{method:'linear_ols',trained_through:'2026-10'}}};
+  const source={...detail,payload:{...detail.payload,scenario:{...scenario,start:'2026-11-09',end:'2027-02-06'},input_reference:reference}};
+  await page.route('**/api/planning/inputs/5',r=>r.fulfill({json:source}));
+  let body='';
+  await page.route('**/api/planning/inputs/upload',r=>{body=r.request().postDataBuffer()!.toString();return r.fulfill({json:{...source,id:6}});});
+  await page.goto('/#simulation');
+  await page.getByRole('tab',{name:'조건 설정',exact:true}).click();
+  await expect(page.getByText(/2026년 11·12월은 과거 단가의 회귀 추정값/)).toBeVisible();
+  await page.getByText('호기별 월 열량단가',{exact:false}).click();
+  await expect(page.getByLabel('2027-01',{exact:true})).toHaveValue('13000');
+  await page.getByLabel('2026-11',{exact:true}).fill('13500');
+  await page.getByRole('button',{name:'입력 저장',exact:true}).click();
+  await expect.poll(()=>body).toContain('name="input_reference"');
+  expect(body).toContain('"2026-11":13500');
+  expect(body).toContain('"heat_a1":1');
+  expect(body).toContain('"method":"linear_ols"');
+  expect(body).toContain('"source":"manual"');
+});
+
+test('호기별 정지계획은 CSV를 저장한 DB 일정을 연도와 발전원으로 조회한다', async ({page},testInfo) => {
+  await page.route('**/api/planning/outages',r=>r.fulfill({json:{input_id:17,name:'CSV 계획',default_year:2027,source_files:[],rows:[
+    {unit:'당진1',kind:'coal',start:'2027-01-20',end:'2027-02-20',start_at:'2027-01-20T00:00:00+09:00',end_at:'2027-02-21T00:00:00+09:00',capacity_mw:500,note:'정비 A'},
+    {unit:'새울3',kind:'nuclear',start:'2027-10-23',end:'2028-01-15',start_at:'2027-10-23T00:00:00+09:00',end_at:'2028-01-16T00:00:00+09:00',capacity_mw:1000,note:'정비 B'},
+  ]}}));
+  await page.goto('/#schedule');
+  await expect(page.getByRole('heading',{name:'호기별 계획정지 일정',exact:true})).toBeVisible();
+  const table=page.locator('.gf-outage-table');
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  await expect(table).toContainText('2028-01-15');
+  await page.getByLabel('정비 호기 검색').fill('당진1');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await page.getByLabel('정비 호기 검색').fill('');
+  await page.getByLabel('정비 발전원').selectOption('nuclear');
+  await expect(table).toContainText('새울3');
+  await expect(table).not.toContainText('당진1');
+  await page.screenshot({path:testInfo.outputPath('db-outages-light.png'),fullPage:true});
+  await page.getByRole('button',{name:'다크 모드로 전환',exact:true}).click();
+  await page.screenshot({path:testInfo.outputPath('db-outages-dark.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('정비 DB 연결 실패를 빈 일정이나 샘플 일정으로 바꾸지 않는다', async ({page}) => {
+  await page.route('**/api/planning/outages',r=>r.fulfill({status:503,json:{detail:'정비 DB 연결 불가'}}));
+  await page.goto('/#schedule');
+  await expect(page.getByRole('alert')).toContainText('정비 DB 연결 불가');
+  await expect(page.locator('.gf-outage-table')).toHaveCount(0);
+});
+
+test('미래 계산보다 오늘을 포함한 계산을 우선 선택하고 오늘부터 조회한다', async ({page}, testInfo) => {
+  await page.clock.install({time:new Date('2026-11-08T15:01:00Z')});
+  await page.route('**/api/runs', r => r.fulfill({json:[
+    {id:'future',name:'2027 계획',period:'2027-01-01 ~ 2027-12-31'},
+    {id:'current',name:'현재 계획',period:'2026-11-01 ~ 2027-02-06'},
+  ]}));
+  await page.route('**/api/planning/runs/current/snapshot?**', r => {
+    const query = new URL(r.request().url()).searchParams;
+    expect(query.get('start')).toBe('2026-11-09');
+    expect(query.get('horizon')).toBe('30');
+    const snapshot = suppliedPlanningFixture('current','2026-11-09',30);
+    snapshot.run_start='2026-11-01'; snapshot.run_end='2027-02-06';
+    return r.fulfill({json:snapshot});
+  });
+  await page.goto('/#simulation');
+  await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('current');
+  await expect(page.getByLabel('MILP 조회 시작일')).toHaveValue('2026-11-09');
+  await expect(page.locator('.gf-forecast-focus')).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath('today-result.png'),fullPage:true});
+});
+
+test('저장 조건을 오늘부터 90일로 복사하고 해당 기간을 실행 요청에 저장한다', async ({page}, testInfo) => {
+  await page.clock.install({time:new Date('2026-11-08T15:01:00Z')});
+  let savedBody = '';
+  await page.route('**/api/planning/inputs/upload', r => {
+    savedBody = r.request().postDataBuffer()!.toString();
+    return r.fulfill({json:{...detail,id:6}});
+  });
+  await page.goto('/#simulation');
+  await page.getByRole('tab',{name:'조건 설정',exact:true}).click();
+  await expect(page.getByLabel('시작일',{exact:true})).toHaveValue('2027-01-01');
+  await page.getByRole('button',{name:'오늘부터 90일',exact:true}).click();
+  await expect(page.getByLabel('시작일',{exact:true})).toHaveValue('2026-11-09');
+  await expect(page.getByLabel('종료일',{exact:true})).toHaveValue('2027-02-06');
+  await page.screenshot({path:testInfo.outputPath('today-conditions.png'),fullPage:true});
+  await page.getByRole('button',{name:'입력 저장',exact:true}).click();
+  await expect.poll(() => savedBody).toContain('2026-11-09');
+  expect(savedBody).toContain('2027-02-06');
+  expect(savedBody).toContain('30000');
+  expect(scenario.start).toBe('2027-01-01');
+});
+
 test('핵심 전망을 먼저 보여주고 상세 차트와 정지 일정은 펼쳐서 확인한다',async({page},testInfo)=>{
   await page.route('**/api/runs',r=>r.fulfill({json:[{id:'review',name:'월간 전망',period:'2027-01-01 ~ 2027-01-30'}]}));
   await page.route('**/api/planning/runs/review/snapshot?**',r=>r.fulfill({json:suppliedPlanningFixture('review','2027-01-01',30)}));

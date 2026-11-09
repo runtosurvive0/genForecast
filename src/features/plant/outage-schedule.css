@@ -1,0 +1,10 @@
+.gf-outage-schedule { min-width:0; }
+.gf-outage-filters { display:flex; flex-wrap:wrap; align-items:end; gap:16px; margin:16px 0; }
+.gf-outage-filters label { display:grid; gap:6px; font-size:13px; }
+.gf-outage-filters :is(input,select) { min-height:38px; padding:8px 12px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--foreground); }
+.gf-outage-filters span { padding-bottom:10px; font-size:13px; color:var(--muted-foreground); }
+.gf-outage-table { overflow:auto; margin-top:16px; }
+.gf-outage-table table { width:100%; border-collapse:collapse; font-size:13px; }
+.gf-outage-table :is(th,td) { text-align:left; padding:12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.gf-outage-table thead { color:var(--muted-foreground); }
+@media(max-width:600px) { .gf-outage-filters label { flex:1 1 140px; min-width:0; } .gf-outage-filters :is(input,select) { width:100%; } }
