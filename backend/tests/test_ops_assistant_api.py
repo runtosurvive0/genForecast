@@ -1,11 +1,11 @@
 """LLM 운영 도우미 HTTP API와 질의 기록 테스트."""
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from midterm.assistant.llm import FakeLlm, LlmTurn
 from midterm.assistant.log import read, record
-from midterm.supply import now
+from midterm.supply import KST, now
 from midterm.web import ops_assistant_api
 from midterm.web.app import app
 from test_supply_api import client  # noqa: F401  (인증된 서버 픽스처 재사용)
@@ -22,6 +22,7 @@ def auth_client(client, tmp_path):  # noqa: F811
     app.dependency_overrides[ops_assistant_api.get_tool_context] = lambda: ops_assistant_api.ToolContext(
         request=None, now=now(), db_path=tmp_path / 'planning.sqlite3')
     client.db_path = db
+    client.user_id = client.get('/api/auth/session').json()['user']['id']
     yield client
     app.dependency_overrides.clear()
 
@@ -37,7 +38,7 @@ def test_ask_returns_answer_and_logs(auth_client, fake_llm_override):
     r = auth_client.post('/api/assistant/ask', json={'question': '입항 예정?', 'history': []})
     assert r.status_code == 200 and r.json()['partial'] is False
     rows = read(auth_client.db_path)
-    assert len(rows) == 1 and rows[0]['question'] == '입항 예정?' and rows[0]['user_id']
+    assert len(rows) == 1 and rows[0]['question'] == '입항 예정?' and rows[0]['user_id'] == auth_client.user_id
 
 
 def test_unavailable_is_503(auth_client, monkeypatch):
@@ -81,3 +82,19 @@ def test_log_failure_does_not_break_answer(auth_client, fake_llm_override, monke
         raise OSError('disk full')
     monkeypatch.setattr(ops_assistant_api, 'record', boom)
     assert auth_client.post('/api/assistant/ask', json={'question': 'q', 'history': []}).status_code == 200
+
+
+def test_log_boundary_with_mixed_timezones(tmp_path):
+    db = tmp_path / 'tz.db'
+    base = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
+    record(db, 'u', 'utc-old', [], {}, base - timedelta(days=89, hours=23))
+    record(db, 'u', 'utc-gone', [], {}, base - timedelta(days=92))
+    record(db, 'u', 'kst-now', [], {}, base.astimezone(KST))
+    assert [r['question'] for r in read(db)] == ['utc-old', 'kst-now']
+    record(db, 'u', 'kst-later', [], {}, (base + timedelta(hours=2)).astimezone(KST))
+    assert 'utc-old' not in [r['question'] for r in read(db)]
+
+
+def test_log_rejects_naive_datetime(tmp_path):
+    with pytest.raises(ValueError):
+        record(tmp_path / 'n.db', 'u', 'q', [], {}, datetime(2026, 11, 9, 12, 0))

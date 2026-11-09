@@ -5,8 +5,10 @@ import json
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 RETENTION_DAYS = 90
+KST = ZoneInfo("Asia/Seoul")
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -19,6 +21,9 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 
 def record(db_path: Path, user_id: str, question: str, tool_calls: list, answer: dict, at: datetime) -> None:
+    if at.tzinfo is None:
+        raise ValueError("기록 시각에는 시간대가 필요합니다")
+    at = at.astimezone(KST)
     cutoff = (at - timedelta(days=RETENTION_DAYS)).isoformat()
     db = _connect(db_path)
     try:
