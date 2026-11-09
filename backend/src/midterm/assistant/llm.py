@@ -49,6 +49,19 @@ def _to_input(messages: list[dict]) -> list[dict]:
     return items
 
 
+DEFAULT_MAX_TOKENS = 4000
+
+
+def max_output_tokens() -> int:
+    """질문당(호출당) 최대 출력 토큰. 잘못된 값이면 기본값을 쓴다."""
+    raw = os.getenv("GENFORECAST_ASSISTANT_MAX_TOKENS", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_TOKENS
+    return value if value > 0 else DEFAULT_MAX_TOKENS
+
+
 class OpenAiLlm:
     def __init__(self, client: Any = None):
         self._client = client
@@ -60,6 +73,7 @@ class OpenAiLlm:
             "input": _to_input(messages),
             "text": {"format": {"type": "json_schema", "name": "assistant_answer", "schema": final_schema, "strict": True}},
             "store": False,
+            "max_output_tokens": max_output_tokens(),
         }
         if tools:
             kwargs["tools"] = [

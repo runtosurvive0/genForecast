@@ -52,6 +52,7 @@ def test_openai_adapter_bad_json_is_unavailable():
 
 def test_openai_adapter_request_shape(monkeypatch):
     monkeypatch.setenv('GENFORECAST_ASSISTANT_MODEL', 'm-test')
+    monkeypatch.delenv('GENFORECAST_ASSISTANT_MAX_TOKENS', raising=False)
     client = FakeOpenAiClient([[{'type': 'message', 'text': '{"answer":"a"}'}]])
     messages = [
         {'role': 'user', 'content': 'q'},
@@ -74,6 +75,7 @@ def test_openai_adapter_request_shape(monkeypatch):
     fmt = kw['text']['format']
     assert fmt['type'] == 'json_schema' and fmt['strict'] is True and fmt['schema'] == schema
     assert kw['store'] is False
+    assert kw['max_output_tokens'] == 4000
 
 
 def test_openai_adapter_api_error_and_refusal_are_unavailable():
@@ -122,3 +124,17 @@ def test_timeout_passed_per_call_and_incomplete_call_rejected():
     assert client.kwargs[0]['timeout'] == 20
     with pytest.raises(AssistantUnavailable):
         llm.step('sys', [{'role': 'user', 'content': 'q'}], [], {'type': 'object'}, 20)
+
+
+def test_max_output_tokens_default_and_env(monkeypatch):
+    monkeypatch.delenv('GENFORECAST_ASSISTANT_MAX_TOKENS', raising=False)
+    client = FakeOpenAiClient([[{'type': 'message', 'text': '{"answer":"a"}'}]] * 3)
+    llm = OpenAiLlm(client=client)
+    llm.step('sys', [{'role': 'user', 'content': 'q'}], [], {'type': 'object'}, 20)
+    assert client.kwargs[0]['max_output_tokens'] == 4000
+    monkeypatch.setenv('GENFORECAST_ASSISTANT_MAX_TOKENS', '1500')
+    llm.step('sys', [{'role': 'user', 'content': 'q'}], [], {'type': 'object'}, 20)
+    assert client.kwargs[1]['max_output_tokens'] == 1500
+    monkeypatch.setenv('GENFORECAST_ASSISTANT_MAX_TOKENS', 'abc')  # 잘못된 값은 기본값으로
+    llm.step('sys', [{'role': 'user', 'content': 'q'}], [], {'type': 'object'}, 20)
+    assert client.kwargs[2]['max_output_tokens'] == 4000
