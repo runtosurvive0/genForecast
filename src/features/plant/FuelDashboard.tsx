@@ -65,7 +65,7 @@ export function FuelDashboard({
   theme: string;
   children: ReactNode;
   onSupplyTarget: (target: SupplyTarget) => void;
-  onSimulation: () => void;
+  onSimulation?: () => void;
   onPurchasing?: () => void;
   assistant?: ReactNode;
 }) {

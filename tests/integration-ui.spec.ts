@@ -149,7 +149,7 @@ test('발전 수급 전망은 선택한 날짜의 완전한 자료만 합산한�
   await expect(page.getByRole('region', { name: '선택 날짜 수급' })).toContainText('2027-01-03');
   await expect(page.getByRole('region', { name: '선택 날짜 수급' })).toContainText('284,000');
   await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '통합 시뮬레이션', exact: true }).click();
-  await page.getByRole('button', { name: '통합 시뮬레이션 열기' }).click();
+  await expect(page.getByRole('button', { name: /통합 시뮬레이션 열기/ })).toHaveCount(0); // 자기 화면을 가리키는 링크는 두지 않는다
   await expect(page).toHaveURL(/#simulation$/);
   await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('검증 계산');
 });

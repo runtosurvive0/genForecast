@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { addDays } from '@/domain/planning';
+import { planLabel } from '@/domain/planning-labels';
 import { kstDay } from '@/domain/operations-status';
 
 type Outage = { unit: string; start: string; end: string; note?: string };
 type Scenario = { name: string; start: string; end: string; weather: string | number; demand_growth_pct: number | null; solar_growth_pct: number | null; coal_adjust_pct: number[]; reserve_ratio: number; quality: string; workers: number | null; coal_oh: Outage[]; nuclear_oh: Outage[]; [key: string]: unknown };
 type InputReference = { heat_prices_by_month: Record<string, Record<string, number>>; price_overrides?: Record<string, {value:number;source:string}>; [key:string]:unknown };
 export type PlanningInputDetail = { id: number; payload: { scenario: Scenario; heat_prices: Record<string, number[]>; fuel: { calorific_kcal_kg: number; is_assumption: boolean }; input_reference?: InputReference } };
-type InputSet = { id: number; name: string; start: string; end: string };
+type InputSet = { id: number; name: string; start: string; end: string; recorded_at?: string };
 
 export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false, readOnly = false, initialId, status, onBaseChange }: {
   inputs: InputSet[]; busy: boolean; onLoad: (id: number) => Promise<PlanningInputDetail>;
@@ -61,7 +62,7 @@ export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false
   return <section className="tower-section planning-input" aria-labelledby="planning-input-title">
     <header><div><h2 id="planning-input-title">{simple ? '계산할 기간' : '새 전망 조건 입력'}</h2><p>{simple ? '저장된 조건을 불러와 기간과 달라진 항목만 설정합니다.' : '저장된 입력을 복사해 수정합니다. 원본은 그대로 보관됩니다.'}</p></div></header>
     <label className="planning-input-base">기준으로 가져올 입력
-      <select aria-label="기준으로 가져올 입력" value={base?.id ?? ""} disabled={busy || loading} onChange={e => void load(e.target.value)}><option value="">기준 선택</option>{!simple && <option value="0">기본 조건에서 작성 · 2026년 10월 단가 확인 필요</option>}{inputs.map(item => <option key={item.id} value={item.id}>{item.name} · {item.start} ~ {item.end}</option>)}</select>
+      <select aria-label="기준으로 가져올 입력" value={base?.id ?? ""} disabled={busy || loading} onChange={e => void load(e.target.value)}><option value="">기준 선택</option>{!simple && <option value="0">기본 조건에서 작성 · 2026년 10월 단가 확인 필요</option>}{inputs.map(item => <option key={item.id} value={item.id}>{planLabel(item)}</option>)}</select>
     </label>
     {base?.id === 0 && !reference && <p className="planning-input-note">기준 단가는 2026년 10월 자료를 12개월에 적용한 값입니다. 전망에 맞게 각 호기·월별 단가와 정비 일정을 확인하고 수정하세요.</p>}
     {reference && <p className="planning-input-note">DB에 저장된 호기 제원과 연월별 단가를 적용합니다. 2026년 11·12월은 과거 단가의 회귀 추정값입니다.</p>}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -74,6 +74,7 @@ import {
   plantInputs as plants,
   towerSummary,
   defaultModels,
+  shiftForecastTimes,
 } from "@/domain/control-tower";
 import { PlantOverview } from "@/features/plant/PlantOverview";
 import { SupplyLedger } from "@/features/stockyard/SupplyLedger";
@@ -113,11 +114,11 @@ const isStopped = (unit: Unit) =>
       new Date(o.startAt).getTime() <= baseMs &&
       new Date(o.endAt).getTime() > baseMs,
   );
-const daysUntil = (time: string) =>
+const daysUntil = (time: string, origin = baseMs) =>
   Math.max(
     0,
     Math.floor((new Date(time).getTime() + 9 * 3600000) / 86400000) -
-      Math.floor((baseMs + 9 * 3600000) / 86400000),
+      Math.floor((origin + 9 * 3600000) / 86400000),
   );
 const scenarioIsDefault = (s: Scenario) =>
   s.loadChangePct === 0 && s.arrivalDelayDays === 0 && s.includeInbound;
@@ -244,6 +245,12 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
     if (assistantWasOpen.current && !assistantOpen) assistantButtonRef.current?.focus();
     assistantWasOpen.current = assistantOpen;
   }, [assistantOpen]);
+  // 뒤로 가기·링크처럼 navigate()를 거치지 않는 화면 전환에서도 이전 화면의 스크롤 위치가 남지 않게 맨 위로 연다.
+  const firstPage = useRef(true);
+  useLayoutEffect(() => {
+    if (firstPage.current) { firstPage.current = false; return; }
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [page]);
   const closeAssistant = useCallback(() => setAssistantOpen(false), []);
   const [assistantPending, setAssistantPending] = useState<PendingQuestion | null>(null);
   const clearAssistantPending = useCallback(() => setAssistantPending(null), []);
@@ -271,6 +278,13 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
       towerSummary(selectedPlants, scenarioDefaults, horizon, models).forecast,
     [selectedPlants, horizon, models],
   );
+  // 시나리오 분석 화면만 표본 시각을 오늘(KST) 09:00 기준으로 옮겨 보여 준다. 계산·공통 BASE_TIME은 그대로다.
+  const sampleToday = useMemo(() => new Date(), [page]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scenarioView = useMemo(() => {
+    if (page !== "scenario") return { forecast, baseline, origin: baseMs };
+    const shifted = shiftForecastTimes(forecast, sampleToday);
+    return { forecast: shifted, baseline: shiftForecastTimes(baseline, sampleToday), origin: Date.parse(shifted.baseTime) };
+  }, [page, forecast, baseline, sampleToday]);
   const units = selectedPlants.flatMap((p) => p.units);
   const running = units.filter((u) => !isStopped(u) && u.loadPct > 0).length;
   const outages = selectedPlants
@@ -413,7 +427,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
     navigate(pageFromHash('#' + next));
   };
 
-  const plantTable = (
+  const renderPlantTable = (byPlant: Forecast["byPlant"], origin = baseMs) => (
     <div className="table-scroll">
       <table className="operations-table">
         <thead>
@@ -428,7 +442,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           </tr>
         </thead>
         <tbody>
-          {forecast.byPlant.map((p) => (
+          {byPlant.map((p) => (
             <tr key={p.plantId}>
               <td>
                 <button
@@ -467,7 +481,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                       {fmtDate(p.firstShortageAt)}
                     </span>
                     <small className="cell-note">
-                      D+{daysUntil(p.firstShortageAt)}
+                      D+{daysUntil(p.firstShortageAt, origin)}
                     </small>
                   </>
                 ) : (
@@ -485,6 +499,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
       </table>
     </div>
   );
+  const plantTable = renderPlantTable(forecast.byPlant);
 
   const checkpoints = (
     <div className="checkpoint-list">
@@ -690,14 +705,14 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                 <ArrowDownToLine />
                 CSV 내보내기
               </Button>
-              <Button
+              {page !== "scenario" && <Button
                 onClick={() => navigate("scenario")}
                 className="scenario-shortcut"
                 disabled={isBackendSupplyView}
               >
                 <Settings2 />
                 시나리오 분석
-              </Button>
+              </Button>}
             </div>}
           </div>}
           {!isMilpOverview && (["overview","fuel","scenario","schedule"].includes(page)) && (
@@ -800,7 +815,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           )}
           {page === "simulation" && (
             <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>}>
-              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} assistant={<AssistantSection screen="simulation" params={{ runId: snapshot.run_id }} context={{ screen: "simulation", selection: { run_id: snapshot.run_id } }} questions={SCREEN_QUESTIONS.simulation} onAsk={openAssistant} onNavigate={navigateFromScreen} />} onSimulation={() => navigate("simulation")} onPurchasing={() => navigate('procurement')} onSupplyTarget={(target) => {
+              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} assistant={<AssistantSection screen="simulation" params={{ runId: snapshot.run_id }} context={{ screen: "simulation", selection: { run_id: snapshot.run_id } }} questions={SCREEN_QUESTIONS.simulation} onAsk={openAssistant} onNavigate={navigateFromScreen} />} onPurchasing={() => navigate('procurement')} onSupplyTarget={(target) => {
                 setSupplyTarget(target);
                 navigate("fuel");
               }} /></>}
@@ -1109,6 +1124,9 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                       {horizon}일
                     </Badge>
                   </div>
+                  <p className="scenario-sample-note">
+                    시연 표본 · 날짜는 오늘(KST) 09:00 기준으로 옮겨 표시한 값이며 실제 운영 정보가 아닙니다.
+                  </p>
                   <div className="comparison-cards">
                     <Card className="comparison-card">
                       <span>전망 기간 발전량</span>
@@ -1143,12 +1161,12 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                     <Card className="comparison-card">
                       <span>최초 연료부족 예상</span>
                       <strong>
-                        {forecast.firstShortageAt
-                          ? fmtDate(forecast.firstShortageAt)
+                        {scenarioView.forecast.firstShortageAt
+                          ? fmtDate(scenarioView.forecast.firstShortageAt)
                           : "기간 내 없음"}
                       </strong>
                       <p>
-                        기준안 <b>{fmtDate(baseline.firstShortageAt)}</b>
+                        기준안 <b>{fmtDate(scenarioView.baseline.firstShortageAt)}</b>
                       </p>
                     </Card>
                   </div>
@@ -1157,8 +1175,8 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                     description="점선은 기준안, 실선은 적용한 시나리오입니다."
                   >
                     <InventoryChart
-                      forecast={forecast}
-                      comparison={baseline}
+                      forecast={scenarioView.forecast}
+                      comparison={scenarioView.baseline}
                       safetyStockTons={safetyStock}
                     />
                     <div className="applied-conditions">
@@ -1178,7 +1196,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                 title="시나리오별 발전본부 영향"
                 description="예측된 연료부족을 실제 정지계획과 비교해 운영 대응을 검토하세요."
               >
-                {plantTable}
+                {renderPlantTable(scenarioView.forecast.byPlant, scenarioView.origin)}
               </Panel>
             </>
           )}

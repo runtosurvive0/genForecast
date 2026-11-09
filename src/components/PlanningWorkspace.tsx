@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { Section } from "./tower/primitives";
 import { addDays, type PlanningSnapshot } from "../domain/planning";
 import { sourceDescription } from "../domain/source-description";
+import { planLabel } from "../domain/planning-labels";
 import {
   initialPlanningQuery,
   type PlanningState,
@@ -73,7 +74,7 @@ export function PlanningWorkspace({
             {!runs.length && <option value="">계산 목록 없음</option>}
             {runs.map((r) => (
               <option value={r.id} key={r.id}>
-                {r.name} · {r.period}
+                {planLabel({ name: r.name, run_id: r.id, start: r.start, end: r.end })}
               </option>
             ))}
           </select>

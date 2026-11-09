@@ -726,3 +726,33 @@ test('merged AIS provenance survives validation and identifies the actual positi
   assert.throws(() => validateVessel({ ...row, ais: { ...row.ais,
     position: { ...row.ais.position, feed: 'untrusted', upstream: '<script>' } } }));
 });
+
+test("시나리오 표본 시각은 기준 시각과 오늘 KST 09:00의 차이만큼 옮긴다", async () => {
+  const { shiftSampleTime } = await import("../src/domain/control-tower.ts");
+  const base = "2026-10-06T09:00:00+09:00";
+  const now = new Date("2026-11-10T01:00:00Z");
+  assert.equal(shiftSampleTime("2026-10-22T09:00:00+09:00", base, now), "2026-11-26T09:00:00+09:00");
+  assert.equal(shiftSampleTime(base, base, now), "2026-11-10T09:00:00+09:00");
+  // KST 자정이 지난 직후(UTC 전날)에도 KST 날짜 기준
+  assert.equal(shiftSampleTime(base, base, new Date("2026-11-09T15:30:00Z")), "2026-11-10T09:00:00+09:00");
+  // 시각 문자열이 다른 표기여도 같은 순간으로 읽어 KST로 돌려준다
+  assert.equal(shiftSampleTime("2026-10-06T00:00:00Z", base, now), "2026-11-10T09:00:00+09:00");
+});
+
+test("시나리오 표시용 예측은 모든 시각을 옮기되 값과 원본은 그대로 둔다", async () => {
+  const { shiftForecastTimes, plantInputs, towerSummary, defaultModels } = await import("../src/domain/control-tower.ts");
+  const { scenarioDefaults } = await import("../src/domain/operations.ts");
+  const forecast = towerSummary(plantInputs, scenarioDefaults, 30, defaultModels).forecast;
+  const first = forecast.daily[0].date;
+  const now = new Date("2026-11-10T01:00:00Z");
+  const shifted = shiftForecastTimes(forecast, now);
+  assert.equal(forecast.daily[0].date, first); // 원본 불변
+  assert.equal(shifted.baseTime, "2026-11-10T09:00:00+09:00");
+  assert.equal(first, "2026-10-06");
+  assert.equal(shifted.daily[0].date, "2026-11-10"); // 날짜 형식(YYYY-MM-DD)을 유지하고 같은 만큼 옮긴다
+  assert.equal(shifted.daily.length, forecast.daily.length);
+  assert.equal(shifted.daily[0].stockTons, forecast.daily[0].stockTons);
+  assert.equal(shifted.byPlant[0].daily[0].date, "2026-11-10");
+  if (forecast.firstShortageAt) assert.equal(Date.parse(shifted.firstShortageAt!) - Date.parse(forecast.firstShortageAt), Date.parse(shifted.baseTime) - Date.parse(forecast.baseTime));
+  else assert.equal(shifted.firstShortageAt, null);
+});

@@ -5,10 +5,11 @@ import { PlanningInputForm, type PlanningInputDetail } from './PlanningInputForm
 import { PlanningJobProgress } from '@/components/planning-job/PlanningJobProgress';
 import { parsePlanningJob, planningJobView, type PlanningJob } from '@/domain/planning-job';
 import { planningJobStore } from '@/domain/use-planning-job';
+import { runTitle } from '@/domain/planning-labels';
 import './data.css';
 import './forecast-input.css';
 
-type Input = {id: number; name: string; start: string; end: string};
+type Input = {id: number; name: string; start: string; end: string; recorded_at?: string};
 type Job = PlanningJob;
 type Execution = {id: string; input_id: number; state: string; error?: string; summary?: {scenario: {name: string; start: string; end: string}}};
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -101,6 +102,6 @@ export function ForecastInputPanel({onResult, onSetup}: {onResult: (run: {id: st
       {retryInput !== undefined && <Button disabled={busy || tracking || Boolean(statusError)} onClick={async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await start(retryInput);}catch(e){setError((e as Error).message);}finally{lock.current=false;setBusy(false);}}}>저장된 조건으로 다시 실행</Button>}
       {completed && <Button onClick={()=>onResult({id:completed.id,...completed.summary!.scenario})}>이번 계산 결과 보기</Button>}
     </section>
-    <details className="forecast-history"><summary>최근 계산 이력 · {executions.length}건</summary>{executions.length ? <ul>{executions.slice(0,10).map(row=><li key={row.id}><span><strong>{row.summary?.scenario.name ?? '전망 계산'}</strong><small>{row.summary ? `${row.summary.scenario.start} ~ ${row.summary.scenario.end}` : row.id}</small></span>{row.state==='done' && row.summary ? <Button variant="outline" onClick={()=>onResult({id:row.id,...row.summary!.scenario})}>결과 보기</Button> : <span>{row.state==='error' ? '계산 실패' : '계산 중'}</span>}</li>)}</ul> : <p>아직 실행한 계산이 없습니다.</p>}</details>
+    <details className="forecast-history"><summary>최근 계산 이력 · {executions.length}건</summary>{executions.length ? <ul>{executions.slice(0,10).map(row=><li key={row.id}><span><strong>{runTitle(row.id, row.summary?.scenario.name ?? '전망 계산').title}</strong><small>{row.summary ? `${row.summary.scenario.start} ~ ${row.summary.scenario.end} · ` : ''}{row.id}</small></span>{row.state==='done' && row.summary ? <Button variant="outline" onClick={()=>onResult({id:row.id,...row.summary!.scenario})}>결과 보기</Button> : <span>{row.state==='error' ? '계산 실패' : '계산 중'}</span>}</li>)}</ul> : <p>아직 실행한 계산이 없습니다.</p>}</details>
   </div>;
 }

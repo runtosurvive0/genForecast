@@ -114,7 +114,7 @@ export function MidtermDashboard({
   snapshot: PlanningSnapshot;
   theme: string;
   onSupplyTarget: (target: SupplyTarget) => void;
-  onSimulation: () => void;
+  onSimulation?: () => void;
   onPurchasing?: () => void;
   assistant?: ReactNode;
 }) {

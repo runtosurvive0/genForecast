@@ -6,6 +6,7 @@ import { usePlanningJob } from "@/domain/use-planning-job";
 import { Button } from "@/components/ui/button";
 import { Section } from "@/components/tower/primitives";
 import { number as n } from "@/lib/format";
+import { planLabel, runTitle } from "@/domain/planning-labels";
 import { PlanningInputForm, type PlanningInputDetail } from "./PlanningInputForm";
 import baselinePrices from "../../../backend/data/heat_price.csv.json";
 
@@ -270,7 +271,7 @@ export function MilpUpload({
               <option value="">입력 선택</option>
               {inputs.map((r) => (
                 <option value={r.id} key={r.id}>
-                  #{r.id} {r.name} · {r.start} ~ {r.end}
+                  {planLabel(r)}
                 </option>
               ))}
             </select>
@@ -324,7 +325,7 @@ export function MilpUpload({
               {executions.map((r) => (
                 <tr key={r.id}>
                   <td>
-                    {r.summary?.scenario.name ?? r.id}
+                    {runTitle(r.id, r.summary?.scenario.name ?? "전망 계산").title}
                     <small>
                       입력 #{r.input_id} · {r.id}
                     </small>
@@ -416,7 +417,7 @@ export function MilpUpload({
               <option value="">완료 계산 선택</option>
               {done.map((r) => (
                 <option value={r.id} key={r.id}>
-                  {r.summary!.scenario.name} · {r.id}
+                  {runTitle(r.id, r.summary!.scenario.name).title}
                 </option>
               ))}
             </select>

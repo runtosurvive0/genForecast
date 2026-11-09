@@ -34,7 +34,8 @@ function TipRow({ config, name, value }: { config: ChartConfig; name: string; va
 export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurchasing, lead, trail, assistant }: {
   snapshot: PlanningSnapshot;
   onSupplyTarget: (target: SupplyTarget) => void;
-  onSimulation: () => void;
+  /** 통합 시뮬레이션 화면 자신에서는 넘기지 않는다(자기 화면을 가리키는 링크 방지). */
+  onSimulation?: () => void;
   onPurchasing?: () => void;
   lead?: ReactNode;
   trail?: ReactNode;
@@ -66,10 +67,10 @@ export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurcha
         {lead}
         <section className="gf-forecast-chart" aria-labelledby="gf-forecast-title">
           <header>
-            <div><h2 id="gf-forecast-title">{hasStock ? '저탄장 재고 전망' : '일별 발전량 전망'}</h2><p>{hasStock ? '저탄장별 일말 계획 · 음수는 계획상 부족량' : '선택한 발전계획 · 당진 1~10호기 합계'} · 차트를 눌러 날짜 선택</p></div>
+            <div><h2 id="gf-forecast-title">{hasStock ? '저탄장 재고 전망' : '일별 발전량 전망'}</h2><p>{hasStock ? '저탄장별 당일 마감 계획 · 음수는 계획상 부족량' : '선택한 발전계획 · 당진 1~10호기 합계'} · 차트를 눌러 날짜 선택</p></div>
             <button type="button" className="gf-forecast-link" onClick={() => onSupplyTarget({ section: "forecast", day })}>수급 원장 <ArrowRight size={15} /></button>
           </header>
-          {hasStock ? <ChartContainer config={STOCK_CONFIG} className="gf-ov-chart" aria-label="호기군별 일말 재고 전망 톤">
+          {hasStock ? <ChartContainer config={STOCK_CONFIG} className="gf-ov-chart" aria-label="호기군별 당일 마감 재고 전망 톤">
             <LineChart data={stockData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} onClick={pick}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="day" {...AXIS} interval={tickEvery(stockData.length)} />
@@ -96,7 +97,7 @@ export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurcha
             <input id="gf-forecast-day" type="range" min={0} max={last} value={position} disabled={!rows.length} aria-valuetext={day} onChange={(event) => setIndex(Number(event.target.value))} />
           </div>
           <div className="gf-forecast-day-values" aria-live="polite">
-            <div><span>일말 재고</span><strong>{format(daily.stock)}{daily.stock != null && " t"}</strong></div>
+            <div><span>당일 마감 재고</span><strong>{format(daily.stock)}{daily.stock != null && " t"}</strong></div>
             <div><span>입하 배분</span><strong>{format(daily.receipts)}{daily.receipts != null && " t"}</strong></div>
             <div><span>예상 사용</span><strong>{format(daily.burn)}{daily.burn != null && " t"}</strong></div>
             <div><span>발전 계획</span><strong>{format(daily.generation)}{daily.generation != null && " MWh"}</strong></div>
@@ -110,7 +111,7 @@ export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurcha
         <header><h2 id="gf-forecast-watch-title">확인할 변화</h2><span>선택 계획 · {snapshot.horizon_days}일</span></header>
         <div className="gf-forecast-watch-item"><TriangleAlert size={18} aria-hidden="true" /><div><strong>수급 상태 · {({ normal: "정상", caution: "주의", danger: "위험", unknown: "미확정" } as Record<string, string>)[snapshot.inventory.kpis.risk] ?? "미확정"}</strong><p>최소 재고일수 {snapshot.inventory.kpis.min_days == null ? "미확정" : `${snapshot.inventory.kpis.min_days.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}일`}</p><button type="button" className="gf-forecast-link" onClick={() => onSupplyTarget({ section: "forecast" })}>재고일수 확인 <ArrowRight size={14} /></button></div></div>
         <div className="gf-forecast-watch-item"><CalendarClock size={18} aria-hidden="true" /><div><strong>계획정지 일정</strong><p>{outageCount ? `조회기간 일정 ${outageCount}건` : "조회기간 등록 일정 없음 · 원천 자료 확인 필요"}</p><button type="button" className="gf-forecast-link" onClick={() => revealSection("gf-forecast-outages")}>호기별 일정 보기 <ArrowRight size={14} /></button></div></div>
-        <div className="gf-forecast-watch-item"><ArrowRight size={18} aria-hidden="true" /><div><strong>대안 비교</strong><p>현재 선택한 저장 계획을 기준으로 검토</p><button type="button" className="gf-forecast-link" onClick={onSimulation}>통합 시뮬레이션 열기 <ArrowRight size={14} /></button></div></div>
+        {onSimulation && <div className="gf-forecast-watch-item"><ArrowRight size={18} aria-hidden="true" /><div><strong>대안 비교</strong><p>현재 선택한 저장 계획을 기준으로 검토</p><button type="button" className="gf-forecast-link" onClick={onSimulation}>통합 시뮬레이션 열기 <ArrowRight size={14} /></button></div></div>}
         {(showWarning || issues.length > 0) && <div className="gf-forecast-watch-issues"><strong>자료 확인</strong>{showWarning && <p>계획 또는 기준재고의 갱신 확인이 필요합니다.</p>}{issues.slice(0, 2).map((issue, i) => <p key={i}>{sourceDescription(issue)}</p>)}{issues.length > 2 && <button type="button" className="gf-forecast-link" onClick={() => revealSection("gf-forecast-sources")}>확인사항 전체 보기</button>}</div>}
         <p className="gf-forecast-note">저탄장별 값이 하나라도 없으면 전체 합계는 미확정입니다. 입하 배분은 입항 화물량과 다르며, 예상 사용은 혼합 열량 기준입니다.</p>
         {onPurchasing && <Button className="gf-forecast-purchase" onClick={onPurchasing}>부족 시점·반입 가능 여부 검토 <ArrowRight size={15} /></Button>}
