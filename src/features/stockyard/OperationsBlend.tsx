@@ -43,7 +43,7 @@ export function OperationsBlend({theme,snapshot,status,view,onView,onNavigate,on
         <button aria-pressed={view==='analysis'} onClick={()=>onView('analysis')}><SlidersHorizontal size={16}/>혼탄 분석</button>
       </div>
     </header>
-    <AssistantSection screen="blend" params={{yard}} context={{screen:'blend',selection:{yard,view,...(lotId?{lot:lotId}:{})}}} questions={SCREEN_QUESTIONS.blend} onAsk={onAsk} onNavigate={onNavigate}/>
+    <AssistantSection screen="blend" params={{yard}} context={{screen:'blend',selection:{yard,view,...(lotId&&view==='diagram'?{lot:lotId}:{})}}} questions={SCREEN_QUESTIONS.blend} onAsk={onAsk} onNavigate={onNavigate}/>
     {view==='analysis'?<div className="gf-bl-analysis"><InventoryWorkspace mode="blend" /></div>:<>
       <div className="gf-bl-command">
         <div className="gf-bl-line-tabs" role="group" aria-label="주 공급 계통 선택">

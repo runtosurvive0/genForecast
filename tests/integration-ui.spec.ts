@@ -975,10 +975,15 @@ test('수급 예측은 운영 화면과 같은 머리글·조회 막대를 쓰�
 });
 
 test('수급 예측은 1920 기본 화면을 스크롤 없이 담고, shadcn 차트와 포인트색 테마, 7열 선박 목록·고정 어시스턴트를 쓴다',async({page})=>{
+  // 도우미 섹션이 빠진 자료 여러 건으로 펼쳐진 상태에서도 한 화면에 담긴다(섹션 응답 후에 잰다).
+  const manyItems=Array.from({length:6},(_,i)=>({id:`m${i}`,kind:'missing',title:`빠진 자료 ${i+1}`,detail:'확인 필요',count:3,targets:[],action:null}));
+  await page.route('**/api/assistant/checks?**',r=>r.fulfill({json:{screen:'forecast',as_of:'2026-11-10T09:00:00+09:00',items:manyItems,errors:[]}}));
+  await page.route('**/api/assistant/status',r=>r.fulfill({json:{llm:true}}));
   await page.setViewportSize({width:1920,height:1080});
   await page.goto('/#forecast');
   const root=page.locator('.dfc-page');
   await expect(root.locator('.recharts-surface').first()).toBeVisible();
+  await expect(page.getByRole('region',{name:'도우미'}).getByText('빠진 자료 1')).toBeVisible();
   // 기본 상태는 페이지 스크롤 없이 한 화면에 담는다.
   expect(await page.evaluate(()=>document.scrollingElement!.scrollHeight<=innerHeight+2)).toBe(true);
   // 차트는 ECharts가 아니라 shadcn(Recharts) 차트이고, 두 차트를 나란히 둔다.
@@ -1032,4 +1037,23 @@ test('수급 예측은 운전 데모의 현재 재고·선박 잔량을 시작�
     await group.getByRole('button',{name:'기준 표본',exact:true}).click();
     await expect(origin).toHaveText('시작값 기준 표본');
   }finally{clearInterval(timer);}
+});
+
+test('통합 시뮬레이션은 도우미 섹션이 빠진 자료 여러 건으로 펼쳐져도 확인할 변화 머리와 검토 버튼이 첫 화면 안에 있다', async ({ page }) => {
+  const snapshot = suppliedPlanningFixture('검증 계산', '2027-01-01', 30);
+  snapshot.classification = 'operational';
+  const items = Array.from({ length: 8 }, (_, i) => ({ id: `m${i}`, kind: 'missing', title: `빠진 자료 ${i + 1}`, detail: '확인 필요', count: 3, targets: [], action: null }));
+  await page.route('**/api/runs', route => route.fulfill({ json: [{ id: '검증 계산', name: '검증 계산', period: '2027-01-01 ~ 2027-12-31' }] }));
+  await page.route('**/api/planning/**', route => route.fulfill({ json: snapshot }));
+  await page.route('**/api/assistant/checks?**', route => route.fulfill({ json: { screen: 'simulation', as_of: '2027-01-01T09:00:00+09:00', items, errors: [] } }));
+  await page.route('**/api/assistant/status', route => route.fulfill({ json: { llm: true } }));
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto('/#simulation');
+  await expect(page.getByRole('region', { name: '도우미' }).getByText('빠진 자료 1')).toBeVisible();
+  const watch = page.getByRole('complementary', { name: '확인할 변화' });
+  await expect(watch.getByRole('heading', { name: '확인할 변화' })).toBeVisible();
+  const head = (await watch.getByRole('heading', { name: '확인할 변화' }).boundingBox())!;
+  expect(head.y + head.height).toBeLessThanOrEqual(1080);
+  const button = (await watch.getByRole('button', { name: '부족 시점·반입 가능 여부 검토' }).boundingBox())!;
+  expect(button.y + button.height).toBeLessThanOrEqual(1080);
 });

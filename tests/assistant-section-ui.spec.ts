@@ -235,3 +235,49 @@ test('section 390 dark', async ({ page }) => {
     }
   }
 });
+
+test('blend stage keeps its height when checks are hidden (403)', async ({ page }) => {
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await page.route('**/api/assistant/checks?**', r => r.fulfill({ status: 403, json: { detail: 'x' } }));
+  await loginAndOpen(page, '/#blend');
+  await expect(page.getByRole('region', { name: '도우미' })).toHaveCount(0);
+  const stage = page.getByRole('region', { name: '상탄·분배 계통' });
+  await expect(stage).toBeVisible();
+  expect((await stage.boundingBox())!.height).toBeGreaterThanOrEqual(300);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  expect((await stage.boundingBox())!.height).toBeGreaterThanOrEqual(300);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect((await stage.boundingBox())!.height).toBeGreaterThanOrEqual(300);
+});
+
+test('blend stage height holds with the section shown at 390 and 1000', async ({ page }) => {
+  await mockChecks(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await loginAndOpen(page, '/#blend');
+  await expect(page.getByRole('region', { name: '도우미' })).toBeVisible();
+  const stage = page.getByRole('region', { name: '상탄·분배 계통' });
+  for (const width of [1920, 1000, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+    expect((await stage.boundingBox())!.height).toBeGreaterThanOrEqual(300);
+  }
+});
+
+test('forecast live param follows demo status and planning input sends input_id', async ({ page }) => {
+  const seen: string[] = [];
+  await mockChecks(page, seen);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await loginAndOpen(page, '/#forecast');
+  await expect(page.getByRole('region', { name: '도우미' })).toBeVisible();
+  // 운전 모사가 연결되지 않은 시험 환경에서는 live를 보내지 않는다.
+  await expect.poll(() => seen.some(s => new URLSearchParams(s).get('screen') === 'forecast')).toBe(true);
+  expect(seen.filter(s => s.includes('screen=forecast')).every(s => !new URLSearchParams(s).has('live'))).toBe(true);
+
+  await page.route('**/api/planning/inputs', r => r.fulfill({ json: [{ id: 5, name: '저장 조건', start: '2027-01-01', end: '2027-12-31', recorded_at: '2026-11-01' }] }));
+  await page.route('**/api/planning/inputs/5', r => r.fulfill({ json: { id: 5, payload: { scenario: { name: '저장 조건', start: '2027-01-01', end: '2027-12-31', weather: 'normal', demand_growth_pct: null, solar_growth_pct: null, coal_adjust_pct: Array(12).fill(0), reserve_ratio: 0.12, quality: 'normal', workers: null, coal_oh: [], nuclear_oh: [] }, heat_prices: { 당진1: Array(12).fill(30000) }, fuel: { calorific_kcal_kg: 5500, is_assumption: true } } } }));
+  await page.route('**/api/planning/executions', r => r.fulfill({ json: [] }));
+  await page.route('**/api/job', r => r.fulfill({ json: { state: 'idle' } }));
+  seen.length = 0;
+  await gotoScreen(page, '#data');
+  await page.getByLabel('기준으로 가져올 입력').selectOption('5');
+  await expect.poll(() => seen.some(s => new URLSearchParams(s).get('input_id') === '5')).toBe(true);
+});
