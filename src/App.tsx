@@ -317,8 +317,10 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
   const currentPage = pageInfo[page];
   const scenarioChanged = JSON.stringify(draft) !== JSON.stringify(applied);
   const detailPlant = plants.find((p) => p.id === detail?.plantId);
+  // 시나리오 화면에서는 표와 같은 옮긴 날짜를 대화상자에도 쓴다.
+  const shownTime = (f: Forecast) => (page === "scenario" ? shiftForecastTimes(f, sampleToday) : f);
   const detailForecast = detailPlant
-    ? forecast.byPlant.find((p) => p.plantId === detailPlant.id)
+    ? scenarioView.forecast.byPlant.find((p) => p.plantId === detailPlant.id)
     : undefined;
 
   useEffect(() => {
@@ -1124,9 +1126,6 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                       {horizon}일
                     </Badge>
                   </div>
-                  <p className="scenario-sample-note">
-                    시연 표본 · 날짜는 오늘(KST) 09:00 기준으로 옮겨 표시한 값이며 실제 운영 정보가 아닙니다.
-                  </p>
                   <div className="comparison-cards">
                     <Card className="comparison-card">
                       <span>전망 기간 발전량</span>
@@ -1254,8 +1253,8 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                     <b className="detail-date">
                       {fmtDate(
                         detailForecast?.firstShortageAt ??
-                          towerSummary([detailPlant], applied, horizon, models)
-                            .forecast.firstShortageAt,
+                          shownTime(towerSummary([detailPlant], applied, horizon, models)
+                            .forecast).firstShortageAt,
                       )}
                     </b>
                   </div>
@@ -1353,7 +1352,9 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                   ? "선택한 저장 계산의 기간 · KST 00시~24시입니다."
                   : page === "vessels"
                     ? "모든 시각은 KST로 표시하며, 관측·예보·시연 기준을 구분합니다."
-                    : "모든 시간은 KST, 시연 기준시각은 2026.10.06 09:00입니다."}
+                    : page === "scenario"
+                      ? "모든 시간은 KST, 표시 날짜는 오늘 09:00 기준으로 옮긴 값입니다."
+                      : "모든 시간은 KST, 시연 기준시각은 2026.10.06 09:00입니다."}
               </DialogDescription>
             </DialogHeader>
             {page === "vessels" ? (

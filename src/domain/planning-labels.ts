@@ -19,7 +19,8 @@ function runIdKst(runId: string | undefined): string | null {
 
 export function planLabel(item: { name: string; id?: number; recorded_at?: string; run_id?: string; start: string; end: string }): string {
   const time = recordedKst(item.recorded_at) ?? runIdKst(item.run_id);
-  return `${item.id != null ? `#${item.id} ` : ""}${item.name} · ${item.start} ~ ${item.end}${time ? ` · ${time}` : ""}`;
+  const period = item.start && item.end ? ` · ${item.start} ~ ${item.end}` : "";
+  return `${item.id != null ? `#${item.id} ` : ""}${item.name}${period}${time ? ` · ${time}` : ""}`;
 }
 
 /** 실행 이력 한 줄: 제목은 입력 이름과 실행 시각, 내부 식별자는 보조 글자로 분리한다. */

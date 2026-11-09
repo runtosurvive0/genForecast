@@ -563,7 +563,7 @@ export function FuelSupplyOverview({
     <section className="gf-forecast-summary" aria-label="발전·수급 전망 요약">
       <div><span>기간 발전 계획</span><strong><NumberWithUnit value={summary.generation} unit="MWh" /></strong><small>{snapshot.horizon_days}일 계획 합계</small></div>
       <div><span>기간 연료 사용계획</span><strong><NumberWithUnit value={summary.fuel} /></strong><small>발전계획 기반 · {snapshot.horizon_days}일</small></div>
-      <div><span>{summary.minimumStock && summary.minimumStock.tonnes < 0 ? "예상 최대 부족량" : "예상 최저 재고"}</span><strong><NumberWithUnit value={summary.minimumStock ? Math.abs(summary.minimumStock.tonnes) : null} /></strong><small>{summary.minimumStock ? `${summary.minimumStock.day} · 일말 계획 기준` : "전체 저탄장 일별 재고 확인 필요"}</small></div>
+      <div><span>{summary.minimumStock && summary.minimumStock.tonnes < 0 ? "예상 최대 부족량" : "예상 최저 재고"}</span><strong><NumberWithUnit value={summary.minimumStock ? Math.abs(summary.minimumStock.tonnes) : null} /></strong><small>{summary.minimumStock ? `${summary.minimumStock.day} · 당일 마감 계획 기준` : "전체 저탄장 일별 재고 확인 필요"}</small></div>
     </section>
   );
   return (

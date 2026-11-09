@@ -5,6 +5,7 @@ import {
   type AssistantContext, type AssistantScreen, type CheckItem, type CheckKind, type ChecksResult,
 } from '@/domain/assistant-checks';
 import { formatAsOf } from '@/domain/assistant';
+import { sourceDescription } from '@/domain/source-description';
 import './assistant-section.css';
 
 const KIND_LABEL: Record<CheckKind, string> = { missing: '빠짐', stale: '오래됨', dummy: '더미', sample: '표본' };
@@ -30,10 +31,10 @@ function Item({ item, onNavigate }: { item: CheckItem; onNavigate: (page: string
     <li className="gf-as-item">
       <div className="gf-as-item-head">
         <span className={`gf-as-kind gf-as-kind-${item.kind}`}>{KIND_LABEL[item.kind]}</span>
-        <strong className="gf-as-item-title">{item.title}</strong>
+        <strong className="gf-as-item-title">{sourceDescription(item.title)}</strong>
         {item.count > 0 && <span className="gf-as-count">{item.count}건</span>}
       </div>
-      {item.detail && <p className="gf-as-detail">{item.detail}</p>}
+      {item.detail && <p className="gf-as-detail">{sourceDescription(item.detail)}</p>}
       <div className="gf-as-item-actions">
         {item.targets.length > 0 && (
           <button type="button" className="gf-as-link" aria-expanded={showTargets} onClick={() => setShowTargets(v => !v)}>

@@ -305,7 +305,7 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate }: {
                   <XAxis dataKey="day" {...AXIS} />
                   <YAxis {...AXIS} width={38} tickFormatter={(v: number) => `${n(v / 1000, 0)}k`} />
                   {contractDay && <ReferenceLine x={contractDay} className="dfc-ref-contract" label={{ value: "계약 선박 끝", position: "top", className: "dfc-ref-label" }} />}
-                  {gradeDepletion.map((g, row) => <ReferenceLine key={g.key} x={g.day} className="dfc-ref-danger" strokeDasharray="4 4" label={(props: { viewBox?: { x?: number; y?: number } }) => <text className="dfc-ref-label" x={(props.viewBox?.x ?? 0) - 4} y={(props.viewBox?.y ?? 0) + 12 + row * 13} textAnchor="end">{g.label}</text>} />)}
+                  {gradeDepletion.map((g, row) => <ReferenceLine key={g.key} x={g.day} className="dfc-ref-danger" strokeDasharray="4 4" label={(props: { viewBox?: { x?: number; y?: number } }) => { const x = props.viewBox?.x ?? 0; const early = x < 130; /* 앞쪽 날짜면 선 오른쪽에 둬 Y축 쪽으로 잘리지 않게 한다 */ return <text className="dfc-ref-label" x={early ? x + 4 : x - 4} y={(props.viewBox?.y ?? 0) + 12 + row * 13} textAnchor={early ? "start" : "end"}>{g.label}</text>; }} />)}
                   <ChartTooltip content={<ChartTooltipContent indicator="line" formatter={(v, name) => tipRow(STOCK_CONFIG, String(name), `${n(Number(v), 0)} t`)} />} />
                   <ChartLegend content={<ChartLegendContent />} />
                   <Bar dataKey="receipts" fill="var(--color-receipts)" barSize={4} radius={[2, 2, 0, 0]} isAnimationActive={false} />

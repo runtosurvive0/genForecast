@@ -1,6 +1,6 @@
 import { test, expect } from './auth-fixture';
 import type { Page } from '@playwright/test';
-import { planningFixture } from './planning-fixture';
+import { planningFixture, suppliedPlanningFixture } from './planning-fixture';
 
 // 과제 9(수급 예측·통합 시뮬레이션·전망 입력·시나리오 화면 정리 7~12번).
 // auth-fixture가 모든 /api를 503으로 막고 로그인 응답만 준다. 필요한 응답은 page.route로 가로챈다.
@@ -68,6 +68,7 @@ test('8. 같은 이름의 계획·입력도 선택 목록에서 서로 다르게
   await expect(page.getByLabel('저장된 MILP 계산').locator('option')).toHaveCount(2);
   const runs = await optionTexts(page, '저장된 MILP 계산');
   expect(new Set(runs).size).toBe(2);
+  expect(runs.join('|')).not.toContain('undefined');
   expect(runs[0]).toContain('11-10 03:14 KST');
   await page.getByRole('tab', { name: '조건 설정', exact: true }).click();
   await expect(page.getByLabel('기준으로 가져올 입력').locator('option')).toHaveCount(3);
@@ -107,32 +108,57 @@ test('9. 실행 이력 제목은 입력 이름과 실행 시각이고 식별자�
 test('10. 통합 시뮬레이션 문구: 당일 마감 재고, 자기 화면 링크 없음, 하이픈 두 개 없음', async ({ page }) => {
   await mockRuns(page, ['2025-10~12 표본외 검증에서 +15~+40% 과대예측했습니다 -- 월별 석탄목표 보정을 검토하세요.']);
   await mockInputs(page);
+  // 재고 값이 있는 계획(값이 없으면 문구가 가려진다)
+  await page.route('**/api/planning/runs/*/snapshot?**', r => {
+    const url = new URL(r.request().url());
+    const snapshot = suppliedPlanningFixture(decodeURIComponent(url.pathname.split('/')[4]), url.searchParams.get('start') ?? undefined, Number(url.searchParams.get('horizon') ?? 30));
+    snapshot.issues = ['2025-10~12 표본외 검증에서 +15~+40% 과대예측했습니다 -- 월별 석탄목표 보정을 검토하세요.'];
+    return r.fulfill({ json: snapshot });
+  });
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await page.route('**/api/assistant/checks?**', r => r.fulfill({ json: { screen: 'simulation', as_of: '2026-11-10T09:00:00+09:00', errors: [], items: [
+    { id: 'sim-s', kind: 'stale', title: '재고 기준 오래됨 -- 갱신 필요', detail: '기준재고가 3일 이상 지났습니다 -- 확인하세요.', count: 1, targets: [], action: null },
+  ] } }));
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/#simulation');
   await expect(page.getByText('당일 마감 재고', { exact: true })).toBeVisible();
-  await page.locator('.gf-forecast-details summary', { hasText: '자료·계산 기준' }).click();
-  const text = await page.locator('#main-content').innerText();
-  expect(text).not.toContain('일말 재고');
+  await page.getByRole('region', { name: '도우미' }).getByRole('button', { name: '도우미', exact: true }).click();
+  await expect(page.getByRole('region', { name: '도우미' }).getByText('재고 기준 오래됨. 갱신 필요')).toBeVisible();
+  // 접힌 영역의 글자와 접근성 이름까지 포함해 확인한다
+  const text = await page.locator('#main-content').evaluate(el => { const copy = el.cloneNode(true) as HTMLElement; copy.querySelectorAll('style, script').forEach(n => n.remove()); return copy.textContent ?? ''; });
   expect(text).not.toContain('일말');
   expect(text).not.toContain('--');
   expect(text).toContain('과대예측했습니다. 월별 석탄목표 보정을 검토하세요.');
+  expect(text).toContain('당일 마감 계획 기준');
+  await expect(page.locator('#main-content [aria-label*="일말"]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /통합 시뮬레이션 열기/ })).toHaveCount(0);
 });
 
-test('11. 시나리오 분석 날짜는 오늘(KST) 이후로 옮겨 표시하고 표본 표시는 유지한다', async ({ page }) => {
+// 연도를 넘는 날짜(1~2월)는 다음 해로 보고 순서를 비교한다.
+const order = (text: string) => { const m = /(\d{1,2})\. (\d{1,2})\./.exec(text); return m ? (Number(m[1]) <= 2 ? Number(m[1]) + 12 : Number(m[1])) * 100 + Number(m[2]) : 0; };
+const TODAY = 1110; // 2026-11-10
+
+test('11. 시나리오 분석 날짜는 오늘(KST) 이후로 옮겨 표시하고 대화상자와 표가 같다', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-11-10T01:00:00Z')); // KST 2026-11-10 10:00
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/#scenario');
   const card = page.locator('.comparison-card').nth(1);
   await expect(card).toContainText('최초 연료부족 예상');
-  const md = (text: string) => { const m = /(\d{1,2})\. (\d{1,2})\./.exec(text); return m ? Number(m[1]) * 100 + Number(m[2]) : 0; };
-  expect(md(await card.locator('strong').innerText())).toBeGreaterThan(1110);
-  expect(md(await card.locator('p b').innerText())).toBeGreaterThan(1110);
+  expect(order(await card.locator('strong').innerText())).toBeGreaterThan(TODAY);
+  expect(order(await card.locator('p b').innerText())).toBeGreaterThan(TODAY);
   const firstTick = await page.locator('.inventory-chart text.chart-axis-label', { hasText: /\d+\. \d+\./ }).first().textContent() ?? '';
-  expect(md(firstTick)).toBeGreaterThan(1110);
-  // 날짜를 옮겼어도 실측처럼 보이지 않게 표본 표시가 남는다
-  await expect(page.locator('#main-content')).toContainText('시연 표본');
+  expect(order(firstTick)).toBeGreaterThan(TODAY);
   await expect(page.locator('#main-content')).not.toContainText('10. 22.');
+  // 반복 안내 문구는 두지 않는다(모의 표시는 상단 공통 표시 한 곳)
+  await expect(page.locator('#main-content')).not.toContainText('시연 표본 ·');
+  // 발전본부 상세 대화상자의 연료부족 예측 날짜도 표와 같은 옮긴 날짜다
+  const row = page.locator('.operations-table tbody tr').filter({ has: page.locator('.warning-text') }).first();
+  const tableDate = (await row.locator('.warning-text').innerText()).trim();
+  expect(order(tableDate)).toBeGreaterThan(TODAY);
+  await row.locator('.plant-link').click();
+  const dialogDate = (await page.getByRole('dialog').locator('.detail-date').innerText()).trim();
+  expect(dialogDate).toBe(tableDate);
+  expect(order(dialogDate)).toBeGreaterThan(TODAY);
 });
 
 test('12. 시나리오 분석은 제목이 하나이고 항상 맨 위에서 열린다', async ({ page }) => {

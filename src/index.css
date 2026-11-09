@@ -1417,12 +1417,6 @@ button {
   color: var(--muted-foreground);
   font-size: 9px;
 }
-.scenario-sample-note {
-  margin: -10px 0 14px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--muted-foreground);
-}
 .comparison-cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

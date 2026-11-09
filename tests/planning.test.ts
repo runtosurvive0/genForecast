@@ -254,3 +254,12 @@ test('실행 이력 제목은 입력 이름과 실행 시각, 식별자는 보�
 test('안내문의 연속 하이픈은 문장 부호로 바꾼다', () => {
   assert.equal(sourceDescription('과대예측했습니다 -- 월별 보정을 검토하세요.'), '과대예측했습니다. 월별 보정을 검토하세요.');
 });
+
+test('이미 마침표가 있는 문장 뒤의 하이픈도 마침표가 겹치지 않는다', () => {
+  assert.equal(sourceDescription('끝났습니다. -- 다음을 확인하세요.'), '끝났습니다. 다음을 확인하세요.');
+});
+
+test('기간이 없는 항목도 undefined 없이 이름을 만든다', async () => {
+  const { planLabel } = await import('../src/domain/planning-labels.ts');
+  assert.equal(planLabel({ name: '월간', id: 2, start: undefined as unknown as string, end: undefined as unknown as string }), '#2 월간');
+});
