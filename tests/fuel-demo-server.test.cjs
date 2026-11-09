@@ -426,3 +426,69 @@ test("the simulation store keeps only recent rows and the latest checkpoint", ()
   store.close();
   aged.close();
 });
+function fakeSessionBackend(handler) {
+  const http = require("node:http");
+  const seen = [];
+  const server = http.createServer((req, res) => {
+    seen.push({ url: req.url, host: req.headers.host, cookie: req.headers.cookie, origin: req.headers.origin });
+    const body = handler(req);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(body));
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () =>
+    resolve({ url: `http://127.0.0.1:${server.address().port}/api/auth/session`, seen, close: () => new Promise((r) => server.close(r)) })));
+}
+const DEPLOY_ORIGIN = "https://zgx-6660.tailec6d33.ts.net";
+function withDeployOrigin(t) {
+  const previous = process.env.DEMO_ALLOWED_ORIGINS;
+  process.env.DEMO_ALLOWED_ORIGINS = DEPLOY_ORIGIN;
+  t.after(() => { if (previous === undefined) delete process.env.DEMO_ALLOWED_ORIGINS; else process.env.DEMO_ALLOWED_ORIGINS = previous; });
+}
+const asBrowser = (cookie) => ({ headers: { Origin: DEPLOY_ORIGIN, ...(cookie ? { Cookie: cookie } : {}) } });
+test("an approved app login opens the controller without a token", async (t) => {
+  withDeployOrigin(t);
+  const backend = await fakeSessionBackend((req) =>
+    /gf_session=good/.test(req.headers.cookie || "") ? { user: { id: "u1" }, scope: "full" }
+      : /gf_session=pending/.test(req.headers.cookie || "") ? { user: { id: "u2" }, scope: "limited" }
+      : { user: null, scope: null });
+  t.after(() => backend.close());
+  const app = createDemoServer({ port: 0, controllerToken: "", sessionUrl: backend.url });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const controller = `ws://127.0.0.1:${port}/demo-stream?role=controller`;
+  assert.equal(await openStatus(controller, asBrowser("other=1; gf_session=good; gf_csrf=x")), 101);
+  assert.equal(await openStatus(controller, asBrowser("gf_session=pending")), 403);
+  assert.equal(await openStatus(controller, asBrowser("gf_session=bad")), 403);
+  assert.equal(await openStatus(controller, asBrowser(null)), 403);
+  assert.equal(await openStatus(`ws://127.0.0.1:${port}/demo-stream?role=viewer`, asBrowser(null)), 101);
+  // 세션 쿠키만 넘기고, 백엔드가 허용 주소로 판단하도록 Host는 검증된 Origin에서 만든다.
+  const first = backend.seen[0];
+  assert.equal(first.cookie, "gf_session=good");
+  assert.equal(first.host, "zgx-6660.tailec6d33.ts.net");
+  assert.equal(first.origin, undefined);
+  assert.equal(backend.seen.length, 3); // 쿠키가 없으면 백엔드에 묻지 않는다.
+});
+test("controller login check fails closed when the backend is unreachable", async (t) => {
+  withDeployOrigin(t);
+  const app = createDemoServer({ port: 0, controllerToken: "", sessionUrl: "http://127.0.0.1:9/api/auth/session" });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  assert.equal(await openStatus(`ws://127.0.0.1:${port}/demo-stream?role=controller`, asBrowser("gf_session=good")), 403);
+});
+test("the controller token still works as an alternative to app login", async (t) => {
+  withDeployOrigin(t);
+  const backend = await fakeSessionBackend(() => ({ user: null, scope: null }));
+  t.after(() => backend.close());
+  const app = createDemoServer({ port: 0, controllerToken: "tok-1", sessionUrl: backend.url });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const controller = `ws://127.0.0.1:${port}/demo-stream?role=controller`;
+  assert.equal(await openStatus(`${controller}&token=tok-1`, asBrowser(null)), 101);
+  assert.equal(await openStatus(controller, asBrowser("gf_session=x")), 403);
+});
+test("deployment origins default the login check to the local backend session endpoint", () => {
+  const { defaultSessionUrl } = require("../scripts/fuel-demo/server.cjs");
+  assert.equal(defaultSessionUrl({ DEMO_ALLOWED_ORIGINS: DEPLOY_ORIGIN }), "http://127.0.0.1:8093/api/auth/session");
+  assert.equal(defaultSessionUrl({ DEMO_ALLOWED_ORIGINS: DEPLOY_ORIGIN, DEMO_SESSION_URL: "http://127.0.0.1:9000/api/auth/session" }), "http://127.0.0.1:9000/api/auth/session");
+  assert.equal(defaultSessionUrl({}), "");
+});
