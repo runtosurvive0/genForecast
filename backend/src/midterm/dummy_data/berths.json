@@ -1,0 +1,40 @@
+{
+  "classification": "dummy",
+  "note": "시연용 가정값. 실제 부두 능력 자료로 교체 예정.",
+  "berths": {
+    "BD-1": {
+      "unload_tph": 1800,
+      "work_hours_per_day": 20,
+      "max_dwt": 180000,
+      "yards": [
+        "1",
+        "2"
+      ]
+    },
+    "BD-2": {
+      "unload_tph": 1500,
+      "work_hours_per_day": 20,
+      "max_dwt": 100000,
+      "yards": [
+        "2",
+        "3"
+      ]
+    },
+    "BD-3": {
+      "unload_tph": 1500,
+      "work_hours_per_day": 20,
+      "max_dwt": 100000,
+      "yards": [
+        "3"
+      ]
+    }
+  },
+  "outage_examples": [
+    {
+      "berth": "BD-2",
+      "start": "2026-11-20T08:00:00+09:00",
+      "end": "2026-11-21T20:00:00+09:00",
+      "reason": "하역기 정비(예시)"
+    }
+  ]
+}
