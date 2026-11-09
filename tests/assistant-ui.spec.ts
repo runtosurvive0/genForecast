@@ -38,6 +38,17 @@ test('운영 질문 패널은 답·근거·확인 필요를 보여 주고 다른
   expect(writes).toBe(0);
   await page.setViewportSize({ width: 390, height: 900 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  // 패널은 fixed라 문서 폭만으로는 넘침을 알 수 없다. 답(근거 표 포함)이 보이는 상태에서 패널 자체를 검사한다.
+  const fits = await page.evaluate(() => {
+    const panel = document.querySelector('.gf-asst-panel') as HTMLElement;
+    const log = document.querySelector('.gf-asst-log') as HTMLElement;
+    return {
+      panelScroll: panel.scrollWidth <= panel.clientWidth + 1,
+      logScroll: log.scrollWidth <= log.clientWidth + 1,
+      inside: panel.getBoundingClientRect().right <= innerWidth + 1,
+    };
+  });
+  expect(fits).toEqual({ panelScroll: true, logScroll: true, inside: true });
 });
 
 test('도우미를 쓸 수 없으면 패널에 이유를 보여 준다', async ({ page }) => {

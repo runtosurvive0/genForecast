@@ -68,7 +68,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => {
     if (!open) return;
     textareaRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
@@ -108,8 +108,10 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
       if (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
       setError(e instanceof Error ? e.message : '질문을 처리하지 못했습니다.');
     } finally {
-      if (controllerRef.current === controller) controllerRef.current = null;
-      setSending(false);
+      if (controllerRef.current === controller) {
+        controllerRef.current = null;
+        setSending(false);
+      }
     }
   }
 
@@ -120,7 +122,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
         <h2>운영 질문</h2>
         <button type="button" className="gf-asst-close" aria-label="패널 닫기" onClick={onClose}><X size={16} /></button>
       </header>
-      <div className="gf-asst-log" ref={logRef}>
+      <div className="gf-asst-log" role="log" ref={logRef}>
         {messages.length === 0 && !sending && <p className="gf-asst-empty">재고, 입항 일정, 계획을 질문해 보세요. 답의 숫자에는 기준시각과 출처가 붙습니다.</p>}
         {messages.map(m => m.role === 'user' ? (
           <p key={m.id} className="gf-asst-user">{m.content}</p>
@@ -137,6 +139,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
         <textarea
           ref={textareaRef}
           aria-label="질문"
+          aria-describedby="gf-asst-count"
           rows={3}
           maxLength={MAX_LENGTH}
           value={question}
@@ -145,7 +148,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
           onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void submit(); } }}
         />
         <div className="gf-asst-actions">
-          <span className="gf-asst-count">{MAX_LENGTH - question.length}자 남음</span>
+          <span className="gf-asst-count" id="gf-asst-count">{MAX_LENGTH - question.length}자 남음</span>
           <button type="submit" className="gf-asst-send" disabled={!canSend}>보내기</button>
         </div>
       </form>
