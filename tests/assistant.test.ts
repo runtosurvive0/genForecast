@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import { askAssistant, formatAsOf, parseAnswer, SOURCE_LABEL } from '../src/domain/assistant.ts';
+
+const realFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = realFetch; });
 
 const ok = {
   answer: 'a',
@@ -26,6 +29,7 @@ test('parseAnswer는 value·unit·proposals·tool_calls 모양도 검사한다',
 
 test('formatAsOf는 KST로 바꾼다', () => {
   assert.equal(formatAsOf('2026-11-08T21:30:00Z'), '2026-11-09 06:30');
+  assert.equal(formatAsOf('2026-11-09T06:30:00+09:00'), '2026-11-09 06:30');
   assert.equal(formatAsOf('x'), '시각 미확인');
 });
 
@@ -55,4 +59,24 @@ test('askAssistant는 성공 응답을 검증하고 본문을 전송한다', asy
   assert.deepEqual(JSON.parse(String(seen!.init!.body)), { question: '질문', history: [{ role: 'user', content: '이전' }] });
   globalThis.fetch = async () => new Response(JSON.stringify({ ...ok, gaps: 1 }), { status: 200 });
   await assert.rejects(askAssistant('q', []), /도우미 응답 형식이 맞지 않습니다\./);
+});
+
+const hang = () => {
+  globalThis.fetch = (_url, init) => new Promise((_, reject) => {
+    init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason));
+  });
+};
+
+test('호출자 signal이 있어도 타임아웃이 걸리고 한국어 메시지로 나온다', async () => {
+  hang();
+  const caller = new AbortController();
+  await assert.rejects(askAssistant('q', [], caller.signal, 20), /응답이 늦어 질문을 멈췄습니다/);
+});
+
+test('사용자 취소는 AbortError로 그대로 전파된다', async () => {
+  hang();
+  const caller = new AbortController();
+  const pending = askAssistant('q', [], caller.signal, 5000);
+  caller.abort();
+  await assert.rejects(pending, (e: Error) => e.name === 'AbortError');
 });
