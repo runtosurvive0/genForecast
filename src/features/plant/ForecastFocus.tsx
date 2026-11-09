@@ -31,13 +31,15 @@ function TipRow({ config, name, value }: { config: ChartConfig; name: string; va
   return <span className="gf-ov-tip"><i style={{ background: `var(--color-${name})` }} /><span>{config[name]?.label ?? name}</span><b>{value}</b></span>;
 }
 
-export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurchasing, lead, trail }: {
+export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurchasing, lead, trail, assistant }: {
   snapshot: PlanningSnapshot;
   onSupplyTarget: (target: SupplyTarget) => void;
   onSimulation: () => void;
   onPurchasing?: () => void;
   lead?: ReactNode;
   trail?: ReactNode;
+  /** 오른쪽 열 맨 위(확인할 변화 위)에 둘 도우미 섹션 */
+  assistant?: ReactNode;
 }) {
   const [index, setIndex] = useState(0);
   useEffect(() => setIndex(0), [snapshot.run_id, snapshot.start, snapshot.horizon_days]);
@@ -102,6 +104,8 @@ export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurcha
         </section>
         {trail}
       </div>
+      <div className="gf-forecast-side">
+      {assistant}
       <aside className="gf-forecast-watch" aria-labelledby="gf-forecast-watch-title">
         <header><h2 id="gf-forecast-watch-title">확인할 변화</h2><span>선택 계획 · {snapshot.horizon_days}일</span></header>
         <div className="gf-forecast-watch-item"><TriangleAlert size={18} aria-hidden="true" /><div><strong>수급 상태 · {({ normal: "정상", caution: "주의", danger: "위험", unknown: "미확정" } as Record<string, string>)[snapshot.inventory.kpis.risk] ?? "미확정"}</strong><p>최소 재고일수 {snapshot.inventory.kpis.min_days == null ? "미확정" : `${snapshot.inventory.kpis.min_days.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}일`}</p><button type="button" className="gf-forecast-link" onClick={() => onSupplyTarget({ section: "forecast" })}>재고일수 확인 <ArrowRight size={14} /></button></div></div>
@@ -111,6 +115,7 @@ export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurcha
         <p className="gf-forecast-note">저탄장별 값이 하나라도 없으면 전체 합계는 미확정입니다. 입하 배분은 입항 화물량과 다르며, 예상 사용은 혼합 열량 기준입니다.</p>
         {onPurchasing && <Button className="gf-forecast-purchase" onClick={onPurchasing}>부족 시점·반입 가능 여부 검토 <ArrowRight size={15} /></Button>}
       </aside>
+      </div>
     </div>
   );
 }

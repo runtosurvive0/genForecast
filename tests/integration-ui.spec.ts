@@ -158,10 +158,14 @@ test('통합 시뮬레이션은 머리를 줄이고 1920 첫 화면에 KPI·shad
   snapshot.classification = 'operational';
   await page.route('**/api/runs', route => route.fulfill({ json: [{ id: '검증 계산', name: '검증 계산', period: '2027-01-01 ~ 2027-12-31' }] }));
   await page.route('**/api/planning/**', route => route.fulfill({ json: snapshot }));
+  // 도우미 섹션은 빠진 자료가 없어 접힌 상태로 둔다(오른쪽 열 맨 위에 한 줄을 차지한다).
+  await page.route('**/api/assistant/checks?**', route => route.fulfill({ json: { screen: 'simulation', as_of: '2027-01-01T09:00:00+09:00', items: [], errors: [] } }));
+  await page.route('**/api/assistant/status', route => route.fulfill({ json: { llm: true } }));
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/#simulation');
   const focus = page.locator('.gf-forecast-focus');
   await expect(focus.locator('[data-slot="chart"]')).toHaveCount(1);
+  await expect(page.getByRole('region', { name: '도우미' })).toBeVisible();
   // 조회 조건·저장 범위·시작재고는 패널 하나에 있다.
   const query = page.getByRole('region', { name: '조회 조건', exact: true });
   await expect(query.getByLabel('저장된 MILP 계산')).toBeVisible();
@@ -993,7 +997,7 @@ test('수급 예측은 1920 기본 화면을 스크롤 없이 담고, shadcn 차
   await expect(table.locator('thead th')).toHaveCount(7);
   expect(await table.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   // 어시스턴트 열은 320px로 화면에 붙어 따라온다.
-  const assist=page.getByRole('complementary',{name:'AI 어시스턴트',exact:true});
+  const assist=page.getByRole('complementary',{name:'조건 해석',exact:true});
   await expect(assist).toHaveCSS('position','sticky');
   expect(Math.round((await assist.boundingBox())!.width)).toBe(320);
   await page.screenshot({path:'artifacts/forecast/light-1920.png',animations:'disabled'});

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { planningFixture } from './planning-fixture';
 
 // assistant-ui.spec.ts와 같은 방식: 격리된 테스트 서버(8097)로 /api를 보내고 test-admin으로 로그인한다.
 async function loginAndOpen(page: Page, path: string) {
@@ -59,4 +60,178 @@ test('example question sends', async ({ page }) => {
   expect(asked).toHaveLength(1);
   expect(asked[0].question).toBe(COMMON_EXAMPLES[1]);
   await expect(panel.locator('.gf-asst-example')).toHaveCount(0);
+});
+
+// ---- 과제 7: 5개 화면에 도우미 섹션 배치 ----
+const SCREENS = [
+  { hash: '#blend', screen: 'blend' },
+  { hash: '#forecast', screen: 'forecast' },
+  { hash: '#simulation', screen: 'simulation' },
+  { hash: '#data', screen: 'planning_input' },
+  { hash: '#scenario', screen: 'scenario' },
+] as const;
+
+function checksBody(screen: string, title = `${screen} 빠진 자료`) {
+  return {
+    screen, as_of: '2026-11-10T09:00:00+09:00', errors: [],
+    items: [{ id: `${screen}-m`, kind: 'missing', title, detail: '', count: 2, targets: [{ label: '대상 가', reason: '값 없음' }], action: { page: 'data', label: '입력 화면으로' } }],
+  };
+}
+
+async function mockChecks(page: Page, seen: string[] = []) {
+  await page.route('**/api/assistant/checks?**', async (route) => {
+    const url = new URL(route.request().url());
+    seen.push(url.search);
+    await route.fulfill({ json: checksBody(url.searchParams.get('screen')!) });
+  });
+}
+
+async function mockPlanning(page: Page) {
+  await page.route('**/api/runs', r => r.fulfill({ json: [{ id: 'sim-run', name: '월간 전망', period: '2027-01-01 ~ 2027-12-31' }] }));
+  await page.route('**/api/planning/runs/sim-run/snapshot?**', r => r.fulfill({ json: planningFixture('sim-run') }));
+}
+
+async function gotoScreen(page: Page, hash: string) {
+  await page.goto(`/${hash}`);
+  if (hash === '#data') await page.getByRole('tab', { name: '전망 입력·계산' }).click();
+}
+
+test('section on five screens', async ({ page }) => {
+  const seen: string[] = [];
+  await mockChecks(page, seen);
+  await mockPlanning(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await loginAndOpen(page, '/#blend');
+  for (const { hash, screen } of SCREENS) {
+    await gotoScreen(page, hash);
+    await expect(page.getByRole('region', { name: '도우미' })).toBeVisible();
+    await expect.poll(() => seen.some(s => new URLSearchParams(s).get('screen') === screen)).toBe(true);
+  }
+  expect(seen.some(s => new URLSearchParams(s).get('run_id') === 'sim-run')).toBe(true);
+});
+
+test('missing item expanded', async ({ page }) => {
+  await mockChecks(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await loginAndOpen(page, '/#scenario');
+  const section = page.getByRole('region', { name: '도우미' });
+  await expect(section.getByText('scenario 빠진 자료')).toBeVisible();
+  await section.getByRole('button', { name: '대상 보기' }).click();
+  await expect(section.getByText('대상 가')).toBeVisible();
+  await section.getByRole('button', { name: '입력 화면으로' }).click();
+  await expect(page).toHaveURL(/#data$/);
+});
+
+test('question sends context', async ({ page }) => {
+  const asked: { question: string; context?: { screen: string; selection?: Record<string, unknown> } }[] = [];
+  await mockChecks(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await page.route('**/api/assistant/ask', async r => {
+    asked.push(r.request().postDataJSON());
+    await r.fulfill({ json: { answer: '확인했습니다.', partial: false, proposals: [], gaps: [], tool_calls: [], facts: [] } });
+  });
+  await loginAndOpen(page, '/#blend');
+  await page.getByRole('region', { name: '도우미' }).getByRole('button', { name: '지금 저열량탄 재고가 많은 저탄장은?' }).click();
+  const panel = page.getByRole('complementary', { name: '운영 도우미' });
+  await expect(panel.getByText('확인했습니다.')).toBeVisible();
+  expect(asked).toHaveLength(1);
+  expect(asked[0].context?.screen).toBe('blend');
+  expect(asked[0].context?.selection?.yard).toBe(1);
+  await expect(panel.getByText('상탄·혼탄 · 1계통')).toBeVisible();
+});
+
+test('previous yard list is not shown after switching yard', async ({ page }) => {
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await page.route('**/api/assistant/checks?**', async (route) => {
+    const url = new URL(route.request().url());
+    const yard = url.searchParams.get('yard');
+    if (yard === '1') await new Promise(res => setTimeout(res, 1200));
+    await route.fulfill({ json: checksBody('blend', `${yard}계통 항목`) }).catch(() => {});
+  });
+  await loginAndOpen(page, '/#blend');
+  await page.getByRole('group', { name: '주 공급 계통 선택' }).getByRole('button').nth(1).click();
+  const section = page.getByRole('region', { name: '도우미' });
+  await expect(section.getByText('2계통 항목')).toBeVisible();
+  await page.waitForTimeout(1600);
+  await expect(section.getByText('1계통 항목')).toHaveCount(0);
+  await expect(section.getByText('2계통 항목')).toBeVisible();
+});
+
+test('llm off disables section questions', async ({ page }) => {
+  const asked: unknown[] = [];
+  await mockChecks(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: false } }));
+  await page.route('**/api/assistant/ask', async r => { asked.push(r.request().postDataJSON()); await r.abort(); });
+  await loginAndOpen(page, '/#blend');
+  const section = page.getByRole('region', { name: '도우미' });
+  await expect(section.getByText('도우미가 연결되지 않았습니다')).toBeVisible();
+  await expect(section.getByRole('button', { name: '지금 저열량탄 재고가 많은 저탄장은?' })).toBeDisabled();
+  expect(asked).toHaveLength(0);
+});
+
+test('llm off notice and kept question when status turns off after click', async ({ page }) => {
+  // 섹션 확인은 켜짐(true)이었다가 창이 다시 확인할 때 꺼짐(false)이 되는 경우: 안내가 보이고 질문이 입력칸에 남는다.
+  const asked: unknown[] = [];
+  let off = false;
+  await mockChecks(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: !off } }));
+  await page.route('**/api/assistant/ask', async r => { asked.push(r.request().postDataJSON()); await r.abort(); });
+  await loginAndOpen(page, '/#blend');
+  const question = '성분이 빠진 원탄 목록을 정리해 줘';
+  await expect(page.getByRole('region', { name: '도우미' }).getByRole('button', { name: question })).toBeEnabled();
+  off = true;
+  await page.getByRole('region', { name: '도우미' }).getByRole('button', { name: question }).click();
+  const panel = page.getByRole('complementary', { name: '운영 도우미' });
+  await expect(panel.getByText('도우미가 연결되지 않았습니다 · 관리자에게 오픈AI 설정을 확인해 달라고 요청하세요')).toBeVisible();
+  await expect(panel.getByLabel('질문', { exact: true })).toHaveValue(question);
+  expect(asked).toHaveLength(0);
+});
+
+test('checks error retry', async ({ page }) => {
+  let failing = true;
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await page.route('**/api/assistant/checks?**', async (route) => {
+    if (failing) return route.fulfill({ status: 500, json: { detail: 'x' } });
+    return route.fulfill({ json: checksBody('scenario') });
+  });
+  await loginAndOpen(page, '/#scenario');
+  const section = page.getByRole('region', { name: '도우미' });
+  await expect(section.getByText('점검을 불러오지 못했습니다')).toBeVisible();
+  failing = false;
+  await section.getByRole('button', { name: '다시 시도' }).click();
+  await expect(section.getByText('scenario 빠진 자료')).toBeVisible();
+});
+
+test('forecast card renamed', async ({ page }) => {
+  await mockChecks(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await loginAndOpen(page, '/#forecast');
+  await expect(page.getByRole('complementary', { name: '조건 해석' })).toBeVisible();
+  await expect(page.getByText('AI 어시스턴트')).toHaveCount(0);
+});
+
+test('data page panel examples follow the planning input tab', async ({ page }) => {
+  await mockChecks(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await loginAndOpen(page, '/#data');
+  await page.getByRole('tab', { name: '전망 입력·계산' }).click();
+  await page.getByRole('button', { name: '운영 질문하기' }).click();
+  const panel = page.getByRole('complementary', { name: '운영 도우미' });
+  await expect(panel.locator('.gf-asst-example').first()).toHaveText('이 입력에서 빠진 값이 뭐야?');
+});
+
+test('section 390 dark', async ({ page }) => {
+  await mockChecks(page);
+  await mockPlanning(page);
+  await page.route('**/api/assistant/status', r => r.fulfill({ json: { llm: true } }));
+  await loginAndOpen(page, '/#blend');
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const mode of ['light', 'dark'] as const) {
+    await page.evaluate((m) => document.documentElement.classList.toggle('dark', m === 'dark'), mode);
+    for (const { hash } of SCREENS) {
+      await gotoScreen(page, hash);
+      await expect(page.getByRole('region', { name: '도우미' })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    }
+  }
 });

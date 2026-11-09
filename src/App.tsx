@@ -30,7 +30,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AssistantPanel, type PendingQuestion } from "@/features/assistant/AssistantPanel";
-import type { AssistantContext, AssistantScreen } from "@/domain/assistant-checks";
+import { SCREEN_QUESTIONS, type AssistantContext, type AssistantScreen } from "@/domain/assistant-checks";
+import { AssistantSection } from "@/components/assistant-section/AssistantSection";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -125,7 +126,9 @@ const scenarioIsDefault = (s: Scenario) =>
 const ASSISTANT_SCREEN_BY_PAGE: Partial<Record<Page, AssistantScreen>> = {
   blend: "blend", forecast: "forecast", simulation: "simulation", scenario: "scenario",
 };
-const assistantScreen = (page: Page) => ASSISTANT_SCREEN_BY_PAGE[page];
+// 데이터 페이지는 현재 탭이 '전망 입력·계산'일 때만 해당 예시를 쓴다. 알 수 없으면 공통 예시를 쓴다.
+const assistantScreen = (page: Page, dataTab: 'status' | 'upload' | null): AssistantScreen | undefined =>
+  page === "data" ? (dataTab === 'upload' ? "planning_input" : undefined) : ASSISTANT_SCREEN_BY_PAGE[page];
 
 function Panel({
   title,
@@ -201,6 +204,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
   const [blendView,setBlendView]=useState<'diagram'|'analysis'>('diagram');
   const [dataInitialTab, setDataInitialTab] = useState<'status'|'upload'>('status');
   const [dataTabRequest, setDataTabRequest] = useState(0);
+  const [dataTab, setDataTab] = useState<'status' | 'upload' | null>(null);
   // 승인된 로그인 세션에서만 계산 상태를 확인한다(오프라인 파일·미승인 상태 제외).
   const signedIn = Boolean(useAccount());
   const planningJob = usePlanningJob(signedIn);
@@ -624,7 +628,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
             <AccountControls />
           </div>
         </header>
-        <AssistantPanel open={assistantOpen} onClose={closeAssistant} pending={assistantPending} onPendingSent={clearAssistantPending} screen={assistantScreen(page)} />
+        <AssistantPanel open={assistantOpen} onClose={closeAssistant} pending={assistantPending} onPendingSent={clearAssistantPending} screen={assistantScreen(page, dataTab)} />
         <aside className="sidebar">
           <nav aria-label="주 메뉴">{nav}</nav>
         </aside>
@@ -787,16 +791,16 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           {page === 'procurement' && <><div className="gf-workflow-tabs"><button onClick={()=>navigate('simulation')}><ArrowRight size={14}/>시뮬레이션 결과로 돌아가기</button></div><ProcurementWorkspace planning={planning} demoSnapshot={demo.snapshot} demoStatus={demo.status} demoCatalog={demo.catalog}/></>}
           {page === 'connections' && <ConnectionsWorkspace planning={planning} status={demo.status} receivedAt={demo.receivedAt} onNavigate={navigateFromScreen}/>}
           {page === 'members' && <MemberManagement/>}
-          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status}/>}
+          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status} onAsk={openAssistant} onNavigate={navigateFromScreen}/>}
           {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
           {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
-          {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onOpenYard={id=>navigate('yard',id)}/>}
+          {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onAsk={openAssistant} onOpenYard={id=>navigate('yard',id)}/>}
           {page === "overview" && overviewSource === "milp" && (
             <OperationsStatus demo={demo} runs={planning.runs} runsLoading={planning.listLoading} runsError={planning.runs.length ? null : planning.failed || null} berthFeed={berthFeed} onNavigate={(next) => navigate(next as Page)} />
           )}
           {page === "simulation" && (
             <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>}>
-              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} onSimulation={() => navigate("simulation")} onPurchasing={() => navigate('procurement')} onSupplyTarget={(target) => {
+              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} assistant={<AssistantSection screen="simulation" params={{ runId: snapshot.run_id }} context={{ screen: "simulation", selection: { run_id: snapshot.run_id } }} questions={SCREEN_QUESTIONS.simulation} onAsk={openAssistant} onNavigate={navigateFromScreen} />} onSimulation={() => navigate("simulation")} onPurchasing={() => navigate('procurement')} onSupplyTarget={(target) => {
                 setSupplyTarget(target);
                 navigate("fuel");
               }} /></>}
@@ -966,13 +970,14 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           {page === "models" && (
             <ModelsPage models={models} onModels={setModels} theme={theme} />
           )}
-          {page === "data" && <><section className="gf-demo-data" aria-label="운전 데모 설정"><div><strong>운전 데모</strong><p>실제 운전 정보와 분리된 모사 데이터를 연결합니다.</p></div><div className="gf-demo-data-actions"><label className="gf-stream-toggle"><input aria-label="운전 데모 연결" type="checkbox" checked={demoEnabled} onChange={e=>onDemoEnabled(e.target.checked)}/><span>데모 연결</span><span className="gf-stream-state" aria-live="polite">{{disabled:'꺼짐',connecting:'연결 중',online:'수신 중',stale:'수신 지연',disconnected:'끊김'}[demo.status]}</span></label><a className="gf-control-link" href="#demo-control" target="_blank" rel="noopener"><Settings2 size={16}/><span>조작반 열기</span></a></div></section><DataPage key={dataTabRequest} plants={selectedPlants} initialTab={dataInitialTab} onResult={(run) => {
+          {page === "data" && <><section className="gf-demo-data" aria-label="운전 데모 설정"><div><strong>운전 데모</strong><p>실제 운전 정보와 분리된 모사 데이터를 연결합니다.</p></div><div className="gf-demo-data-actions"><label className="gf-stream-toggle"><input aria-label="운전 데모 연결" type="checkbox" checked={demoEnabled} onChange={e=>onDemoEnabled(e.target.checked)}/><span>데모 연결</span><span className="gf-stream-state" aria-live="polite">{{disabled:'꺼짐',connecting:'연결 중',online:'수신 중',stale:'수신 지연',disconnected:'끊김'}[demo.status]}</span></label><a className="gf-control-link" href="#demo-control" target="_blank" rel="noopener"><Settings2 size={16}/><span>조작반 열기</span></a></div></section><DataPage key={dataTabRequest} plants={selectedPlants} initialTab={dataInitialTab} onTabChange={setDataTab} onAsk={openAssistant} onNavigate={navigateFromScreen} onResult={(run) => {
             planning.setQuery(initialPlanningQuery({ ...run, name: "", period: `${run.start} ~ ${run.end}` }));
             planning.refresh(); setOverviewSource("milp"); navigate("simulation");
           }} /></>}
 
           {page === "scenario" && (
             <>
+              <AssistantSection screen="scenario" params={{}} context={{ screen: "scenario" }} questions={SCREEN_QUESTIONS.scenario} onAsk={openAssistant} onNavigate={navigateFromScreen} />
               <div className="scenario-layout">
                 <Panel
                   title="운영 조건 설정"

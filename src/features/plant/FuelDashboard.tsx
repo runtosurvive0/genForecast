@@ -59,6 +59,7 @@ export function FuelDashboard({
   onSupplyTarget,
   onSimulation,
   onPurchasing,
+  assistant,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
@@ -66,6 +67,7 @@ export function FuelDashboard({
   onSupplyTarget: (target: SupplyTarget) => void;
   onSimulation: () => void;
   onPurchasing?: () => void;
+  assistant?: ReactNode;
 }) {
   const metrics = fuelMetrics(s);
   const selectedMonth = (month: string) =>
@@ -79,6 +81,7 @@ export function FuelDashboard({
         onSupplyTarget={onSupplyTarget}
         onSimulation={onSimulation}
         onPurchasing={onPurchasing}
+        assistant={assistant}
       />
       <ForecastDetails title="연료 사용계획" note="일별·월별 사용량 · 발전량 비교 · 수치 내려보기">
       <div className="fuel-basis">

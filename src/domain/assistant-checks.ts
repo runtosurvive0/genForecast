@@ -100,22 +100,13 @@ export function resultWhileLoading<T>(prev: T | null, prevUrl: string, nextUrl: 
 }
 
 // 화면별 질문 버튼·도우미 창 예시 질문(앞 3개).
+const asks = (...qs: string[]) => qs.map((q) => ({ label: q, question: q }));
 export const SCREEN_QUESTIONS: Record<AssistantScreen, { label: string; question: string }[]> = {
-  blend: [
-    '지금 저열량탄 재고가 많은 저탄장은?',
-    '성분이 빠진 원탄 목록을 정리해 줘',
-    '선택한 원탄을 쓰면 황분은 얼마나 돼?',
-  ].map((q) => ({ label: q, question: q })),
-  forecast: [
-    '재고일수가 가장 먼저 떨어지는 저탄장은?',
-    '입항이 이틀 늦으면 어떻게 돼?',
-  ].map((q) => ({ label: q, question: q })),
-  simulation: [
-    '이 계획에서 재고가 가장 낮은 날은?',
-    '확인할 경고를 쉬운 말로 정리해 줘',
-  ].map((q) => ({ label: q, question: q })),
-  planning_input: [{ label: '이 입력에서 빠진 값이 뭐야?', question: '이 입력에서 빠진 값이 뭐야?' }],
-  scenario: [{ label: '부하 10% 늘리면 재고가 언제 부족해?', question: '부하 10% 늘리면 재고가 언제 부족해?' }],
+  blend: asks('지금 저열량탄 재고가 많은 저탄장은?', '성분이 빠진 원탄 목록을 정리해 줘', '선택한 원탄의 발열량과 황분은?'),
+  forecast: asks('재고일수가 가장 먼저 떨어지는 저탄장은?', '입항이 이틀 늦으면 재고는 어떻게 돼?', '지금 기다리는 배는?'),
+  simulation: asks('이 계획에서 재고가 가장 낮은 날은?', '확인할 경고를 쉬운 말로 정리해 줘', '이 계획의 호기별 연료 사용량은?'),
+  planning_input: asks('이 입력에서 빠진 값이 뭐야?', '추정 단가를 쓰는 달은?', '마지막 계산 결과를 요약해 줘'),
+  scenario: asks('부하를 10% 늘리면 재고가 언제 부족해?', '입항이 3일 늦으면 어떻게 돼?', '가장 먼저 부족해지는 발전본부는?'),
 };
 
 // 진입·params 변경·reload에서만 조회한다. 폴링하지 않는다.

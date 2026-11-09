@@ -5,19 +5,31 @@ import { BASE_TIME, type Plant } from "@/domain/operations";
 import { number as n, date as fmtDate } from "@/lib/format";
 import { Section } from "@/components/tower/primitives";
 import "./data.css";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { AssistantContext } from "@/domain/assistant-checks";
 import { MilpUpload } from "./MilpUpload";
 
 export function DataPage({
   plants,
   onResult,
   initialTab = "status",
+  onTabChange,
+  onAsk,
+  onNavigate,
 }: {
   plants: Plant[];
   onResult: (run: { id: string; start: string; end: string }) => void;
   initialTab?: "status" | "upload";
+  onTabChange?: (tab: "status" | "upload" | null) => void;
+  onAsk: (question: string, context: AssistantContext) => void;
+  onNavigate: (page: string) => void;
 }) {
   const [tab, setTab] = useState<"status" | "upload">(initialTab);
+  // 도우미 창이 현재 탭을 알 수 있도록 알린다. 화면을 떠나면 모름(null)으로 되돌린다.
+  useEffect(() => {
+    onTabChange?.(tab);
+    return () => onTabChange?.(null);
+  }, [tab, onTabChange]);
   const ids = plants.map((p) => p.id);
   const piles = stockpiles.filter((p) => ids.includes(p.plant_id));
   const cargo = voyages.filter((v) => ids.includes(v.destination_plant_id));
@@ -64,7 +76,7 @@ export function DataPage({
         </button>
       </div>
       {tab === "upload" ? (
-        <MilpUpload onResult={onResult} />
+        <MilpUpload onResult={onResult} onAsk={onAsk} onNavigate={onNavigate} />
       ) : (
         <>
           <Section

@@ -69,6 +69,8 @@
 /* 본문: 왼쪽 주 영역, 오른쪽 320px 어시스턴트 */
 .dfc-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
 .dfc-main { display: grid; gap: 12px; min-width: 0; }
+/* 오른쪽 열: 도우미 섹션 아래에 조건 해석 카드. 열이 행 높이만큼 늘어나야 카드가 붙어 따라온다. */
+.dfc-side { align-self: stretch; min-width: 0; }
 
 /* 지표 */
 .dfc-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 14px 20px; background: var(--card); border-radius: 12px; }

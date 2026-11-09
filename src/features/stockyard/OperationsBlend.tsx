@@ -8,14 +8,16 @@ import {useYardBaseline} from '@/domain/use-yard-baseline';
 import {blendReading} from '@/domain/blend';
 import {InventoryWorkspace} from '@/components/inventory/InventoryWorkspace';
 import type {FuelDemoSnapshot} from '@/domain/fuel-demo/types';
+import {AssistantSection} from '@/components/assistant-section/AssistantSection';
+import {SCREEN_QUESTIONS,type AssistantContext} from '@/domain/assistant-checks';
 import './operations-blend.css';
 
 const fmt=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('ko-KR',{maximumFractionDigits:1});
-export function OperationsBlend({theme,snapshot,status,view,onView,onNavigate,onOpenYard,initialLotId}:{
+export function OperationsBlend({theme,snapshot,status,view,onView,onNavigate,onAsk,onOpenYard,initialLotId}:{
   initialLotId:string|null;onOpenYard:(id?:string)=>void;
   theme:'light'|'dark';snapshot:FuelDemoSnapshot|null;status:string;
   view:'diagram'|'analysis';onView:(view:'diagram'|'analysis')=>void;
-  onNavigate:(page:string)=>void;
+  onNavigate:(page:string)=>void;onAsk:(question:string,context:AssistantContext)=>void;
 }){
   const baseline=useYardBaseline();
   const referenceLots=useMemo(()=>yardBaselineLots(baseline.data?.lots??[],true),[baseline.data]);
@@ -41,6 +43,7 @@ export function OperationsBlend({theme,snapshot,status,view,onView,onNavigate,on
         <button aria-pressed={view==='analysis'} onClick={()=>onView('analysis')}><SlidersHorizontal size={16}/>혼탄 분석</button>
       </div>
     </header>
+    <AssistantSection screen="blend" params={{yard}} context={{screen:'blend',selection:{yard,view,...(lotId?{lot:lotId}:{})}}} questions={SCREEN_QUESTIONS.blend} onAsk={onAsk} onNavigate={onNavigate}/>
     {view==='analysis'?<div className="gf-bl-analysis"><InventoryWorkspace mode="blend" /></div>:<>
       <div className="gf-bl-command">
         <div className="gf-bl-line-tabs" role="group" aria-label="주 공급 계통 선택">

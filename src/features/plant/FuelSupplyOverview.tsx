@@ -549,12 +549,14 @@ export function FuelSupplyOverview({
   onSupplyTarget,
   onSimulation,
   onPurchasing,
+  assistant,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
   onSupplyTarget: (target: SupplyTarget) => void;
   onSimulation: () => void;
   onPurchasing?: () => void;
+  assistant?: ReactNode;
 }) {
   const summary = forecastSummary(snapshot);
   const lead = (
@@ -566,7 +568,7 @@ export function FuelSupplyOverview({
   );
   return (
     <>
-      <ForecastFocus snapshot={snapshot} onSupplyTarget={onSupplyTarget} onSimulation={onSimulation} onPurchasing={onPurchasing} lead={lead} trail={<UnitBars snapshot={snapshot} />} />
+      <ForecastFocus snapshot={snapshot} onSupplyTarget={onSupplyTarget} onSimulation={onSimulation} onPurchasing={onPurchasing} assistant={assistant} lead={lead} trail={<UnitBars snapshot={snapshot} />} />
       <ForecastDetails title="저탄장별 수급 상세" note="재고일수 · 입하 배분 · 호기별 사용량">
         <SupplyKpis snapshot={snapshot} onTarget={onSupplyTarget} />
         <Forecasts snapshot={snapshot} theme={theme} />

@@ -9,14 +9,18 @@ type InputReference = { heat_prices_by_month: Record<string, Record<string, numb
 export type PlanningInputDetail = { id: number; payload: { scenario: Scenario; heat_prices: Record<string, number[]>; fuel: { calorific_kcal_kg: number; is_assumption: boolean }; input_reference?: InputReference } };
 type InputSet = { id: number; name: string; start: string; end: string };
 
-export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false, readOnly = false, initialId, status }: {
+export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false, readOnly = false, initialId, status, onBaseChange }: {
   inputs: InputSet[]; busy: boolean; onLoad: (id: number) => Promise<PlanningInputDetail>;
   onSave: (data: FormData, run: boolean) => Promise<void>;
   simple?: boolean; readOnly?: boolean; initialId?: number;
   /** 실행 버튼 바로 아래에 둘 계산 진행 표시 */
   status?: ReactNode;
+  /** 고른 저장 입력의 번호(없거나 기본 조건에서 작성이면 undefined) */
+  onBaseChange?: (id: number | undefined) => void;
 }) {
   const [base, setBase] = useState<PlanningInputDetail | null>(null);
+  const baseId = base && base.id > 0 ? base.id : undefined;
+  useEffect(() => { onBaseChange?.(baseId); }, [baseId, onBaseChange]);
   const [unit, setUnit] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
