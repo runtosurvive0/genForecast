@@ -83,6 +83,9 @@ import { MemberManagement } from "@/features/auth/MemberManagement";
 import { forecastTask } from "@/lib/forecast-task";
 import { PlanningWorkspace } from "@/components/PlanningWorkspace";
 import { ForecastInputPanel } from "@/features/data/ForecastInputPanel";
+import { PlanningJobIndicator } from "@/components/planning-job/PlanningJobProgress";
+import { usePlanningJob } from "@/domain/use-planning-job";
+import { useAccount } from "@/lib/account-context";
 import { usePlanning, initialPlanningQuery } from "@/domain/use-planning";
 import type { SupplyTarget } from "@/domain/supply";
 import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
@@ -190,6 +193,10 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
   const ownHeading = scenePage || ['demo-control','units','costs','procurement','connections','blend','vessels','inventory','forecast'].includes(page);
   const [blendView,setBlendView]=useState<'diagram'|'analysis'>('diagram');
   const [dataInitialTab, setDataInitialTab] = useState<'status'|'upload'>('status');
+  const [dataTabRequest, setDataTabRequest] = useState(0);
+  // 승인된 로그인 세션에서만 계산 상태를 확인한다(오프라인 파일·미승인 상태 제외).
+  const signedIn = Boolean(useAccount());
+  const planningJob = usePlanningJob(signedIn);
   const [overviewSource, setOverviewSource] = useState<"milp" | "synthetic">(
     () =>
       new URLSearchParams(location.search).get("source") === "synthetic" ||
@@ -567,6 +574,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           <OperationsGroups page={page} onNavigate={navigate}/>
           <div className="top-actions">
             {demo.status !== 'disabled' && <span className="gf-mode-label">모의 운전</span>}
+            {signedIn && <PlanningJobIndicator view={planningJob.view} onOpen={() => { setDataInitialTab('upload'); setDataTabRequest(n => n + 1); navigate('data'); }}/>}
             <Button
               variant="ghost"
               size="icon"
@@ -944,7 +952,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           {page === "models" && (
             <ModelsPage models={models} onModels={setModels} theme={theme} />
           )}
-          {page === "data" && <><section className="gf-demo-data" aria-label="운전 데모 설정"><div><strong>운전 데모</strong><p>실제 운전 정보와 분리된 모사 데이터를 연결합니다.</p></div><div className="gf-demo-data-actions"><label className="gf-stream-toggle"><input aria-label="운전 데모 연결" type="checkbox" checked={demoEnabled} onChange={e=>onDemoEnabled(e.target.checked)}/><span>데모 연결</span><span className="gf-stream-state" aria-live="polite">{{disabled:'꺼짐',connecting:'연결 중',online:'수신 중',stale:'수신 지연',disconnected:'끊김'}[demo.status]}</span></label><a className="gf-control-link" href="#demo-control" target="_blank" rel="noopener"><Settings2 size={16}/><span>조작반 열기</span></a></div></section><DataPage plants={selectedPlants} initialTab={dataInitialTab} onResult={(run) => {
+          {page === "data" && <><section className="gf-demo-data" aria-label="운전 데모 설정"><div><strong>운전 데모</strong><p>실제 운전 정보와 분리된 모사 데이터를 연결합니다.</p></div><div className="gf-demo-data-actions"><label className="gf-stream-toggle"><input aria-label="운전 데모 연결" type="checkbox" checked={demoEnabled} onChange={e=>onDemoEnabled(e.target.checked)}/><span>데모 연결</span><span className="gf-stream-state" aria-live="polite">{{disabled:'꺼짐',connecting:'연결 중',online:'수신 중',stale:'수신 지연',disconnected:'끊김'}[demo.status]}</span></label><a className="gf-control-link" href="#demo-control" target="_blank" rel="noopener"><Settings2 size={16}/><span>조작반 열기</span></a></div></section><DataPage key={dataTabRequest} plants={selectedPlants} initialTab={dataInitialTab} onResult={(run) => {
             planning.setQuery(initialPlanningQuery({ ...run, name: "", period: `${run.start} ~ ${run.end}` }));
             planning.refresh(); setOverviewSource("milp"); navigate("simulation");
           }} /></>}

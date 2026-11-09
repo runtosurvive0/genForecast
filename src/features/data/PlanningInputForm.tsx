@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { addDays } from '@/domain/planning';
 import { kstDay } from '@/domain/operations-status';
@@ -9,10 +9,12 @@ type InputReference = { heat_prices_by_month: Record<string, Record<string, numb
 export type PlanningInputDetail = { id: number; payload: { scenario: Scenario; heat_prices: Record<string, number[]>; fuel: { calorific_kcal_kg: number; is_assumption: boolean }; input_reference?: InputReference } };
 type InputSet = { id: number; name: string; start: string; end: string };
 
-export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false, readOnly = false, initialId }: {
+export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false, readOnly = false, initialId, status }: {
   inputs: InputSet[]; busy: boolean; onLoad: (id: number) => Promise<PlanningInputDetail>;
   onSave: (data: FormData, run: boolean) => Promise<void>;
   simple?: boolean; readOnly?: boolean; initialId?: number;
+  /** 실행 버튼 바로 아래에 둘 계산 진행 표시 */
+  status?: ReactNode;
 }) {
   const [base, setBase] = useState<PlanningInputDetail | null>(null);
   const [unit, setUnit] = useState("");
@@ -94,5 +96,6 @@ export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false
       {!readOnly && <div className="planning-input-actions"><Button type="submit" variant="outline" disabled={busy}>입력 저장</Button><Button type="button" disabled={busy} onClick={e=>{const form=e.currentTarget.form;if(form?.reportValidity()) submit(true);}}>저장 후 전망 실행</Button></div>}
       </fieldset>
     </form>}
+    {status}
   </section>;
 }
