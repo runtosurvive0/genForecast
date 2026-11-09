@@ -606,7 +606,8 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                   : currentPage.sub}
               </p>
             </div>
-            {page === "overview" && (
+            {/* 표본 화면(?source=synthetic)에서만 운영 현황으로 돌아가는 토글을 둔다. 현황판에는 두지 않는다. */}
+            {page === "overview" && overviewSource === "synthetic" && (
               <div
               className="context-bar gf-overview-mode"
               role="group"
@@ -614,8 +615,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
             >
               <div className="horizon-control">
                 <button
-                  aria-pressed={overviewSource === "milp"}
-                  className={overviewSource === "milp" ? "selected" : ""}
+                  aria-pressed={false}
                   onClick={() => {
                     setOverviewSource("milp");
                     setAlertsOpen(false);
@@ -625,19 +625,11 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                 >
                   운영 현황
                 </button>
-                <button
-                  aria-pressed={overviewSource === "synthetic"}
-                  className={overviewSource === "synthetic" ? "selected" : ""}
-                  onClick={() => setOverviewSource("synthetic")}
-                >
+                <button aria-pressed={true} className="selected">
                   별도 조건 전망
                 </button>
               </div>
-              <span className="context-caption">
-                {isBackendSupplyView
-                  ? "당진 현재 운전·선박 현황"
-                  : "시연 데이터 · 실제 운영 정보 아님"}
-              </span>
+              <span className="context-caption">시연 데이터 · 실제 운영 정보 아님</span>
             </div>
             )}
             {["overview","fuel","scenario","schedule"].includes(page) && !isBackendSupplyView && <div className="heading-actions">

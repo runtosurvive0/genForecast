@@ -10,11 +10,10 @@ import type { BerthFeed } from "../../domain/use-berth-feed";
 import type { BerthRegistry } from "../../domain/berth-ais";
 import { fetchWaiting } from "../../domain/waiting-api";
 import type { WaitingFeed } from "../../domain/waiting-candidates";
-import { arrivals, kstClock, kstDay, kstHour, loadTodayDemand, runCovering, unitOutputs, yardStock, type TodayDemand } from "../../domain/operations-status";
+import { arrivals, berthedShips, kstClock, kstDay, kstHour, loadTodayDemand, runCovering, unitOutputs, yardStock, type TodayDemand } from "../../domain/operations-status";
 import "./operations-status.css";
 
 const n = (value: number | null | undefined, digits = 0) => value == null ? "미확정" : value.toLocaleString("ko-KR", { maximumFractionDigits: digits });
-const tone = (unit: number) => (unit <= 4 ? 1 : unit <= 8 ? 2 : 3);
 const STATUS: Record<string, string> = { running: "운전", stopped: "정지", fault: "고장", unknown: "미확인" };
 const VOYAGE: Record<string, string> = { planned: "예정", underway: "항해" };
 const LIST_MAX = 4;
@@ -93,9 +92,9 @@ export function OperationsStatus({ demo, runs, runsLoading, runsError, berthFeed
   const low = demand?.state === "ready" ? Math.min(...demand.data.net) : null;
 
   const berthed = live
-    ? Object.entries(live.material.ships).map(([berth, ship]) => ({ key: `demo-${berth}`, name: ship.name, detail: `${berth}부두 · 잔량 ${n(ship.remaining)} t / ${n(ship.total)} t` }))
+    ? berthedShips(live).map((ship) => ({ key: `berth-${ship.berth}`, name: ship.name, detail: `${ship.berth}부두 · 잔량 ${n(ship.remaining)} t / ${n(ship.total)} t` }))
     : berthFeed.rows.map((row) => ({ key: row.vessel.mmsi || row.vessel.id, name: row.vessel.name, detail: `${row.berth ? `${row.berth}부두` : "부두 미확인"}${row.estimated ? " 추정" : ""} · AIS ${kstClock(row.observedAt)} KST` }));
-  const berthNote = live ? "운전 정보 하역선" : berthFeed.status === "error" ? null : "AIS 부두 판정";
+  const berthNote = live ? "하역 중" : berthFeed.status === "error" ? null : "AIS 부두 판정";
   const arrivalRows = registry.state === "ready" ? arrivals(registry.data) : [];
 
   return (
@@ -103,11 +102,11 @@ export function OperationsStatus({ demo, runs, runsLoading, runsError, berthFeed
       <Panel title="발전소 출력" className="gf-os-units" note={units ? <>합계 <b>{n(units.totalMW)}</b> MW · 운전 {units.running}기{received && ` · 수신 ${received}`}</> : "당진 1~10호기 현재 출력"}>
         {units ? <div className="gf-os-unit-grid">{units.rows.map((row) => {
           const ratio = row.mw != null && row.maxMW ? Math.min(100, Math.max(0, (row.mw / row.maxMW) * 100)) : 0;
-          return <div key={row.unit} className="gf-os-unit" data-tone={tone(row.unit)} data-status={row.status}>
-            <span className="gf-os-unit-track" aria-hidden="true"><i style={{ height: `${ratio}%` }} /></span>
+          return <div key={row.unit} className="gf-os-unit" data-status={row.status}>
+            <span className="gf-os-unit-frame" aria-hidden="true"><span className="gf-os-unit-track" style={{ height: `${(row.scale ?? 1) * 100}%` }}><i style={{ height: `${ratio}%` }} /></span></span>
             <span className="gf-os-unit-name">{row.unit}호기</span>
             <strong>{n(row.mw)}{row.mw != null && <small> MW</small>}</strong>
-            <small>{row.status === "running" ? `정격 ${n(row.maxMW)} · ${n(ratio)}%` : STATUS[row.status]}</small>
+            <small>{row.status === "running" ? <><span>{n(ratio)}%</span><span>정격 {n(row.maxMW)}</span></> : STATUS[row.status]}</small>
           </div>;
         })}</div> : <Empty>운전 정보 미연계 · 현재 출력은 계획값으로 채우지 않습니다. <button type="button" className="gf-os-link" onClick={() => onNavigate("data")}>운전 데모 연결 <ArrowRight size={13} /></button></Empty>}
       </Panel>

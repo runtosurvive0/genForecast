@@ -3025,9 +3025,14 @@ test("failed backend stays an error and synthetic demo requires explicit selecti
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("서버 연결 확인");
   await expect(page.locator(".tower-kpis")).toHaveCount(0);
-  await page.getByRole("button", { name: "별도 조건 전망", exact: true }).click();
+  // 운영 현황에는 표본으로 가는 토글이 없다. 표본은 주소로 명시해야만 열린다.
+  await expect(page.getByRole("button", { name: "별도 조건 전망", exact: true })).toHaveCount(0);
+  await page.goto("/?source=synthetic#overview");
   await expect(page.locator(".tower-metric").first()).toContainText("739,600");
   await expect(page.getByRole('group', {name:'발전소 종합 데이터 모드'})).toContainText('실제 운영 정보 아님');
+  await page.getByRole('group', {name:'발전소 종합 데이터 모드'}).getByRole("button", { name: "운영 현황", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "운영 현황", exact: true })).toBeVisible();
+  await expect(page.getByRole('group', {name:'발전소 종합 데이터 모드'})).toHaveCount(0);
 });
 
 test("shared supply preserves the existing stockyard UI while keeping DB plan/date/period", async ({ page }) => {

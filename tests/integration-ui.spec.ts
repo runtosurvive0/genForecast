@@ -230,12 +230,22 @@ test('운영 개요는 현황판으로 호기 출력·금일 순수요·저탄 �
     // 전망 계산 탭과 조회 막대는 운영 개요에 없다.
     await expect(page.getByRole('tab', { name: '조건 설정' })).toHaveCount(0);
     await expect(page.getByLabel('저장된 MILP 계산')).toHaveCount(0);
+    // 현황판에는 표본 화면으로 가는 모드 토글·설명 문구가 없다.
+    await expect(page.getByRole('group', { name: '발전소 종합 데이터 모드' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '별도 조건 전망' })).toHaveCount(0);
 
     const units = page.getByRole('region', { name: '발전소 출력', exact: true });
     await expect(units.locator('.gf-os-unit')).toHaveCount(10);
-    await expect(units).toContainText('4,820');
+    await expect(units).toContainText('5,370');
     await expect(units).toContainText('운전 10기');
     await expect(units.locator('.gf-os-unit').first()).toContainText('460');
+    // 막대 높이는 정격에 비례한다: 1,020MW 호기 760MW 채움이 600MW 호기 460MW보다 높다.
+    const fill = (i: number) => units.locator('.gf-os-unit').nth(i).locator('.gf-os-unit-track i').boundingBox();
+    expect((await fill(8))!.height).toBeGreaterThan((await fill(0))!.height);
+    const track = (i: number) => units.locator('.gf-os-unit').nth(i).locator('.gf-os-unit-track').boundingBox();
+    expect(Math.abs((await track(0))!.height / (await track(9))!.height - 600 / 1020)).toBeLessThan(0.03);
+    // 운전 중인 호기 막대는 한 가지 색이다(묶음별 색은 뜻이 없다).
+    expect(new Set(await units.locator('.gf-os-unit[data-status="running"] .gf-os-unit-track i').evaluateAll(els => els.map(e => getComputedStyle(e).backgroundColor))).size).toBe(1);
 
     const demand = page.getByRole('region', { name: '금일 수요전망', exact: true });
     await expect(demand.locator('[data-slot="chart"]')).toHaveCount(1);
@@ -250,9 +260,20 @@ test('운영 개요는 현황판으로 호기 출력·금일 순수요·저탄 �
     await expect(yard).toContainText('저열량탄');
     await expect(yard).toContainText('363,432');
     await expect(yard.locator('.gf-os-yard')).toHaveCount(3);
+    // 비중은 자기 탄종 숫자 바로 옆에 있다(다른 탄종 숫자 쪽으로 밀려나지 않는다).
+    for (const grade of ['high', 'low']) {
+      const num = (await yard.locator(`.gf-os-grade [data-grade="${grade}"] strong`).boundingBox())!;
+      const pct = (await yard.locator(`.gf-os-grade [data-grade="${grade}"] small`).boundingBox())!;
+      expect(pct.x - (num.x + num.width)).toBeGreaterThanOrEqual(0);
+      expect(pct.x - (num.x + num.width)).toBeLessThan(24);
+    }
 
     const ships = page.getByRole('region', { name: '선박 현황', exact: true });
     await expect(ships.getByRole('region', { name: '접안 중' })).toContainText('GN-A');
+    // 모의 표시는 상단 공통 모드 표시 한 곳만: 카드 안에 시연·모의 문구를 반복하지 않는다.
+    await expect(page.locator('.gf-os-page')).not.toContainText(/시연|모의|데모|운전 정보 하역선/);
+    // 11px 미만 글자가 없다.
+    expect(await page.locator('.gf-os-page').evaluate(root => [...root.querySelectorAll('*')].filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.textContent!.trim()) && parseFloat(getComputedStyle(e).fontSize) < 11).map(e => e.textContent))).toEqual([]);
     await expect(ships.getByRole('region', { name: '체선 대기' })).toContainText('WAIT ONE');
     await expect(ships.getByRole('region', { name: '체선 대기' })).toContainText('5시간');
     await expect(ships.getByRole('region', { name: '입항 예정' })).toContainText('ARRIVE ONE');
@@ -684,7 +705,7 @@ test('operating stream is explicit and controller opens with its own active conn
     await page.evaluate(()=>{location.hash='#data';});
     await page.getByRole('checkbox',{name:'운전 데모 연결'}).check();
     await expect(page.locator('.gf-stream-state')).toHaveText('수신 중');
-    await expect(page.locator('.gf-output')).toContainText('4,820');
+    await expect(page.locator('.gf-output')).toContainText('5,370');
     await page.getByRole('checkbox',{name:'운전 데모 연결'}).uncheck();
     await expect(page.locator('.gf-output')).toContainText('실시간 운전 정보 미연계');
     await page.goto('/#demo-control');
@@ -717,7 +738,7 @@ test('조작반에서 재생하면 열린 업무 화면에 운전 출력이 연�
     await expect(page.locator('.gf-output')).toContainText('실시간 운전 정보 미연계');
     await control.goto('/#demo-control');
     await control.getByRole('button',{name:'재생',exact:true}).click();
-    await expect(page.locator('.gf-output')).toContainText('4,820');
+    await expect(page.locator('.gf-output')).toContainText('5,370');
     await page.goto('/#data');
     await expect(page.locator('.gf-stream-state')).toHaveText('수신 중');
     await expect(page.getByRole('checkbox',{name:'운전 데모 연결'})).toBeChecked();

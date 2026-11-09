@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { arrivals, kstClock, kstDay, kstHour, parseHourly, runCovering, unitOutputs, yardStock } from '../src/domain/operations-status.ts';
+import { arrivals, berthedShips, kstClock, kstDay, kstHour, parseHourly, runCovering, unitOutputs, yardStock } from '../src/domain/operations-status.ts';
 
 const require = createRequire(import.meta.url);
 const { createEngine } = require('../scripts/fuel-demo/demo-engine.cjs');
@@ -12,9 +12,10 @@ test('호기별 현재 출력은 운전 데모 값과 정격을 쓰고, 값이 �
   const snapshot = createEngine(catalog).snapshot();
   const out = unitOutputs(snapshot, catalog);
   assert.equal(out.rows.length, 10);
-  assert.deepEqual(out.rows[0], { unit: 1, mw: 460, maxMW: 600, status: 'running' });
-  assert.equal(out.rows[9].maxMW, 1100);
-  assert.equal(out.totalMW, 4820);
+  assert.deepEqual(out.rows[0], { unit: 1, mw: 460, maxMW: 600, status: 'running', scale: 600 / 1020 });
+  assert.equal(out.rows[9].maxMW, 1020);
+  assert.equal(out.rows[9].scale, 1);
+  assert.equal(out.totalMW, 5370);
   assert.equal(out.running, 10);
   const partial = { ...snapshot, units: { ...snapshot.units, 3: { ...snapshot.units[3], status: 'stopped', mw: 0 } } };
   delete (partial.units as Record<string, unknown>)['10'];
@@ -76,4 +77,13 @@ test('입항 예정은 당진행 실제 항차 중 예정·항해만 ETA 순으�
     ['V1', 'ARRIVE ONE', 'underway', '2027-01-07T09:00'],
     ['V2', 'ARRIVE TWO', 'planned', '2027-01-09T09:00'],
   ]);
+});
+
+test('접안 하역선은 모의 표시 접미어 없이 이름·부두·잔량만 넘긴다(모의 표시는 상단 공통 표시 한 곳)', () => {
+  const ships = berthedShips({ material: { ships: {
+    1: { name: 'GN-A · 시연', total: 75000, remaining: 43800, unloaded: 31200 },
+    2: { name: 'GN-B', total: 82000, remaining: 63400, unloaded: 18600 },
+    3: { name: 'OCEAN 모의', total: 1, remaining: 1, unloaded: 0 },
+  } } } as never);
+  assert.deepEqual(ships.map(s => [s.berth, s.name, s.remaining, s.total]), [['1', 'GN-A', 43800, 75000], ['2', 'GN-B', 63400, 82000], ['3', 'OCEAN', 1, 1]]);
 });

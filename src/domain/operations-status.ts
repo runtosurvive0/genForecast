@@ -5,19 +5,32 @@ import type { PlanningRun } from "./planning";
 import type { BerthRegistry } from "./berth-ais";
 
 export type UnitStatus = "running" | "stopped" | "fault" | "unknown";
-export interface UnitOutput { unit: number; mw: number | null; maxMW: number | null; status: UnitStatus }
+/** scale: 가장 큰 정격 대비 이 호기 정격(막대 높이 비례용). 정격 미확인이면 null. */
+export interface UnitOutput { unit: number; mw: number | null; maxMW: number | null; status: UnitStatus; scale: number | null }
 
 const UNITS = Array.from({ length: 10 }, (_, i) => i + 1);
 
 export function unitOutputs(snapshot: Pick<FuelDemoSnapshot, "units">, catalog: Pick<FuelDemoCatalog, "units"> | null) {
-  const rows: UnitOutput[] = UNITS.map((unit) => {
+  const ratings = UNITS.map((unit) => catalog?.units.find((u) => u.id === unit)?.maxMW ?? null);
+  const largest = Math.max(0, ...ratings.map((r) => r ?? 0));
+  const rows: UnitOutput[] = UNITS.map((unit, i) => {
     const live = snapshot.units[String(unit)];
-    const maxMW = catalog?.units.find((u) => u.id === unit)?.maxMW ?? null;
-    if (!live || !Number.isFinite(live.mw)) return { unit, mw: null, maxMW, status: "unknown" };
-    return { unit, mw: live.mw, maxMW, status: live.status };
+    const maxMW = ratings[i];
+    const scale = maxMW && largest ? maxMW / largest : null;
+    if (!live || !Number.isFinite(live.mw)) return { unit, mw: null, maxMW, status: "unknown", scale };
+    return { unit, mw: live.mw, maxMW, status: live.status, scale };
   });
   const totalMW = rows.every((row) => row.mw !== null) ? rows.reduce((sum, row) => sum + (row.mw ?? 0), 0) : null;
   return { rows, totalMW, running: rows.filter((row) => row.status === "running").length };
+}
+
+/** 모의 표시는 상단 공통 모드 표시 한 곳에서만 한다: 이름 끝의 시연·모의·데모 접미어를 뗀다. */
+const DEMO_SUFFIX = /\s*(?:[·\-]\s*)?(?:시연|모의|모사|데모)\s*$/;
+
+export function berthedShips(snapshot: Pick<FuelDemoSnapshot, "material">) {
+  return Object.entries(snapshot.material.ships).map(([berth, ship]) => ({
+    berth, name: ship.name.replace(DEMO_SUFFIX, "") || ship.name, total: ship.total, remaining: ship.remaining,
+  }));
 }
 
 const GRADE: Record<string, "high" | "low"> = { 고열량: "high", 저열량: "low" };
