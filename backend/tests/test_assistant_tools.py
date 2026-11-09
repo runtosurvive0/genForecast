@@ -87,7 +87,7 @@ def test_tool_exception_becomes_error_envelope(monkeypatch, tmp_registry):
 def test_stock_snapshot_and_plan_for_day(client):  # noqa: F811
     at, _ = seed_baselines_and_plan(client)
     s = run_tool('stock_snapshot', {'at': at.isoformat()}, ctx_for())
-    assert s['ok'] and s['source'] == 'actual' and sum(g['stock_t'] for g in s['data']['groups']) == 300000
+    assert s['ok'] and s['source'] == 'plan' and sum(g['stock_t'] for g in s['data']['groups']) == 300000
     assert {'id', 'name', 'stock_t', 'cv', 'days', 'risk', 'baseline_at', 'stale'} <= set(s['data']['groups'][0])
     p = run_tool('plan_for_day', {'day': at.date().isoformat()}, ctx_for())
     assert p['ok'] and p['source'] == 'plan' and p['data']['unit_tonnes']['당진1'] > 0
@@ -118,3 +118,55 @@ def test_tool_schemas_cover_registry():
     assert [s['name'] for s in schemas] == list(TOOLS)
     assert set(TOOLS) == {'list_voyages', 'waiting_vessels', 'stock_snapshot', 'plan_for_day', 'simulate_scenario'}
     assert all(s['description'] and s['parameters']['type'] == 'object' for s in schemas)
+
+
+def test_list_voyages_and_waiting_report_count(monkeypatch, tmp_registry):
+    r = run_tool('list_voyages', {}, ctx(tmp_registry))
+    assert r['data']['count'] == 3 and all('ship' in v for v in r['data']['voyages'])
+    store = SimpleNamespace(snapshot=lambda now: ({}, {}))
+    monkeypatch.setattr('midterm.web.vessels_api.waiting', store)
+    monkeypatch.setattr('midterm.assistant.tools.waiting_candidates', lambda *a: [
+        {'mmsi': '1', 'name': 'A', 'distanceKm': 1.0, 'dwellHours': 2.0},
+        {'mmsi': '2', 'name': 'B', 'distanceKm': 1.0, 'dwellHours': 2.0}])
+    assert run_tool('waiting_vessels', {}, ctx(tmp_registry))['data']['count'] == 2
+
+
+def test_list_voyages_count_counts_all_matches_when_truncated(tmp_path):
+    path = tmp_path / 'many.sqlite3'
+    commit({'voyages': [{'voyage_no': f'M{i:03}', 'status': 'planned', 'destination_port': '당진',
+                         'planned_arrival': f'2026-12-01 {i % 24:02}:00'} for i in range(60)]}, 0, 't', 'manual', path)
+    assert run_tool('list_voyages', {}, ctx(path))['data']['count'] == 60
+
+
+def test_plan_tools_carry_issues_stale_and_demo_defaults(client):  # noqa: F811
+    at, _ = seed_baselines_and_plan(client)
+    s = run_tool('stock_snapshot', {'at': at.isoformat()}, ctx_for())
+    assert s['data']['basis'] == '기준재고+하역배분-계획연소 추정'
+    assert s['data']['baseline_at'] and s['data']['plan_stale'] is False and s['data']['demo_plan'] is False
+    assert isinstance(s['data']['issues'], list)
+    p = run_tool('plan_for_day', {'day': at.date().isoformat()}, ctx_for())
+    assert isinstance(p['data']['issues'], list) and p['data']['plan_stale'] is False and p['data']['demo_plan'] is False
+    m = run_tool('simulate_scenario', {'changes': [], 'horizon_days': 7}, ctx_for())
+    assert isinstance(m['data']['issues'], list) and m['data']['plan_stale'] is False and m['data']['demo_plan'] is False
+
+
+def _fake_dashboard(day):
+    group = {'id': 'g14', 'name': '1~4', 'stock': 1000, 'cv': 5500, 'days': 3.0, 'risk': 'unknown',
+             'baseline': {'at': '2026-11-08T00:00:00+09:00'}, 'stale': False, 'min_days': 2.0, 'min_stock': 900}
+    return lambda horizon, at, plan_key, adjust=None: {
+        'as_of': '2026-11-09T09:00:00+09:00', 'groups': [group], 'kpis': {'risk': 'unknown'},
+        'issues': ['동작 확인용 MIP 결과 · 운영 계획 확인 필요'], 'plan_stale': True,
+        'plan_source': {'source_name': 'MIP', 'classification': 'functional_demo'},
+        'fuel_calendar': {'daily': [{'day': day, 'unit_tonnes': {'당진1': 10}}]},
+        'forecast': [{'day': day, 'groups': {'g14': {'burn': 10}}}]}
+
+
+def test_plan_tools_flag_stale_and_demo_plan(monkeypatch):
+    day = '2026-11-09'
+    monkeypatch.setattr('midterm.web.supply_api.build_dashboard', _fake_dashboard(day))
+    for name, args in [('stock_snapshot', {}), ('plan_for_day', {'day': day}),
+                       ('simulate_scenario', {'changes': [], 'horizon_days': 7})]:
+        r = run_tool(name, args, ctx_for())
+        assert r['ok'], (name, r)
+        assert r['data']['plan_stale'] is True and r['data']['demo_plan'] is True, name
+        assert r['data']['issues'] == ['동작 확인용 MIP 결과 · 운영 계획 확인 필요'], name

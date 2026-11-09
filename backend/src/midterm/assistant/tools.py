@@ -125,7 +125,7 @@ def _list_voyages(args: dict, ctx: ToolContext) -> dict:
             "actual_berth": v.get("actual_berth"), "planned_unload_end": v.get("planned_unload_end"),
             "berth_id": v.get("berth_id"), "notes": v.get("notes"),
         } for v in rows[:MAX_VOYAGES]]
-        data = {"voyages": voyages}
+        data = {"voyages": voyages, "count": len(rows)}
         if len(rows) > MAX_VOYAGES:
             data["truncated"] = True
         return _ok(ctx.now.isoformat(), "actual", data)
@@ -145,12 +145,24 @@ def _waiting_vessels(args: dict, ctx: ToolContext) -> dict:
         candidates = [{
             "mmsi": c["mmsi"], "name": c["name"], "distance_km": c["distanceKm"], "dwell_hours": c["dwellHours"],
         } for c in found]
-        return _ok(ctx.now.isoformat(), "actual", {"candidates": candidates})
+        return _ok(ctx.now.isoformat(), "actual", {"candidates": candidates, "count": len(candidates)})
     except Exception as exc:
         return _fail(f"대기 선박 조회 실패: {exc}")
 
 
 # ---------------------------------------------------------------- stock_snapshot / plan_for_day
+STOCK_BASIS = "기준재고+하역배분-계획연소 추정"
+
+
+def _plan_flags(result: dict) -> dict:
+    """전망 결과의 경고(issues)·계획 갱신 경과·동작 확인용 계획 여부. 값이 없어도 기본값으로 넣는다."""
+    return {
+        "issues": list(result.get("issues") or []),
+        "plan_stale": bool(result.get("plan_stale")),
+        "demo_plan": (result.get("plan_source") or {}).get("classification") == "functional_demo",
+    }
+
+
 def _stock_snapshot(args: dict, ctx: ToolContext) -> dict:
     try:
         from midterm.web.supply_api import build_dashboard
@@ -160,7 +172,11 @@ def _stock_snapshot(args: dict, ctx: ToolContext) -> dict:
             "id": g["id"], "name": g["name"], "stock_t": g["stock"], "cv": g["cv"], "days": g["days"],
             "risk": g["risk"], "baseline_at": (g.get("baseline") or {}).get("at"), "stale": g["stale"],
         } for g in result["groups"]]
-        return _ok(result["as_of"], "actual", {"groups": groups, "issues": result["issues"]})
+        stamps = [g["baseline_at"] for g in groups if g["baseline_at"]]
+        baseline_at = max(stamps, key=timestamp) if stamps else None
+        # 실측이 아니라 기준재고 + 하역배분 - 계획 연소로 계산한 추정 재고라 출처는 plan이다.
+        data = {"groups": groups, "basis": STOCK_BASIS, "baseline_at": baseline_at, **_plan_flags(result)}
+        return _ok(result["as_of"], "plan", data)
     except Exception as exc:
         return _fail(f"재고 계산 실패: {exc}")
 
@@ -181,7 +197,7 @@ def _plan_for_day(args: dict, ctx: ToolContext) -> dict:
         point = next((p for p in result["forecast"] if p["day"] == day), None)
         burn = {g: v["burn"] for g, v in point["groups"].items()} if point else {}
         data = {"day": day, "unit_tonnes": daily["unit_tonnes"], "group_burn": burn,
-                "plan_source_name": source.get("source_name")}
+                "plan_source_name": source.get("source_name"), **_plan_flags(result)}
         return _ok(result["as_of"], "plan", data)
     except Exception as exc:
         return _fail(f"발전계획 조회 실패: {exc}")
@@ -201,11 +217,21 @@ def _delta(after, before):
     return None if after is None or before is None else after - before
 
 
+def _voyage_ships(ctx: ToolContext) -> dict[str, dict]:
+    """voyage_no -> 선박 식별(name·mmsi·imo). 모의 항차는 제외한다."""
+    book = snapshot(ctx.db_path)
+    ships = {s["ship_code"]: {"name": s.get("name"), "mmsi": s.get("mmsi"), "imo": s.get("imo")} for s in book["ships"]}
+    return {v["voyage_no"]: ships.get(v.get("ship_code")) or {}
+            for v in book["voyages"] if v.get("classification") != "simulation"}
+
+
 def _simulate_scenario(args: dict, ctx: ToolContext) -> dict:
     from midterm.assistant.scenario import ScenarioError, apply_changes
     try:
         from midterm.web.supply_api import build_dashboard
-        adjust, unsupported = apply_changes(args["changes"], ctx.now)
+        voyages = _voyage_ships(ctx) if any(
+            isinstance(c, dict) and c.get("kind") == "delay" and c.get("voyageNo") for c in args["changes"]) else {}
+        adjust, unsupported = apply_changes(args["changes"], ctx.now, voyages)
         horizon = args["horizon_days"]
         base = build_dashboard(horizon, ctx.now, None)
         scenario = build_dashboard(horizon, ctx.now, None, adjust)
@@ -214,7 +240,8 @@ def _simulate_scenario(args: dict, ctx: ToolContext) -> dict:
         diff = {g["id"]: {"min_days": _delta(g["min_days"], before[g["id"]]["min_days"]),
                           "min_stock_t": _delta(g["min_stock_t"], before[g["id"]]["min_stock_t"])}
                 for g in changed["groups"]}
-        data = {"baseline": baseline, "scenario": changed, "diff": diff, "unsupported": unsupported}
+        data = {"baseline": baseline, "scenario": changed, "diff": diff, "unsupported": unsupported,
+                **_plan_flags(scenario)}
         return _ok(scenario["as_of"], "simulation", data)
     except ScenarioError as exc:
         return _fail(str(exc))
@@ -247,7 +274,9 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
              "정지(outage)·상탄 전략(strategy)은 계산하지 않고 unsupported로 알린다.", {
         "type": "object",
         "properties": {
-            "changes": {"type": "array", "description": "조건 목록. delay: {kind,vesselId,days(-10~30)}, "
+            "changes": {"type": "array", "description": "조건 목록. delay: {kind,voyageNo|vesselName|vesselId,"
+                        "days(-10~30)} (지연 대상은 list_voyages의 voyage_no를 voyageNo로, 또는 선명을 vesselName으로 "
+                        "지정한다. 선명은 대소문자 무시 정확 일치), "
                         "load: {kind,fromDay,toDay,pct(-60~60)}, outage/strategy는 미지원"},
             "horizon_days": {"type": "integer", "enum": [7, 30, 60, 90]},
         }, "required": ["changes", "horizon_days"]}, _simulate_scenario),

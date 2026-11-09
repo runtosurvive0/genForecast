@@ -20,10 +20,11 @@ def seed_baselines_and_plan(client) -> tuple[datetime, str]:
     return at, f'db:{batch.json()["id"]}'
 
 
-def seed_incoming_vessel(client, arrival: datetime, group: str, tonnes: float) -> int:
+def seed_incoming_vessel(client, arrival: datetime, group: str, tonnes: float,
+                         name: str = '테스트선', mmsi: str | None = None) -> int:
     """해당 그룹 100% 배분 입항 예정선을 /api/supply/vessels로 등록하고 id를 돌려준다."""
     allocations = {g: (1 if g == group else 0) for g in ('g14', 'g58', 'g910')}
-    result = client.post('/api/supply/vessels', json={'name': '테스트선', 'cargo': tonnes, 'incoming_cv': 5800,
+    result = client.post('/api/supply/vessels', json={'name': name, 'mmsi': mmsi, 'cargo': tonnes, 'incoming_cv': 5800,
         'arrival_at': arrival.isoformat(), 'start_at': arrival.isoformat(), 'allocations': allocations,
         'berth_id': 'BD-1'})
     assert result.status_code == 200

@@ -68,3 +68,50 @@ def test_load_outside_plan_and_observed_vessel_delay_are_reported(client):  # no
     assert unsupported == ['이미 입항이 관측된 선박은 입항 지연을 반영하지 않습니다: 관측선']
     bad = run_tool('simulate_scenario', {'changes': [{'kind': ['x']}], 'horizon_days': 7}, ctx_for(client))
     assert bad['ok'] is False
+
+
+def _registry(path):
+    from midterm.voyage_registry import commit
+    if path.exists():
+        return path
+    commit({'ships': [{'ship_code': 'S1', 'name': 'ALPHA', 'mmsi': '440123456'}],
+            'voyages': [{'voyage_no': 'VX1', 'ship_code': 'S1', 'status': 'underway', 'destination_port': '당진',
+                         'planned_arrival': '2026-11-15 09:00'}]}, 0, 'tester', 'manual', path)
+    return path
+
+
+def _delay(client, tmp_path, target):  # noqa: F811
+    c = ToolContext(request=None, now=now(), db_path=_registry(tmp_path / 'registry.sqlite3'))
+    return run_tool('simulate_scenario', {'changes': [{'kind': 'delay', **target, 'days': 3}], 'horizon_days': 7}, c)
+
+
+def test_delay_target_by_voyage_no(client, tmp_path):  # noqa: F811
+    at, _ = seed_baselines_and_plan(client)
+    seed_incoming_vessel(client, at + timedelta(days=2), group='g58', tonnes=50000, name='알파 입항분', mmsi='440123456')
+    r = _delay(client, tmp_path, {'voyageNo': 'VX1'})
+    assert r['ok'], r
+    assert r['data']['diff']['g58']['min_stock_t'] < 0
+    assert _delay(client, tmp_path, {'voyageNo': 'VX9'}) == {'ok': False, 'error': '선박을 찾을 수 없습니다: VX9'}
+
+
+def test_delay_target_by_vessel_name_case_insensitive(client, tmp_path):  # noqa: F811
+    at, _ = seed_baselines_and_plan(client)
+    seed_incoming_vessel(client, at + timedelta(days=2), group='g58', tonnes=50000, name='Bravo Star')
+    r = _delay(client, tmp_path, {'vesselName': 'bravo star'})
+    assert r['ok'] and r['data']['diff']['g58']['min_stock_t'] < 0
+    assert _delay(client, tmp_path, {'vesselName': 'bravo'}) == {'ok': False, 'error': '선박을 찾을 수 없습니다: bravo'}
+
+
+def test_delay_target_ambiguous_name_is_rejected(client, tmp_path):  # noqa: F811
+    at, _ = seed_baselines_and_plan(client)
+    seed_incoming_vessel(client, at + timedelta(days=2), group='g58', tonnes=50000, name='TWIN')
+    seed_incoming_vessel(client, at + timedelta(days=3), group='g14', tonnes=50000, name='twin')
+    assert _delay(client, tmp_path, {'vesselName': 'Twin'}) == {'ok': False, 'error': '선박을 특정할 수 없습니다: Twin'}
+
+
+def test_delay_schema_mentions_voyage_no_and_name():
+    from midterm.assistant.agent import SYSTEM
+    from midterm.assistant.tools import TOOLS
+    desc = TOOLS['simulate_scenario'].parameters['properties']['changes']['description']
+    assert 'voyageNo' in desc and 'vesselName' in desc
+    assert '지연 대상은 list_voyages의 voyage_no나 선명으로 지정한다' in SYSTEM

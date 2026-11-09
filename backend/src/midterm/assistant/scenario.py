@@ -20,6 +20,42 @@ class ScenarioError(ValueError):
     """가정 조건이 올바르지 않을 때. 메시지는 사용자에게 그대로 보인다."""
 
 
+# 지연 대상 지정 방법(앞의 것이 우선): 공급 선박 id, 항차 원장 voyage_no, 선명(대소문자 무시, 정확 일치).
+TARGET_KEYS = ("vesselId", "voyageNo", "vesselName")
+
+
+def _fold(text) -> str:
+    return str(text or "").strip().casefold()
+
+
+def _by_ship(ship: dict, vessels: list[dict]) -> list[int]:
+    for key in ("mmsi", "imo"):
+        if ship.get(key):
+            found = [i for i, v in enumerate(vessels) if str(v.get(key) or "") == str(ship[key])]
+            if found:
+                return found
+    name = _fold(ship.get("name"))
+    return [i for i, v in enumerate(vessels) if name and _fold(v.get("name")) == name]
+
+
+def _target(change: dict, vessels: list[dict], voyages: dict[str, dict]) -> int:
+    """지연 조건이 가리키는 선박의 위치. 못 찾거나 여러 척이면 ScenarioError."""
+    key = next(k for k in TARGET_KEYS if isinstance(change.get(k), str) and change[k].strip())
+    label = change[key]
+    if key == "vesselId":
+        found = [i for i, v in enumerate(vessels) if str(v["id"]) == label]
+    elif key == "voyageNo":
+        ship = voyages.get(label.strip())
+        found = _by_ship(ship, vessels) if ship else []
+    else:
+        found = [i for i, v in enumerate(vessels) if _fold(v.get("name")) == _fold(label)]
+    if len(found) > 1:
+        raise ScenarioError(f"선박을 특정할 수 없습니다: {label}")
+    if not found:
+        raise ScenarioError(f"선박을 찾을 수 없습니다: {label}")
+    return found[0]
+
+
 def _number(change: dict, key: str) -> float:
     value = change.get(key)
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
@@ -34,7 +70,7 @@ def _check(change) -> None:
     if not isinstance(kind, str):
         raise ScenarioError("조건 종류가 올바르지 않습니다")
     if kind == "delay":
-        if not isinstance(change.get("vesselId"), str) or not change["vesselId"]:
+        if not any(isinstance(change.get(k), str) and change[k].strip() for k in TARGET_KEYS):
             raise ScenarioError("조건 값이 올바르지 않습니다: vesselId")
         days = _number(change, "days")
         if days != int(days) or not -10 <= days <= 30:
@@ -49,8 +85,13 @@ def _check(change) -> None:
         raise ScenarioError(f"알 수 없는 조건 종류입니다: {kind}")
 
 
-def apply_changes(changes: list[dict], as_of: datetime) -> tuple[Callable[[dict, dict], tuple[dict, dict]], list[str]]:
-    """(adjust 함수, 계산하지 못한 조건 설명 목록)을 돌려준다. 조건이 잘못되면 ScenarioError."""
+def apply_changes(changes: list[dict], as_of: datetime, voyages: dict[str, dict] | None = None
+                  ) -> tuple[Callable[[dict, dict], tuple[dict, dict]], list[str]]:
+    """(adjust 함수, 계산하지 못한 조건 설명 목록)을 돌려준다. 조건이 잘못되면 ScenarioError.
+
+    voyages: voyage_no -> 선박 식별(name·mmsi·imo). voyageNo로 지정한 지연 대상을 공급 선박으로 바꿀 때 쓴다.
+    """
+    voyages = voyages or {}
     for change in changes:
         _check(change)
     unsupported: list[str] = []
@@ -66,9 +107,7 @@ def apply_changes(changes: list[dict], as_of: datetime) -> tuple[Callable[[dict,
     def adjust(data: dict, plan: dict) -> tuple[dict, dict]:
         vessels = list(data["vessels"])
         for change in delays:
-            index = next((i for i, v in enumerate(vessels) if str(v["id"]) == change["vesselId"]), None)
-            if index is None:
-                raise ScenarioError(f"선박을 찾을 수 없습니다: {change['vesselId']}")
+            index = _target(change, vessels, voyages)
             visited = {r["vessel_id"] for r in data.get("port_visits", []) if timestamp(r["arrived_at"]) <= origin_at}
             if vessels[index]["id"] in visited:
                 note = f"이미 입항이 관측된 선박은 입항 지연을 반영하지 않습니다: {vessels[index].get('name')}"
