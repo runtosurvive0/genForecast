@@ -18,6 +18,7 @@ from midterm.supply_plans import latest_forecast
 from midterm.web import supply_api
 from midterm.web.app import app
 from midterm.web import planning_api
+from supply_helpers import seed_baselines_and_plan
 
 
 @pytest.fixture
@@ -242,18 +243,9 @@ def test_plan_import_rejects_duplicate_or_invalid_output_without_partial_write(c
 
 
 def test_normalized_api_plan_runs_through_same_inventory_path(client):
-    at = now().replace(minute=0,second=0,microsecond=0)
-    for g in ('g14','g58','g910'):
-        result = client.post('/api/supply/baselines',json={'group_id':g,'at':at.isoformat(),
-            'tonnes':100000,'cv':5500,'moisture':10,'ash':10,'sulfur':.5})
-        assert result.status_code == 200
+    at, key = seed_baselines_and_plan(client)
     start = at.replace(hour=0)
-    rows = [{'at':(start+timedelta(hours=h)).isoformat(),'unit':f'당진{i}','mw':300 if i<9 else 600,'online':True}
-            for h in range(15*24) for i in range(1,11)]
-    batch = client.post('/api/supply/plans',json={'source':'API','source_name':'테스트 계획',
-                       'as_of':at.isoformat(),'rows':rows})
-    assert batch.status_code == 200
-    result = client.get('/api/supply/dashboard',params={'horizon':7,'at':at.isoformat(),'plan_key':f'db:{batch.json()["id"]}'}).json()
+    result = client.get('/api/supply/dashboard',params={'horizon':7,'at':at.isoformat(),'plan_key':key}).json()
     assert result['kpis']['stock'] == 300000
     assert result['kpis']['today_burn'] > 0
     assert all(u['cf_pct'] is not None for u in result['units'])
@@ -262,6 +254,23 @@ def test_normalized_api_plan_runs_through_same_inventory_path(client):
     assert calendar['year'] == at.year
     assert next(d for d in calendar['daily'] if d['day'] == start.date().isoformat())['unit_tonnes']['당진1'] > 0
     assert any(m['unit_tonnes']['당진1'] is None for m in calendar['monthly'])
+
+
+def test_build_dashboard_matches_route_and_applies_adjust(client):
+    at, key = seed_baselines_and_plan(client)
+    from midterm.web.supply_api import build_dashboard
+    route = client.get('/api/supply/dashboard', params={'horizon': 7, 'at': at.isoformat(), 'plan_key': key}).json()
+    assert build_dashboard(7, at, key)['kpis'] == route['kpis']
+    seen = {}
+    def adjust(data, plan):
+        seen['called'] = True
+        return data, {}  # 계획을 비우면 오늘 사용량을 알 수 없어야 한다
+    assert build_dashboard(7, at, key, adjust)['kpis']['today_burn'] is None
+    assert seen == {'called': True}
+    with pytest.raises(ValueError):
+        build_dashboard(5, at, key)
+    with pytest.raises(LookupError):
+        build_dashboard(7, at, 'db:999999')
 
 
 def test_local_mip_adapter_preserves_source_period_and_national_curve():
