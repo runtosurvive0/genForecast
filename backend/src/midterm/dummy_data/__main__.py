@@ -28,7 +28,7 @@ def _load_lines(r: dict, when: str) -> list[str]:
 def _unload_lines(r: dict, when: str) -> list[str]:
     lines = [f"삭제할 더미 행: {_counts(r['purged'])}",
              f"실제 행에서 비울 더미 칸: {r['cleared']['rows']}행 {r['cleared']['fields']}칸",
-             f"기준재고에서 지울 더미 칸: {r['baseline_cleared']}",
+             f"기준재고에서 지울 더미 칸: {r['baseline_cleared']} (기준일: {', '.join(r.get('baseline_days') or []) or '없음'})",
              f"{when} 원장 revision {r['registry_revision']} · 기준재고 revision {r['baseline_revision']}"]
     if r['kept_required']:
         lines.append(f"필수 칸이라 남긴 더미 값: {len(r['kept_required'])}행 (사람이 고친 행)")

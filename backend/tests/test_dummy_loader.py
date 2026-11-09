@@ -1,7 +1,7 @@
 import json
 import re
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -246,7 +246,8 @@ def test_unload_keeps_human_baseline_edit_even_if_still_marked(tmp_db):
     assert got[0].get('age_days') == original[0].get('age_days')
     assert 'dummy_fields' not in got[0]
     assert got[1:] == original[1:]
-    assert result['kept_baseline'] == [{'source_id': original[0]['source_id'], 'location': original[0]['location'],
+    assert result['kept_baseline'] == [{'as_of': '2026-11-08',
+                                        'source_id': original[0]['source_id'], 'location': original[0]['location'],
                                         'coal_name': original[0]['coal_name'],
                                         'voyage_number': original[0]['voyage_number'], 'fields': ['temperature_c']}]
 
@@ -307,3 +308,29 @@ def test_unload_rerun_after_purge_conflict_restores(tmp_db, monkeypatch):
     loader.unload(tmp_db)
     assert _rows(snapshot(tmp_db)) == _rows(before)
     assert read_baseline(tmp_db)['lots'] == base_before
+
+
+def test_unload_clears_dummy_values_carried_to_a_later_day(tmp_db):
+    original = read_baseline(tmp_db)
+    loader.load(tmp_db)
+    loaded = read_baseline(tmp_db)
+    next_day = (date.fromisoformat(loaded['as_of']) + timedelta(days=1)).isoformat()
+    lots = [dict(lot) for lot in loaded['lots']]
+    lots[0]['temperature_c'] = 58.0  # one human measurement on the new day
+    save_baseline({'as_of': next_day, 'lots': lots}, loaded['revision'], 'operator', tmp_db)
+    carried = read_baseline(tmp_db)['lots']
+    assert sum(bool(lot.get('dummy_fields')) for lot in carried) == len(carried)
+
+    result = loader.unload(tmp_db)
+    assert result['kept_baseline'] == []  # the human value lost its mark when it was saved
+    assert result['baseline_cleared'] > 0
+    latest = read_baseline(tmp_db)
+    assert latest['as_of'] == next_day
+    expected = [dict(lot) for lot in original['lots']]
+    expected[0]['temperature_c'] = 58.0
+    assert latest['lots'] == expected
+    assert read_baseline(tmp_db, original['as_of'])['lots'] == original['lots']  # the loaded day is cleaned too
+    assert not any(lot.get('dummy_fields') for lot in read_baseline(tmp_db, original['as_of'])['lots'])
+
+    again = loader.unload(tmp_db)
+    assert again['baseline_cleared'] == 0 and again['baseline_revision'] == result['baseline_revision']
