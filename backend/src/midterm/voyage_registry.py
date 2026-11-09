@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import sqlite3
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from midterm.database import DATABASE, connect
@@ -20,6 +21,13 @@ class RegistryError(ValueError):
 
 def field(key, label, kind='text', required=False, **kwargs):
     return dict(key=key, label=label, kind=kind, required=required, **kwargs)
+
+
+def origin_fields():
+    """System markers: only the dummy-data loader may set them; humans and Excel cannot."""
+    return [field('data_origin', '더미 구분', 'choice', system=True,
+                  choices={'entered': '입력', 'dummy': '더미', 'mixed': '입력+더미'}),
+            field('dummy_fields', '더미 칸', 'memo', system=True)]
 
 
 PLANTS = {'dangjin': '당진', 'boryeong': '보령', 'hadong': '하동', 'donghae': '동해·삼척'}
@@ -51,6 +59,9 @@ SCHEMA = {
           for prefix, title in [('planned', '예정'), ('actual', '실제')]
           for event, label in [('departure', '출항'), ('arrival', '입항'), ('berth', '접안'), ('unload_end', '하역완료')]],
         field('notes', '비고', 'memo'),
+        field('laytime_hours', '허용정박시간(h)', 'number', min=0, max=1000),
+        field('demurrage_usd_per_day', '체선료(USD/일)', 'number', min=0, max=1000000),
+        *origin_fields(),
     ]),
     'cargo': dict(label='화물', key='cargo_no', fields=[
         field('cargo_no', '화물 관리ID', 'code', True), field('voyage_no', '배선', 'code', True, reference='voyages'),
@@ -71,6 +82,7 @@ SCHEMA = {
         field('sulfur_pct', '황분(%)', 'number', min=0, max=100),
         field('analysis_basis', '회분·황분 분석기준', 'choice', choices={x: x for x in ['AR', 'ADB', 'DB', 'DAF']}),
         field('notes', '비고', 'memo'),
+        *origin_fields(),
     ]),
 }
 
@@ -100,7 +112,7 @@ SCHEMA['assays']['fields'] += [
     *[field(key,label,'number',min=0,max=100,group='원소분석 · DB, %wt') for key,label in
       [('c_db','탄소 C'),('h_db','수소 H'),('n_db','질소 N'),('o_db','산소 O'),('s_db','유황 S')]],
     *[field(key,label,'number',min=0,max=100,group='회성분 분석 · %wt') for key,label in
-      [('sio2','SiO2'),('al2o3','Al2O3'),('cao','CaO'),('mgo','MgO'),('na2o','Na2O'),('k2o','K2O'),('so3','SO3'),('tio2','TiO2'),('ash_other','기타 회성분')]],
+      [('sio2','SiO2'),('al2o3','Al2O3'),('cao','CaO'),('mgo','MgO'),('na2o','Na2O'),('k2o','K2O'),('so3','SO3'),('tio2','TiO2'),('fe2o3','Fe2O3'),('ash_other','기타 회성분')]],
     *[field(key,label,'number',min=0,max=3000,group='연료특성') for key,label in
       [('combustion_start_c','연소시작온도(°C)'),('combustion_end_c','연소종료온도(°C)'),('combustion_peak_c','최대연소온도(°C)')]],
     field('combustion_max_rate','최대연소속도(%/min)','number',min=0,max=10000,group='연료특성'),
@@ -110,7 +122,19 @@ SCHEMA['assays']['fields'] += [
     field('size_025mm','0.25mm 이하(%wt)','number',min=0,max=100,group='입도·염소·점결성'),
     field('chlorine_db_ppm','염소 DB(ppm)','number',min=0,max=1000000,group='입도·염소·점결성'),
     field('csn','CSN 점결성 지수','number',min=0,max=9,group='입도·염소·점결성'),
+    *[{**f, 'group': '분석 정보'} for f in origin_fields()],
 ]
+DUMMY_ORIGIN = 'dummy-data'
+
+
+def dummy_keys(row: dict, entity: str) -> set[str]:
+    """Fields of a stored row whose values came from the dummy-data loader."""
+    if row.get('data_origin') == 'dummy':
+        return {f['key'] for f in SCHEMA[entity]['fields']
+                if f['key'] != SCHEMA[entity]['key'] and not f.get('system') and row.get(f['key']) is not None}
+    if row.get('data_origin') == 'mixed':
+        return {key.strip() for key in str(row.get('dummy_fields') or '').split(',') if key.strip()}
+    return set()
 
 
 def normalize_voyage_number(value):
@@ -187,6 +211,8 @@ def init_schema(db):
             db.execute(f'CREATE TABLE IF NOT EXISTS {table} {definition}')
         if entity == 'voyages':
             db.execute(f"UPDATE {table} SET classification='actual' WHERE classification IS NULL")
+        if any(f['key'] == 'data_origin' for f in spec['fields']):
+            db.execute(f"UPDATE {table} SET data_origin='entered' WHERE data_origin IS NULL")
     for key in ('mmsi', 'imo'):
         db.execute(f'CREATE UNIQUE INDEX IF NOT EXISTS voyage_registry_unique_{key} ON voyage_registry_ships({key}) WHERE {key} IS NOT NULL')
     db.commit()
@@ -259,7 +285,7 @@ def _clean_value(value, f):
     return value
 
 
-def _prepare(changes, current):
+def _prepare(changes, current, origin='manual'):
     if isinstance(changes, dict) and 'entries' in changes:
         from midterm.voyage_business import expand_entries
         changes = expand_entries(changes, current)
@@ -283,17 +309,30 @@ def _prepare(changes, current):
             if not isinstance(raw, dict) or set(raw) - allowed:
                 error(entity, row_num, '', '지원하지 않는 필드 또는 행 형식입니다.'); continue
             row, valid = {}, True
+            old_row = original[entity].get(raw.get(spec['key']), {})
             for f in spec['fields']:
                 try:
-                    old_row = original[entity].get(raw.get(spec['key']), {})
-                    value = raw.get(f['key'], old_row.get(f['key']))
+                    # System markers are written only by the dummy-data loader.
+                    source = raw if origin == DUMMY_ORIGIN or not f.get('system') else {}
+                    value = source.get(f['key'], old_row.get(f['key']))
                     if entity == 'voyages' and f['key'] == 'classification' and not value:
                         value = 'actual'
+                    if f['key'] == 'data_origin' and not value:
+                        value = 'entered'
                     row[f['key']] = _clean_value(value, f)
                 except ValueError as exc:
                     error(entity, row_num, f['label'], str(exc)); valid = False
             if not valid:
                 continue
+            if origin != DUMMY_ORIGIN and old_row and 'data_origin' in row:
+                # A human edit of a dummy-filled field makes that field entered data. Any edit of a
+                # whole-dummy row also makes it mixed, so the new human value is not counted as dummy.
+                dummies = dummy_keys(old_row, entity)
+                edited = {f['key'] for f in spec['fields'] if not f.get('system') and row[f['key']] != old_row.get(f['key'])}
+                if edited & dummies or edited and old_row.get('data_origin') == 'dummy':
+                    remaining = dummies - edited
+                    row['data_origin'] = 'mixed' if remaining else 'entered'
+                    row['dummy_fields'] = ','.join(sorted(remaining)) or None
             key = row[spec['key']]
             if key in seen:
                 error(entity, row_num, spec['fields'][0]['label'], '입력 파일 안에 코드가 중복됩니다.'); continue
@@ -364,7 +403,7 @@ def preview(changes, path: Path = DATABASE):
 def commit(changes, revision, actor, origin, path: Path = DATABASE):
     if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
         raise RegistryError('원장 버전을 확인하세요.')
-    if origin not in ('manual', 'excel'):
+    if origin not in ('manual', 'excel', DUMMY_ORIGIN):
         raise RegistryError('입력 경로를 확인하세요.')
     with connect(path) as db:
         init_schema(db)
@@ -372,7 +411,7 @@ def commit(changes, revision, actor, origin, path: Path = DATABASE):
         current = _snapshot(db)
         if current['revision'] != revision:
             raise RegistryError('다른 변경이 먼저 저장되었습니다. 최신 원장을 다시 조회하고 검토하세요.', 409)
-        result = _prepare(changes, current)
+        result = _prepare(changes, current, origin)
         if result['errors']:
             e = result['errors'][0]
             raise RegistryError(f"{e['sheet']} {e['row']}행 · {e['column']}: {e['message']}")
@@ -395,5 +434,44 @@ def commit(changes, revision, actor, origin, path: Path = DATABASE):
             db.execute('INSERT INTO voyage_registry_audit(revision,entity,record_key,actor,origin,at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
                        (new_revision, entity, diff['key'], actor, origin, at,
                         json.dumps(diff['before'], ensure_ascii=False) if diff['before'] else None, json.dumps(row, ensure_ascii=False)))
+        db.execute('UPDATE voyage_registry_meta SET revision=? WHERE id=1', (new_revision,))
+        return _snapshot(db)
+
+
+PURGE_ORDER = ('assays', 'cargo', 'voyages')
+
+
+def purge(keys, revision, actor, origin, path: Path = DATABASE) -> dict:
+    """Delete rows created by the dummy-data loader, children first, in one audited revision."""
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        raise RegistryError('원장 버전을 확인하세요.')
+    if origin != DUMMY_ORIGIN:
+        raise RegistryError('행 삭제는 더미 자료 회수에서만 허용합니다.')
+    if (not isinstance(keys, dict) or set(keys) - set(PURGE_ORDER)
+            or any(not isinstance(v, list) or not all(isinstance(k, str) for k in v) for v in keys.values())):
+        raise RegistryError('삭제할 항차·화물·분석 키 구조를 확인하세요.')
+    with connect(path) as db:
+        init_schema(db)
+        db.execute('BEGIN IMMEDIATE')
+        current = _snapshot(db)
+        if current['revision'] != revision:
+            raise RegistryError('다른 변경이 먼저 저장되었습니다. 최신 원장을 다시 조회하고 검토하세요.', 409)
+        if not any(keys.values()):
+            return current
+        new_revision = revision + 1
+        at = datetime.now(KST).isoformat(timespec='seconds')
+        try:
+            for entity in PURGE_ORDER:
+                spec = SCHEMA[entity]
+                for key in dict.fromkeys(keys.get(entity, [])):
+                    row = db.execute(f"SELECT * FROM voyage_registry_{entity} WHERE {spec['key']}=?", (key,)).fetchone()
+                    if row is None:
+                        raise RegistryError(f"{spec['label']} {key}: 원장에 없는 키입니다.")
+                    before = {f['key']: row[f['key']] for f in spec['fields']}
+                    db.execute(f"DELETE FROM voyage_registry_{entity} WHERE {spec['key']}=?", (key,))
+                    db.execute('INSERT INTO voyage_registry_audit(revision,entity,record_key,actor,origin,at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
+                               (new_revision, entity, key, actor, origin, at, json.dumps(before, ensure_ascii=False), 'null'))
+        except sqlite3.IntegrityError:
+            raise RegistryError('남는 화물·분석이 참조하는 행은 삭제할 수 없습니다.') from None
         db.execute('UPDATE voyage_registry_meta SET revision=? WHERE id=1', (new_revision,))
         return _snapshot(db)
