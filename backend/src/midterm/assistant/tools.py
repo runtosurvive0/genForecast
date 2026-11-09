@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
+from midterm.assistant import checks
 from midterm.supply import KST, timestamp
 from midterm.voyage_registry import STATUSES, snapshot
 from midterm.vessels.waiting import waiting_candidates
@@ -255,6 +256,20 @@ def _simulate_scenario(args: dict, ctx: ToolContext) -> dict:
         return _fail(f"가정 계산 실패: {exc}")
 
 
+# ---------------------------------------------------------------- screen_checks
+_CHECK_SOURCE = {"blend": "actual", "simulation": "actual", "planning_input": "actual",
+                 "forecast": "simulation", "scenario": "simulation"}
+
+
+def _screen_checks(args: dict, ctx: ToolContext) -> dict:
+    params = {k: args[k] for k in ("run_id", "input_id", "yard") if args.get(k) is not None}
+    try:
+        result = checks.run_checks(args["screen"], params, ctx)
+    except ValueError as exc:
+        return _fail(f"화면 점검 실패: {exc}")
+    return _ok(result["as_of"], _CHECK_SOURCE[args["screen"]], result)
+
+
 # ---------------------------------------------------------------- 등록
 _DAY = {"type": ["string", "null"], "pattern": DAY_PATTERN}
 
@@ -286,6 +301,15 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
                         "load: {kind,fromDay,toDay,pct(-60~60)}, outage/strategy는 미지원"},
             "horizon_days": {"type": "integer", "enum": [7, 30, 60, 90]},
         }, "required": ["changes", "horizon_days"]}, _simulate_scenario),
+    ToolSpec("screen_checks", "화면별 점검(없는 자료·오래된 자료·더미·표본)을 조회한다. 결과 items의 kind는 "
+             "missing·stale·dummy·sample 순이다.", {
+        "type": "object",
+        "properties": {
+            "screen": {"type": "string", "enum": list(checks.SCREENS)},
+            "run_id": {"type": "string"},
+            "input_id": {"type": "integer"},
+            "yard": {"type": "integer", "minimum": 1, "maximum": 3},
+        }, "required": ["screen"]}, _screen_checks),
 ]}
 
 

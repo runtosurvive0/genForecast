@@ -180,7 +180,7 @@ def _validate(screen, params):
         raise ValueError(f'알 수 없는 화면: {screen}')
     if screen == 'forecast':
         live = params.get('live') or []
-        if not isinstance(live, (list, tuple)) or any(n not in LIVE_INPUTS for n in live):
+        if not isinstance(live, (list, tuple)) or any(not isinstance(n, str) or n not in LIVE_INPUTS for n in live):
             raise ValueError('알 수 없는 live 입력 이름: 허용 값은 ' + ', '.join(LIVE_INPUTS))
 
 

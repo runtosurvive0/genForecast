@@ -291,3 +291,21 @@ def test_scenario_sample_all(db):
     assert [i['id'] for i in got['items']] == ['scenario.sample_all']
     assert got['items'][0]['title'] == '이 화면은 표본 자료로 계산합니다'
     assert got['items'][0]['kind'] == 'sample'
+
+
+def test_simulation_http_exception_detail_in_errors(db, monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.setattr(milp_store, 'stored_runs', lambda path=None: [{'id': 'r1', 'state': 'done'}])
+
+    def snap(run_id, start, horizon):
+        raise HTTPException(404, detail='계산 실행을 찾을 수 없습니다')
+    monkeypatch.setattr(planning_api, 'snapshot', snap)
+    got = run_checks('simulation', {}, ctx_for(db))
+    assert got['items'] == []
+    assert got['errors'] == ['통합 시뮬레이션 점검 실패: 계산 실행을 찾을 수 없습니다']
+
+
+def test_live_non_string_is_value_error(db):
+    for bad in ([1], [['stock']], [{'a': 1}], 'stock'):
+        with pytest.raises(ValueError):
+            run_checks('forecast', {'live': bad}, ctx_for(db))

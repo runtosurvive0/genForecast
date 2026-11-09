@@ -131,7 +131,7 @@ def test_waiting_vessels_same_with_or_without_request(monkeypatch, tmp_registry)
 def test_tool_schemas_cover_registry():
     schemas = tool_schemas()
     assert [s['name'] for s in schemas] == list(TOOLS)
-    assert set(TOOLS) == {'list_voyages', 'waiting_vessels', 'stock_snapshot', 'plan_for_day', 'simulate_scenario'}
+    assert set(TOOLS) == {'list_voyages', 'waiting_vessels', 'stock_snapshot', 'plan_for_day', 'simulate_scenario', 'screen_checks'}
     assert all(s['description'] and s['parameters']['type'] == 'object' for s in schemas)
 
 
@@ -185,3 +185,31 @@ def test_plan_tools_flag_stale_and_demo_plan(monkeypatch):
         assert r['ok'], (name, r)
         assert r['data']['plan_stale'] is True and r['data']['demo_plan'] is True, name
         assert r['data']['issues'] == ['동작 확인용 MIP 결과 · 운영 계획 확인 필요'], name
+
+
+def test_screen_checks_tool_schema():
+    spec = next(s for s in tool_schemas() if s['name'] == 'screen_checks')
+    assert spec['parameters']['properties']['screen']['enum'] == [
+        'blend', 'forecast', 'simulation', 'planning_input', 'scenario']
+    assert spec['parameters']['required'] == ['screen']
+
+
+@pytest.mark.parametrize('screen,source', [('blend', 'actual'), ('simulation', 'actual'),
+                                           ('planning_input', 'actual'), ('forecast', 'simulation'),
+                                           ('scenario', 'simulation')])
+def test_screen_checks_tool_result(monkeypatch, tmp_path, screen, source):
+    from midterm.assistant import checks
+    seen = []
+
+    def fake(s, params, c):
+        seen.append(params)
+        return {'screen': s, 'as_of': '2026-11-09T09:00:00+09:00', 'items': [], 'errors': []}
+    monkeypatch.setattr(checks, 'run_checks', fake)
+    r = run_tool('screen_checks', {'screen': screen, 'yard': 2}, ctx(tmp_path / 'x.db'))
+    assert r['ok'] is True and r['data']['screen'] == screen and r['source'] == source
+    assert r['as_of'] == '2026-11-09T09:00:00+09:00' and seen == [{'yard': 2}]
+
+
+def test_screen_checks_tool_rejects_bad_args(tmp_path):
+    assert run_tool('screen_checks', {'screen': 'nope'}, ctx(tmp_path / 'x.db'))['ok'] is False
+    assert run_tool('screen_checks', {'screen': 'blend', 'yard': 4}, ctx(tmp_path / 'x.db'))['ok'] is False
