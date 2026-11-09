@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  acceptResponse, checksQuery, contextChip, SCREEN_LABEL, sortChecks, statusAfterError,
+  acceptResponse, checksQuery, contextChip, isChecksResult, resultWhileLoading, SCREEN_LABEL, sortChecks, statusAfterError,
   type CheckItem,
 } from '../src/domain/assistant-checks.ts';
 
@@ -46,4 +46,20 @@ test('401·403은 hidden, 그 밖은 error', () => {
   assert.equal(statusAfterError(403), 'hidden');
   assert.equal(statusAfterError(500), 'error');
   assert.equal(statusAfterError(undefined), 'error');
+});
+
+test('isChecksResult는 항목의 kind와 targets까지 확인한다', () => {
+  const ok = { screen: 'blend', as_of: '2026-11-10T00:00:00Z', errors: [], items: [item('a', 'missing', 1)] };
+  assert.equal(isChecksResult(ok), true);
+  assert.equal(isChecksResult({ ...ok, items: [{ ...item('a', 'missing', 1), kind: 'bogus' }] }), false);
+  assert.equal(isChecksResult({ ...ok, items: [{ ...item('a', 'missing', 1), targets: null }] }), false);
+  assert.equal(isChecksResult({ ...ok, items: [null] }), false);
+  assert.equal(isChecksResult(null), false);
+});
+
+test('다시 점검하는 동안 같은 조회면 이전 목록을 유지하고 조회가 바뀌면 비운다', () => {
+  const prev = { screen: 'blend', as_of: 'x', errors: [], items: [item('a', 'missing', 1)] } as const;
+  assert.equal(resultWhileLoading(prev, '/u1', '/u1'), prev);
+  assert.equal(resultWhileLoading(prev, '/u1', '/u2'), null);
+  assert.equal(resultWhileLoading(null, '/u1', '/u1'), null);
 });

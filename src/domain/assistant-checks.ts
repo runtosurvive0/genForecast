@@ -79,11 +79,44 @@ export function statusAfterError(status: number | undefined): ChecksState {
   return status === 401 || status === 403 ? 'hidden' : 'error';
 }
 
-function isResult(v: unknown): v is ChecksResult {
+const KINDS: readonly string[] = ['missing', 'stale', 'dummy', 'sample'];
+
+function isItem(v: unknown): boolean {
+  if (typeof v !== 'object' || v === null) return false;
+  const i = v as Record<string, unknown>;
+  return typeof i.kind === 'string' && KINDS.includes(i.kind) && Array.isArray(i.targets);
+}
+
+export function isChecksResult(v: unknown): v is ChecksResult {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
-  return typeof r.screen === 'string' && typeof r.as_of === 'string' && Array.isArray(r.items) && Array.isArray(r.errors);
+  return typeof r.screen === 'string' && typeof r.as_of === 'string'
+    && Array.isArray(r.items) && r.items.every(isItem) && Array.isArray(r.errors);
 }
+
+// 같은 조회를 다시 점검하는 동안에는 이전 목록을 유지한다. 조회(화면·인자)가 바뀌면 비운다.
+export function resultWhileLoading<T>(prev: T | null, prevUrl: string, nextUrl: string): T | null {
+  return prevUrl === nextUrl ? prev : null;
+}
+
+// 화면별 질문 버튼·도우미 창 예시 질문(앞 3개).
+export const SCREEN_QUESTIONS: Record<AssistantScreen, { label: string; question: string }[]> = {
+  blend: [
+    '지금 저열량탄 재고가 많은 저탄장은?',
+    '성분이 빠진 원탄 목록을 정리해 줘',
+    '선택한 원탄을 쓰면 황분은 얼마나 돼?',
+  ].map((q) => ({ label: q, question: q })),
+  forecast: [
+    '재고일수가 가장 먼저 떨어지는 저탄장은?',
+    '입항이 이틀 늦으면 어떻게 돼?',
+  ].map((q) => ({ label: q, question: q })),
+  simulation: [
+    '이 계획에서 재고가 가장 낮은 날은?',
+    '확인할 경고를 쉬운 말로 정리해 줘',
+  ].map((q) => ({ label: q, question: q })),
+  planning_input: [{ label: '이 입력에서 빠진 값이 뭐야?', question: '이 입력에서 빠진 값이 뭐야?' }],
+  scenario: [{ label: '부하 10% 늘리면 재고가 언제 부족해?', question: '부하 10% 늘리면 재고가 언제 부족해?' }],
+};
 
 // 진입·params 변경·reload에서만 조회한다. 폴링하지 않는다.
 export function useAssistantChecks(screen: AssistantScreen, params: ChecksParams) {
@@ -92,19 +125,21 @@ export function useAssistantChecks(screen: AssistantScreen, params: ChecksParams
   const [tick, setTick] = useState(0);
   const latest = useRef(0);
   const url = checksQuery(screen, params);
+  const lastUrl = useRef(url);
 
   useEffect(() => {
     const requestId = ++latest.current;
     const controller = new AbortController();
     setState('loading');
-    setResult(null);
+    setResult((prev) => resultWhileLoading(prev, lastUrl.current, url));
+    lastUrl.current = url;
     (async () => {
       try {
         const response = await fetch(url, { signal: controller.signal });
         const body: unknown = await response.json().catch(() => null);
-        if (!acceptResponse(requestId, latest.current)) return;
+        if (controller.signal.aborted || !acceptResponse(requestId, latest.current)) return;
         if (!response.ok) { setResult(null); setState(statusAfterError(response.status)); return; }
-        if (!isResult(body)) { setResult(null); setState('error'); return; }
+        if (!isChecksResult(body)) { setResult(null); setState('error'); return; }
         setResult({ ...body, items: sortChecks(body.items) });
         setState('ready');
       } catch {
@@ -118,4 +153,29 @@ export function useAssistantChecks(screen: AssistantScreen, params: ChecksParams
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
   return { state, result, reload };
+}
+
+export type LlmStatus = 'loading' | 'on' | 'off' | 'unknown';
+
+// 오픈AI 연결 여부. active일 때마다 한 번 확인한다. 확인 실패는 'unknown'(끄지 않는다).
+export function useLlmStatus(active: boolean): LlmStatus {
+  const [status, setStatus] = useState<LlmStatus>('loading');
+  useEffect(() => {
+    if (!active) return;
+    const controller = new AbortController();
+    setStatus('loading');
+    (async () => {
+      try {
+        const response = await fetch('/api/assistant/status', { signal: controller.signal });
+        const body: unknown = await response.json().catch(() => null);
+        if (controller.signal.aborted) return;
+        const llm = typeof body === 'object' && body !== null ? (body as { llm?: unknown }).llm : undefined;
+        setStatus(response.ok && typeof llm === 'boolean' ? (llm ? 'on' : 'off') : 'unknown');
+      } catch {
+        if (!controller.signal.aborted) setStatus('unknown');
+      }
+    })();
+    return () => controller.abort();
+  }, [active]);
+  return status;
 }

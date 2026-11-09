@@ -29,7 +29,8 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AssistantPanel } from "@/features/assistant/AssistantPanel";
+import { AssistantPanel, type PendingQuestion } from "@/features/assistant/AssistantPanel";
+import type { AssistantContext, AssistantScreen } from "@/domain/assistant-checks";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -119,6 +120,12 @@ const daysUntil = (time: string) =>
   );
 const scenarioIsDefault = (s: Scenario) =>
   s.loadChangePct === 0 && s.arrivalDelayDays === 0 && s.includeInbound;
+
+// 도우미 창 예시 질문에 쓰는 화면. 점검 대상이 아닌 화면은 공통 예시를 쓴다.
+const ASSISTANT_SCREEN_BY_PAGE: Partial<Record<Page, AssistantScreen>> = {
+  blend: "blend", forecast: "forecast", simulation: "simulation", scenario: "scenario",
+};
+const assistantScreen = (page: Page) => ASSISTANT_SCREEN_BY_PAGE[page];
 
 function Panel({
   title,
@@ -234,6 +241,13 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
     assistantWasOpen.current = assistantOpen;
   }, [assistantOpen]);
   const closeAssistant = useCallback(() => setAssistantOpen(false), []);
+  const [assistantPending, setAssistantPending] = useState<PendingQuestion | null>(null);
+  const clearAssistantPending = useCallback(() => setAssistantPending(null), []);
+  // 화면의 도우미 섹션이 부른다: 창을 열고 질문을 맥락과 함께 보낸다.
+  const openAssistant = useCallback((question: string, context: AssistantContext) => {
+    setAssistantPending({ question, context });
+    setAssistantOpen(true);
+  }, []);
   const [scheduleFilter, setScheduleFilter] = useState("all");
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
   const selectedPlants = useMemo(
@@ -610,7 +624,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
             <AccountControls />
           </div>
         </header>
-        <AssistantPanel open={assistantOpen} onClose={closeAssistant} />
+        <AssistantPanel open={assistantOpen} onClose={closeAssistant} pending={assistantPending} onPendingSent={clearAssistantPending} screen={assistantScreen(page)} />
         <aside className="sidebar">
           <nav aria-label="주 메뉴">{nav}</nav>
         </aside>
