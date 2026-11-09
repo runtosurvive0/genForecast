@@ -308,7 +308,7 @@ test("vessel shell separates observation times from the sample simulation baseli
   await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
   await page.screenshot({ path: '.tooling-tmp/vessel-time-basis-dark.png', fullPage: true });
   await page.getByRole('button', { name: '수급 원장', exact: true }).click();
-  await expect(page.locator('.sidebar-note')).toContainText('계획·참고 재고·운전 모사 구분');
+  await expect(page.locator('.sidebar-note')).toContainText('계획·재고·운전 정보');
   await expect(page.locator('.context-right')).toContainText('기준시각 미확인');
 });
 

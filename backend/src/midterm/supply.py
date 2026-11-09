@@ -367,7 +367,8 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
         rows = plan.get(at_hour, {})
         for u, g in UNITS.items():
             st, row = state[g], rows.get(u)
-            if row is None or not st["known"] or not st["cv"] or st["cv"] <= 0:
+            # 기준재고가 잡힌 뒤 발열량을 모르게 된 처만 계산을 멈춘다. 기준재고 이전 시간은 사용량만 계산한다.
+            if row is None or (active_anchors[g] and not st["known"]) or not st["cv"] or st["cv"] <= 0:
                 if active_anchors[g]:
                     st["known"] = False
                 daily_coverage[day][g] = False

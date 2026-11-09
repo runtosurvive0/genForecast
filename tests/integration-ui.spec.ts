@@ -436,7 +436,7 @@ test('반입 계획을 공용 저장 후 다시 열고 선택 경로의 모의 �
     await page.getByLabel('이 화물 사용 시작일 · KST').fill('2027-01-03');
     await page.getByLabel('이 화물 사용 계획 · t/일').fill('500');
     await expect(page.getByText('실제 설비 운전 신호: 미연결')).toBeVisible();
-    await expect(page.getByText(/운전 모사.*S\/R-51B/)).toBeVisible();
+    await expect(page.getByText(/운전 정보 (수신 중|일시정지) · 설비 1번 (운전|정지|고장|미확인)/)).toBeVisible();
     await page.getByRole('button',{name:'새 계획 저장'}).click();
     await expect(page.getByRole('status')).toContainText('계획을 공용으로 저장했습니다.');
     expect(saved.plan.runId).toBe('계획 연결');
