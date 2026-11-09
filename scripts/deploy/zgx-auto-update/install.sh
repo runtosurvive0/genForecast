@@ -15,7 +15,8 @@ CONDA_ROOT=/home/puyo/miniforge3
 PY="$CONDA_ROOT/envs/genforecast/bin/python"
 NODE_ENV=genforecast-node
 NODE_BIN="$CONDA_ROOT/envs/$NODE_ENV/bin"
-SHARED_DATA=/home/puyo/genforecast-hp-20261012/backend/data
+OLD_BACKEND=/home/puyo/genforecast-hp-20261012/backend
+SHARED_DATA="$OLD_BACKEND/data"
 BACKUPS=/home/puyo/.config/genforecast/backups
 SYSTEMD=/etc/systemd/system
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,6 +61,7 @@ printf 'GenForecast ZGX 자동 갱신 설치를 시작합니다.\n'
 for tool in git sudo tailscale; do command -v "$tool" >/dev/null || die "$tool 명령이 없습니다."; done
 [ -x /usr/bin/systemctl ] || die "/usr/bin/systemctl이 없습니다(sudoers 규칙이 이 경로를 씁니다)."
 [ -x "$PY" ] || die "Python 환경이 없습니다: $PY"
+"$PY" -c 'import venv, ensurepip' 2>/dev/null || die "$PY에 venv/ensurepip 모듈이 없습니다(릴리스 전용 venv에 필요)."
 [ -d "$SHARED_DATA" ] || die "공유 데이터 폴더가 없습니다: $SHARED_DATA"
 [ -f "$HERE/update.py" ] || die "update.py를 찾지 못했습니다: $HERE"
 info "sudo 암호를 한 번 물을 수 있습니다."
@@ -87,7 +89,7 @@ else
 fi
 
 step 2 "작업 폴더와 저장소 준비($REPO)"
-mkdir -p "$BASE" "$BASE/releases" "$BASE/state" "$BASE/data" "$BIN"
+mkdir -p "$BASE" "$BASE/releases" "$BASE/state" "$BASE/data" "$BASE/shared" "$BIN"
 chmod 0750 "$BASE/state"
 if [ -d "$REPO/.git" ]; then
   origin="$(git -C "$REPO" remote get-url origin)"
@@ -130,7 +132,8 @@ info "genforecast-demo 서비스 활성화(시작은 7단계 전환 때)"
 
 step 6 "Tailscale에 $DEMO_PATH 경로 추가(/, /api, /preview와 Funnel 유지)"
 mkdir -p "$BACKUPS"
-if serve_json | grep -q "\"$DEMO_PATH\""; then
+case "$(serve_json)" in *"\"$DEMO_PATH\""*) has_demo=1 ;; *) has_demo=0 ;; esac
+if [ "$has_demo" = 1 ]; then
   info "이미 있음"
 else
   before="$BACKUPS/tailscale-serve-before-autodeploy.json"
@@ -144,6 +147,8 @@ if ! check_serve / /api /preview "$DEMO_PATH"; then
 fi
 
 step 7 "현재 릴리스로 전환하고 상태 확인"
+# 옛 설치가 실행 중에 만든 runs/·inputs/를 공유 폴더로 복사한다(이미 있는 파일은 덮어쓰지 않음, 옛 폴더는 읽기만).
+"$PY" "$BIN/update.py" seed-shared "$OLD_BACKEND" || die "runs/·inputs/ 복사 실패. 서버는 바뀌지 않았습니다."
 install_root_file "$UNITS/backend-current.conf" "$SYSTEMD/genforecast-backend.service.d/backend-current.conf" 0644
 install_root_file "$UNITS/frontend-current.conf" "$SYSTEMD/genforecast-frontend.service.d/frontend-current.conf" 0644
 sudo systemctl daemon-reload
@@ -162,6 +167,14 @@ if [ "$wd" != "$BASE/current/backend" ]; then
   restore_old_install
   die "백엔드 drop-in이 적용되지 않았습니다(WorkingDirectory=$wd). 다른 drop-in이 덮어쓰는지 확인하세요."
 fi
+for svc in genforecast-backend.service genforecast-frontend.service; do
+  exec_start="$(systemctl show -p ExecStart --value "$svc")"
+  case "$exec_start" in
+    *"$BASE/current/.venv/bin/python"*) ;;
+    *) restore_old_install
+       die "$svc의 ExecStart가 릴리스 venv로 바뀌지 않았습니다. 다른 drop-in이 덮어쓰는지 확인하세요." ;;
+  esac
+done
 if "$PY" "$BIN/update.py" deploy; then
   info "전환·상태 확인 통과"
 elif [ -L "$BASE/current" ]; then

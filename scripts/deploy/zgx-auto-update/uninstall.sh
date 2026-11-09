@@ -46,7 +46,8 @@ step 4 "sudo 재시작 권한 제거"
 remove_root_file /etc/sudoers.d/genforecast
 
 step 5 "Tailscale에서 $DEMO_PATH 경로만 제거"
-if sudo tailscale serve status --json 2>/dev/null | grep -q "\"$DEMO_PATH\""; then
+case "$(sudo tailscale serve status --json 2>/dev/null || true)" in *"\"$DEMO_PATH\""*) has_demo=1 ;; *) has_demo=0 ;; esac
+if [ "$has_demo" = 1 ]; then
   sudo tailscale serve --set-path "$DEMO_PATH" off
   info "제거했습니다."
 else
@@ -72,4 +73,5 @@ done
 info "백엔드 HTTP $b, 화면 HTTP $f"
 
 trap - ERR
-printf '\n해제 완료. 데이터와 /home/puyo/genforecast(저장소·릴리스·상태), 백업은 남겨 두었습니다.\n'
+printf '\n해제 완료. 데이터와 /home/puyo/genforecast(저장소·릴리스·상태·shared/runs·shared/inputs), 백업은 남겨 두었습니다.\n'
+printf '자동 갱신 중 새로 생긴 실행 결과는 /home/puyo/genforecast/shared/runs에 있습니다. 옛 설치로 옮기는 방법은 docs/ZGX_AUTO_DEPLOY.md를 보세요.\n'

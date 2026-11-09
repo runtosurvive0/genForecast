@@ -17,7 +17,7 @@ OLD = 'a' * 40
 
 def load(monkeypatch, base):
     monkeypatch.setenv('GENFORECAST_UPDATE_BASE', str(base))
-    monkeypatch.setenv('GENFORECAST_UPDATE_SHARED_DATA', str(base / 'shared'))
+    monkeypatch.setenv('GENFORECAST_UPDATE_SHARED_DATA', str(base / 'old-data'))
     monkeypatch.setenv('GENFORECAST_UPDATE_BACKUPS', str(base / 'backups'))
     spec = importlib.util.spec_from_file_location('zgx_auto_update', DEPLOY_DIR / 'update.py')
     module = importlib.util.module_from_spec(spec)
@@ -39,6 +39,7 @@ def test_paths_default_to_zgx_layout_and_follow_overrides(tmp_path, monkeypatch)
     assert module.BASE == Path('/home/puyo/genforecast')
     assert module.REPO == Path('/home/puyo/genforecast/repo')
     assert module.CURRENT == Path('/home/puyo/genforecast/current')
+    assert module.SHARED_STATE == Path('/home/puyo/genforecast/shared')
     assert module.SHARED_DATA == Path('/home/puyo/genforecast-hp-20261012/backend/data')
     assert module.PY == Path('/home/puyo/miniforge3/envs/genforecast/bin/python')
     assert module.NODE_BIN == Path('/home/puyo/miniforge3/envs/genforecast-node/bin')
@@ -107,7 +108,7 @@ def test_health_targets_cover_three_services(upd):
     assert ports == ['61578', '8093', '8094']
 
 
-def test_read_dependencies_includes_dev_and_digest_is_order_independent(upd):
+def test_read_dependencies_includes_dev(upd):
     text = '''
 [project]
 name = "x"
@@ -118,8 +119,6 @@ docs = ["sphinx"]
 '''
     deps = upd.read_dependencies(text)
     assert deps == ['numpy>=2.0', 'highspy==1.12.0', 'pytest>=8.3', 'httpx2==2.13.1']
-    assert upd.deps_digest(deps) == upd.deps_digest(list(reversed(deps)))
-    assert upd.deps_digest(deps) != upd.deps_digest(deps[:-1])
 
 
 def test_read_dependencies_from_repository_pyproject(upd):
@@ -186,7 +185,7 @@ class Steps:
         def prepare(sha):
             self.calls.append(('prepare', sha))
             if prepare_error:
-                raise upd.StepError(prepare_error)
+                raise upd.StepError(prepare_error[0], step=prepare_error[1])
             return upd.RELEASES / 'new'
 
         def point(path):
@@ -225,10 +224,48 @@ class Steps:
 
 
 def test_deploy_test_failure_never_switches_and_records_failure(upd, monkeypatch):
-    steps = Steps(upd, monkeypatch, prepare_error='백엔드 시험 실패')
+    steps = Steps(upd, monkeypatch, prepare_error=('종료 코드 1', '백엔드 시험'))
     assert upd.deploy() == 1
     assert steps.names() == ['prepare']
     assert upd.read_state('failed') == NEW
+
+
+@pytest.mark.parametrize('step', ['git fetch', 'git archive', 'venv 생성', 'pip install', 'npm ci', '공유 데이터 연결'])
+def test_transient_prepare_failure_is_retried_next_cycle(upd, monkeypatch, step):
+    steps = Steps(upd, monkeypatch, prepare_error=('네트워크 오류', step))
+    assert upd.deploy() == 1
+    assert steps.names() == ['prepare']
+    assert upd.read_state('failed') is None
+
+
+def test_unexpected_os_error_in_prepare_is_retried(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch)
+
+    def broken(sha):
+        steps.calls.append(('prepare', sha))
+        raise OSError(28, 'No space left on device')
+    monkeypatch.setattr(upd, 'prepare_release', broken)
+    assert upd.deploy() == 1
+    assert upd.read_state('failed') is None
+
+
+def test_fetch_failure_is_not_recorded(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch)
+
+    def broken_fetch():
+        raise upd.StepError('연결 실패', step='git fetch')
+    monkeypatch.setattr(upd, 'fetch_target', broken_fetch)
+    assert upd.deploy() == 1 and steps.calls == []
+    assert upd.read_state('failed') is None
+
+
+@pytest.mark.parametrize('step, recorded', [
+    ('백엔드 시험', True), ('npm test', True), ('npm run build', True),
+    ('git fetch', False), ('git archive', False), ('pip install', False), ('npm ci', False),
+    ('venv 생성', False), ('공유 데이터 연결', False), ('', False),
+])
+def test_should_record_failure(upd, step, recorded):
+    assert upd.should_record_failure(step) is recorded
 
 
 def test_deploy_health_failure_rolls_back_to_previous(upd, monkeypatch):
@@ -351,7 +388,7 @@ def test_point_current_and_shared_links_on_real_files(upd, monkeypatch, tmp_path
         (release / 'backend/data/planning.sqlite3').write_text('seed')
         releases.append(release)
     (releases[1] / 'backend/data/planning-local.sqlite3').write_text('test by-product')
-    monkeypatch.setattr(upd, 'git', lambda *args, **kw: 'backend/data/planning.sqlite3\n')
+    monkeypatch.setattr(upd, 'git', lambda *args, **kw: 'backend/data/planning.sqlite3\0')
     upd.link_shared_data(releases[1], NEW)
     data = releases[1] / 'backend/data'
     assert not (data / 'planning.sqlite3').is_symlink()
@@ -400,3 +437,93 @@ def test_self_update_replaces_installed_updater_only_when_changed(upd, tmp_path)
     source.write_text('def broken(:\n')
     upd.self_update(release)
     assert (upd.BIN / 'update.py').read_text() == 'print("v2")\n'
+
+
+def test_shared_dir_sync_plan_keeps_only_tracked_runs_and_inputs(upd):
+    tracked = ['backend/runs/20261004-111057-2027기본/summary.json',
+               'backend/runs/20261004-111057-2027기본/hourly.npz',
+               'backend/inputs/coal_oh_2027.csv.json', 'backend/inputs/ranking_oh.json',
+               'backend/data/planning.sqlite3', 'backend/src/midterm/x.py',
+               'backend/runs/../data/evil', 'backend/inputs/', '']
+    assert upd.shared_dir_sync_plan(tracked) == [
+        'inputs/coal_oh_2027.csv.json', 'inputs/ranking_oh.json',
+        'runs/20261004-111057-2027기본/hourly.npz', 'runs/20261004-111057-2027기본/summary.json']
+
+
+def test_seed_plan_never_overwrites_shared_files(upd):
+    old = ['runs/20261108-062643-011503-2027가상입력/summary.json', 'inputs/last_scenario.json',
+           'inputs/coal_oh_2027.csv', 'inputs/ranking_oh.json', 'models/x.txt', 'runs/../x']
+    shared = {'inputs/ranking_oh.json'}
+    assert upd.seed_plan(old, shared) == [
+        'inputs/coal_oh_2027.csv', 'inputs/last_scenario.json',
+        'runs/20261108-062643-011503-2027가상입력/summary.json']
+
+
+def test_seed_shared_copies_old_runtime_state_without_overwriting(upd, tmp_path):
+    old = tmp_path / 'old/backend'
+    (old / 'runs/20261108-zgx').mkdir(parents=True)
+    (old / 'runs/20261108-zgx/summary.json').write_text('zgx run')
+    (old / 'inputs').mkdir()
+    (old / 'inputs/last_scenario.json').write_text('old scenario')
+    (old / 'inputs/ranking_oh.json').write_text('old ranking')
+    (upd.SHARED_STATE / 'inputs').mkdir(parents=True)
+    (upd.SHARED_STATE / 'inputs/ranking_oh.json').write_text('repo ranking')
+    assert upd.seed_shared(old) == 0
+    assert (upd.SHARED_STATE / 'runs/20261108-zgx/summary.json').read_text() == 'zgx run'
+    assert (upd.SHARED_STATE / 'inputs/last_scenario.json').read_text() == 'old scenario'
+    assert (upd.SHARED_STATE / 'inputs/ranking_oh.json').read_text() == 'repo ranking'
+    assert (old / 'inputs/ranking_oh.json').read_text() == 'old ranking'
+    assert upd.seed_shared(old) == 0  # 다시 실행해도 안전
+    assert upd.seed_shared(tmp_path / 'missing') == 1
+
+
+def test_shared_runs_inputs_are_synced_and_linked(upd, monkeypatch, tmp_path):
+    if not symlinks_supported(tmp_path):
+        pytest.skip('이 OS 계정은 심볼릭 링크를 만들 수 없다(ZGX에서는 실행된다).')
+    shared = upd.SHARED_STATE
+    (shared / 'runs/20261108-zgx').mkdir(parents=True)
+    (shared / 'runs/20261108-zgx/summary.json').write_text('zgx run')
+    (shared / 'inputs').mkdir()
+    (shared / 'inputs/ranking_oh.json').write_text('stale')
+    (shared / 'inputs/last_scenario.json').write_text('runtime')
+    release = upd.RELEASES / 'rel'
+    (release / 'backend/runs/20261004-base').mkdir(parents=True)
+    (release / 'backend/runs/20261004-base/summary.json').write_text('repo run')
+    (release / 'backend/inputs').mkdir()
+    (release / 'backend/inputs/ranking_oh.json').write_text('repo ranking')
+    listed = '\0'.join(['backend/runs/20261004-base/summary.json', 'backend/inputs/ranking_oh.json']) + '\0'
+    monkeypatch.setattr(upd, 'git', lambda *args, **kw: listed)
+    upd.link_shared_dirs(release, NEW)
+    assert (shared / 'runs/20261004-base/summary.json').read_text() == 'repo run'
+    assert (shared / 'runs/20261108-zgx/summary.json').read_text() == 'zgx run'
+    assert (shared / 'inputs/ranking_oh.json').read_text() == 'repo ranking'
+    assert (shared / 'inputs/last_scenario.json').read_text() == 'runtime'
+    for name in ('runs', 'inputs'):
+        link = release / 'backend' / name
+        assert link.is_symlink() and link.resolve() == (shared / name).resolve()
+    assert (release / 'backend/runs/20261108-zgx/summary.json').read_text() == 'zgx run'
+    upd.link_shared_dirs(release, NEW)  # 다시 실행해도 안전
+    assert (release / 'backend/runs').is_symlink()
+
+
+def test_select_node_modules_prune_spares_current_and_previous(upd):
+    names = ['20261101T000000Z-1', '20261102T000000Z-2', '20261103T000000Z-3', '.pytest-x']
+    assert upd.select_node_modules_prune(names, current='20261103T000000Z-3',
+                                         previous='20261102T000000Z-2') == ['20261101T000000Z-1']
+    assert upd.select_node_modules_prune(names, current='20261103T000000Z-3', previous=None) == [
+        '20261101T000000Z-1', '20261102T000000Z-2']
+
+
+def test_release_python_is_per_release_venv(upd):
+    assert upd.venv_python(Path('/r/rel')) == Path('/r/rel/.venv/bin/python')
+
+
+def test_dropins_run_services_from_current_release_venv():
+    py = '/home/puyo/genforecast/current/.venv/bin/python'
+    for name, command in (
+            ('backend-current.conf', f'{py} -m midterm serve --host 127.0.0.1 --port 8093'),
+            ('frontend-current.conf',
+             f'{py} -m uvicorn midterm.web.frontend:app --host 127.0.0.1 --port 8094 --no-access-log')):
+        lines = [line for line in (DEPLOY_DIR / 'systemd' / name).read_text(encoding='utf-8').splitlines()
+                 if line.startswith('ExecStart')]
+        assert lines == ['ExecStart=', f'ExecStart={command}'], name
