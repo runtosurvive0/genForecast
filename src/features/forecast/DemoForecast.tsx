@@ -1,6 +1,6 @@
 // 수급 예측: D+7~90 재고·고갈·접안을 계산하고, 상황 변경과 어시스턴트 지시를 바로 반영한다.
 // 어시스턴트는 ZGX의 LLM 해석을 먼저 쓰고, 쓸 수 없으면 규칙 기반 해석으로 대신한다.
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Bot, RotateCcw, Sparkles, Check } from "lucide-react";
 import { Area, Bar, CartesianGrid, ComposedChart, Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
@@ -11,7 +11,8 @@ import { simulateForecast, kstDate, RISK_DAYS, STRATEGY_LABEL, type ForecastInpu
 import { applyChanges, DEMO_SCENARIOS, type ForecastChange } from "@/domain/demo-forecast/scenarios";
 import { acceptServerChanges, compareAlternatives, parseInstruction, type Alternative, type Interpretation } from "@/domain/demo-forecast/assistant";
 import { authJson } from "@/lib/auth-client";
-import { demoForecastInput, DEMO_FORECAST_START } from "@/data/demo-forecast-sample";
+import { demoForecastInput } from "@/data/demo-forecast-sample";
+import { kstDay } from "@/domain/operations-status";
 import { fromOperations, operationsKey } from "@/domain/demo-forecast/live";
 import type { FuelDemoSnapshot, FuelDemoStatus } from "@/domain/fuel-demo/types";
 import "./demo-forecast.css";
@@ -34,8 +35,6 @@ const STOCK_CONFIG = {
 const AXIS = { tickLine: false, axisLine: false, tickMargin: 8, minTickGap: 28 } as const;
 const usd = (v: number) => (v >= 1e6 ? `${n(v / 1e6, 2)}백만` : v >= 1e4 ? `${n(v / 1e4, 1)}만` : n(v, 0));
 const dayLabel = (d: string) => d.slice(5).replace("-", "/");
-const hourLabel = (h: number | null) =>
-  h === null ? "-" : `${kstDate(DEMO_FORECAST_START, h).slice(5).replace("-", "/")} ${String(((Math.floor(h) % 24) + 24) % 24).padStart(2, "0")}시`;
 
 function changeText(c: ForecastChange) {
   if (c.kind === "delay") return `${c.vesselName} 입항 ${c.days}일 지연`;
@@ -62,17 +61,23 @@ function Panel({ title, note, children, className = "" }: { title: string; note?
 
 export function DemoForecast({ theme, snapshot, status }: { theme: string; snapshot: FuelDemoSnapshot | null; status: FuelDemoStatus }) {
   const [horizon, setHorizon] = useState<number>(90);
+  const [today, setToday] = useState(() => kstDay(new Date()));
+  useEffect(() => {
+    const timer = setInterval(() => setToday(kstDay(new Date())), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const sample = useMemo(() => demoForecastInput(horizon, `${today}T00:00:00+09:00`), [horizon, today]);
   const [useLive, setUseLive] = useState(true);
   const liveReady = !!snapshot && (status === "online" || status === "stale");
   const live = useLive && liveReady;
   const liveKey = snapshot ? operationsKey(snapshot) : "";
   // 운전 상태는 0.25초마다 들어오므로, 재고·잔량·출력이 의미 있게 바뀔 때만 시작값을 다시 만든다.
   const start = useMemo(
-    () => (live && snapshot ? fromOperations(demoForecastInput(horizon), snapshot) : null),
+    () => (live && snapshot ? fromOperations(sample, snapshot) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [live, liveKey, horizon],
+    [live, liveKey, sample],
   );
-  const startInput = () => start?.input ?? demoForecastInput(horizon);
+  const startInput = () => start?.input ?? sample;
   const [scenarioIds, setScenarioIds] = useState<string[]>([]);
   const [extra, setExtra] = useState<ForecastChange[]>([]);
   const [adopted, setAdopted] = useState<Alternative | null>(null);
@@ -87,9 +92,10 @@ export function DemoForecast({ theme, snapshot, status }: { theme: string; snaps
   const input = useMemo<ForecastInput>(() => {
     const next = applyChanges(startInput(), changes);
     return adopted ? { ...next, policy: adopted.policy, transfers: adopted.result.input.transfers } : next;
-  }, [start, horizon, changes, adopted]);
+  }, [start, sample, changes, adopted]);
   const result = useMemo(() => simulateForecast(input), [input]);
-  const base = useMemo(() => simulateForecast(startInput()), [horizon, start]);
+  const base = useMemo(() => simulateForecast(startInput()), [sample, start]);
+  const hourLabel = (h: number | null) => h === null ? "-" : `${kstDate(input.start, h).slice(5).replace("-", "/")} ${String(((Math.floor(h) % 24) + 24) % 24).padStart(2, "0")}시`;
 
   function resetDecisions() {
     setAdopted(null);
@@ -227,7 +233,7 @@ export function DemoForecast({ theme, snapshot, status }: { theme: string; snaps
           </div>
         </div>
         <div className="dfc-strip">
-          <span className="dfc-basis">기준시각 {DEMO_FORECAST_START.slice(0, 10)} 00:00 · {horizon}일 <b>KST</b></span>
+          <span className="dfc-basis">기준시각 {input.start.slice(0, 10)} 00:00 · {horizon}일 <b>KST</b></span>
           <span className="dfc-origin" aria-label="시작값 출처">
             {start
               ? `시작값 현재 운전 상태 · 재고 ${n(start.summary.stockTonnes / 10000, 1)}만 t · 하역 잔량 ${n(start.summary.shipsRemaining / 10000, 1)}만 t · 가동 ${start.summary.runningUnits}기${status === "stale" ? " · 수신 지연" : ""}`

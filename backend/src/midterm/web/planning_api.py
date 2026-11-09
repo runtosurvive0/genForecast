@@ -32,7 +32,9 @@ def snapshot(run_id: str, start: date | None = None, horizon: int = Query(defaul
     if first.isoformat() < source["start"] or last.isoformat() > source["end"]:
         raise HTTPException(400, "조회 기간이 선택한 MILP 계산 기간을 벗어납니다")
     data = dashboard(horizon=horizon, at=first.isoformat(), plan_key="mip:" + run_id)
-    master = {u.name: u for u in load_coal_units() if u.is_dangjin}
+    reference = source.get('input_reference')
+    units = load_coal_units(rows=reference['coal_units']) if reference else load_coal_units()
+    master = {u.name: u for u in units if u.is_dangjin}
     capacities = source.get("unit_capacity_mw") or {u: master[u].installed_mw for u in UNITS}
     calendars = [data["fuel_calendar"] if year == first.year else
                  fuel_calendar(plan, year, data["config"], data["fuel"], master)

@@ -3,9 +3,41 @@ import assert from 'node:assert/strict';
 import { simulateForecast, type ForecastInput } from '../src/domain/demo-forecast/engine.ts';
 import { applyScenario, DEMO_SCENARIOS } from '../src/domain/demo-forecast/scenarios.ts';
 import { acceptServerChanges, parseInstruction, compareAlternatives } from '../src/domain/demo-forecast/assistant.ts';
-import { demoForecastInput } from '../src/data/demo-forecast-sample.ts';
+import { demoForecastInput as currentForecastInput } from '../src/data/demo-forecast-sample.ts';
 import { fromOperations, operationsKey } from '../src/domain/demo-forecast/live.ts';
 import { createRequire } from 'node:module';
+import { kstDay } from '../src/domain/operations-status.ts';
+
+// 대안의 순위는 요일별 발전량에 따라 달라지므로 손으로 검토한 표본 날짜를 고정한다.
+const demoForecastInput = (days = 90, start = '2026-11-06T00:00:00+09:00') => currentForecastInput(days, start);
+
+test('기본 전망은 KST 오늘부터 시작하고 연도 경계를 넘어 90일과 뒤 67일을 계산한다', () => {
+  assert.equal(kstDay(new Date('2026-11-08T14:59:59Z')), '2026-11-08');
+  assert.equal(kstDay(new Date('2026-11-08T15:00:00Z')), '2026-11-09');
+  assert.equal(currentForecastInput().start, `${kstDay(new Date())}T00:00:00+09:00`);
+  const input = demoForecastInput(90, '2026-11-09T00:00:00+09:00');
+  const result = simulateForecast(input);
+  assert.equal(result.daily[0].date, '2026-11-09');
+  assert.equal(result.daily.at(-1)!.date, '2027-02-06');
+  assert.equal(result.daily.length, 90);
+  assert.ok(input.units.every(u => u.dailyMwh.length >= 157));
+  // 기간을 바꿔도 같은 시작일의 앞부분 발전계획은 변하지 않는다.
+  const short = demoForecastInput(7, input.start);
+  assert.deepEqual(short.units.map(u => u.dailyMwh.slice(0, 7)), input.units.map(u => u.dailyMwh.slice(0, 7)));
+  const weekend = demoForecastInput(7, '2026-11-07T00:00:00+09:00');
+  assert.ok(weekend.units[0].dailyMwh[0] < short.units[0].dailyMwh[0], '요일별 발전량도 실제 전망 시작일을 따른다');
+});
+
+test('발전계획 누락·비정상 값은 마지막 값 반복이나 0으로 대체하지 않는다', () => {
+  for (const bad of [Array(10).fill(2400), Array(17).fill(NaN), Array(17).fill(-1), new Array(17)]) {
+    const input = tiny();
+    input.units[0].dailyMwh = bad;
+    assert.throws(() => simulateForecast(input), /1호기.*17일/);
+  }
+  const zero = tiny();
+  zero.units[0].dailyMwh = Array(17).fill(0);
+  assert.equal(simulateForecast(zero).kpis.generationMwh, 0);
+});
 
 // 작은 손 계산용 입력: 저탄장 1곳, 부두 1곳, 호기 1기(하루 2,400MWh, 열소비율 2,500 → 고열량 6,000kcal 기준 하루 1,000t)
 function tiny(over: Partial<ForecastInput> = {}): ForecastInput {

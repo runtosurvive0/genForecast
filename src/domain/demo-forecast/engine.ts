@@ -115,6 +115,13 @@ function outageFactor(input: ForecastInput, berth: number, hour: number) {
 }
 
 export function simulateForecast(input: ForecastInput): ForecastResult {
+  const requiredDays = input.horizonDays + input.tailDays + 7;
+  for (const u of input.units) {
+    if (u.dailyMwh.length < requiredDays ||
+        Array.from({ length: requiredDays }, (_, d) => u.dailyMwh[d]).some(v => !Number.isFinite(v) || v < 0)) {
+      throw new Error(`${u.id}호기 발전계획은 시작일부터 ${requiredDays}일(전망·고갈 탐색·재고일수 7일)을 빠짐없이 입력해야 합니다.`);
+    }
+  }
   input = { ...input, transfers: (input.transfers ?? []).map(t => ({ ...t })) };
   const H = (input.horizonDays + input.tailDays) * DAY;
   const notes = new Set<string>();
@@ -145,7 +152,7 @@ export function simulateForecast(input: ForecastInput): ForecastResult {
   };
   const plannedBurn = (yardId: string, day: number) => {
     const cv = mixCv(yardId);
-    return input.units.filter(u => u.yard === yardId).reduce((s, u) => s + (u.dailyMwh[Math.min(day, u.dailyMwh.length - 1)] ?? 0) * loadFactor(input, day) * u.heatRate / cv, 0);
+    return input.units.filter(u => u.yard === yardId).reduce((s, u) => s + u.dailyMwh[day] * loadFactor(input, day) * u.heatRate / cv, 0);
   };
   const daysOfStock = (yardId: string, day: number, stock: number) => {
     let b = 0;
@@ -247,7 +254,7 @@ export function simulateForecast(input: ForecastInput): ForecastResult {
     for (const y of input.yards) {
       const st = yard[y.id];
       for (const u of input.units.filter(x => x.yard === y.id)) {
-        const mwh = (u.dailyMwh[Math.min(day, u.dailyMwh.length - 1)] ?? 0) * lf / DAY;
+        const mwh = u.dailyMwh[day] * lf / DAY;
         const mwhCapped = Math.min(mwh, u.capacityMw);
         genAcc += mwhCapped;
         let energy = mwhCapped * u.heatRate; // Mcal (MWh × kcal/kWh)
