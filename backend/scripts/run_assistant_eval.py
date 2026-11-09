@@ -75,12 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         print(exc)
         return 1
 
+    # MIDTERM_PLANNING_DB는 midterm.database import 전에 설정해야 기본 경로가 격리 DB로 묶인다.
     os.environ["MIDTERM_PLANNING_DB"] = str(db)
-    from midterm import database
     from midterm.assistant.agent import ask
     from midterm.assistant.tools import ToolContext
     from midterm.supply import now
-    database.DATABASE = db
 
     rows = []
     for q in load_questions():

@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -71,15 +72,40 @@ def test_score_gap_violations():
     assert mod.score({**base, "expect_gap": False}, _result())["gap_violation"] is False
 
 
-def test_main_refuses_operational_db(capsys):
+@pytest.fixture
+def ops_dir(tmp_path, monkeypatch):
     mod = _runner()
-    ops = BACKEND / "data" / "planning.sqlite3"
-    assert mod.main(["--db", str(ops)]) == 2
-    assert mod.main(["--db", str(BACKEND / "data" / ".." / "data" / "x.sqlite3")]) == 2
+    d = tmp_path / "data"
+    d.mkdir()
+    (d / "planning.sqlite3").write_bytes(b"")
+    monkeypatch.setattr(mod, "OPERATIONAL_DIR", d.resolve())
+    return mod, d
 
 
-def test_main_refuses_missing_db(tmp_path):
+def test_main_refuses_operational_db(ops_dir, capsys):
+    mod, d = ops_dir
+    assert mod.main(["--db", str(d / "planning.sqlite3")]) == 2
+    err = capsys.readouterr().err
+    assert "운영 DB" in err and "파일이 없습니다" not in err
+
+
+def test_main_refuses_operational_db_via_dotdot(ops_dir, capsys):
+    mod, d = ops_dir
+    assert mod.main(["--db", str(d / "sub" / ".." / "planning.sqlite3")]) == 2
+    assert "운영 DB" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.name != "nt", reason="대소문자 무시는 Windows에서만 의미가 있다")
+def test_main_refuses_operational_db_with_swapped_case(ops_dir, capsys):
+    mod, d = ops_dir
+    assert mod.main(["--db", str(d).upper() + "\PLANNING.SQLITE3"]) == 2
+    assert "운영 DB" in capsys.readouterr().err
+
+
+def test_main_refuses_missing_db(tmp_path, capsys):
     assert _runner().main(["--db", str(tmp_path / "none.sqlite3")]) == 2
+    err = capsys.readouterr().err
+    assert "파일이 없습니다" in err and "운영 DB" not in err
 
 
 def test_main_unavailable_llm_exits_1(tmp_path, monkeypatch):
