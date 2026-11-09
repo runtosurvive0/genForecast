@@ -237,3 +237,101 @@ test('일반 회원은 조건과 결과를 조회하고 저장·실행은 노출
   await expect(page.getByRole('button',{name:'결과 보기',exact:true})).toBeVisible();
 });
 
+
+test('저장 후 전망 실행 직후 버튼 아래와 상단바에 서버 진행 상황을 보여 주고 끝나면 결과로 안내한다',async({page},testInfo)=>{
+  test.setTimeout(60000);
+  let job:Record<string,unknown>={state:'idle'}, finished=false;
+  const summary={scenario,annual:{dangjin_mwh:1},solve:{window_status:{optimal:12}}};
+  await page.route('**/api/job',r=>r.fulfill({json:job}));
+  await page.route('**/api/planning/executions',r=>r.fulfill({json:finished?[{id:'progress-run',input_id:6,state:'done',summary}]:[]}));
+  await page.route('**/api/planning/inputs/upload',r=>r.fulfill({json:{...detail,id:6}}));
+  await page.route('**/api/run',r=>{
+    job={state:'running',run_id:'progress-run',stage:'prepare',message:'순수요·원전·석탄목표 계산',windows_done:0,windows_total:null,elapsed:2};
+    return r.fulfill({json:{run_id:'progress-run'}});
+  });
+  await page.setViewportSize({width:1440,height:900});
+  await page.goto('/#data');
+  const indicator=page.locator('.top-bar').getByRole('button',{name:/전망 계산/});
+  await page.getByRole('tab',{name:'전망 입력·계산'}).click();
+  await page.getByLabel('기준으로 가져올 입력').selectOption('5');
+  await expect(indicator).toHaveCount(0);
+  const run=page.getByRole('button',{name:'저장 후 전망 실행'});
+  await run.click();
+  const progress=page.locator('.planning-input').getByRole('region',{name:'전망 계산 진행'});
+  await expect(progress).toContainText('순수요·원전·석탄목표 계산');
+  await expect(progress).toContainText('계산 자료를 준비하고 있습니다');
+  await expect(progress).toContainText('남은 시간 계산 중');
+  await expect(progress.getByLabel('계산 진행률')).not.toHaveAttribute('value');
+  const button=(await run.boundingBox())!, box=(await progress.boundingBox())!;
+  expect(box.y).toBeGreaterThan(button.y+button.height-1);
+  expect(box.y-(button.y+button.height)).toBeLessThan(80);
+  await expect(indicator).toHaveAccessibleName(/전망 계산 준비 중/);
+
+  job={...job,stage:'solve',message:'창별 최적화',windows_done:5,windows_total:12,elapsed:750,eta_seconds:450};
+  await expect(progress).toContainText('5 / 12 구간 완료',{timeout:10000});
+  await expect(progress).toContainText('12분 30초');
+  await expect(progress).toContainText('약 8분 남음');
+  await expect(progress.getByLabel('계산 진행률')).toHaveAttribute('value','5');
+  await expect(progress.getByLabel('계산 진행률')).toHaveAttribute('max','12');
+  await expect(indicator).toHaveText(/전망 계산 중 41%/);
+  await expect(page.locator('.milp-admin')).toContainText('창별 최적화 · 5 / 12 구간 완료 (41%)');
+  await page.screenshot({path:testInfo.outputPath('milp-progress-light.png')});
+
+  await page.goto('/#schedule');
+  await indicator.click();
+  await expect(page).toHaveURL(/#data$/);
+  await expect(page.getByRole('tab',{name:'전망 입력·계산'})).toHaveAttribute('aria-selected','true');
+
+  await page.getByRole('button',{name:'다크 모드로 전환',exact:true}).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await expect(indicator).toBeVisible();
+  const colors=await indicator.evaluate(el=>{const s=getComputedStyle(el);return [s.color,s.backgroundColor];});
+  expect(colors[0]).not.toBe(colors[1]);
+  await page.screenshot({path:testInfo.outputPath('milp-progress-dark.png')});
+  await page.setViewportSize({width:390,height:844});
+  await expect(indicator).toBeVisible();
+  await expect(indicator).toContainText('41%');
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const top=(await page.locator('.top-bar').boundingBox())!, pill=(await indicator.boundingBox())!;
+  expect(pill.x+pill.width).toBeLessThanOrEqual(top.x+top.width+1);
+  await page.screenshot({path:testInfo.outputPath('milp-progress-390.png')});
+  await page.setViewportSize({width:1440,height:900});
+
+  finished=true; job={state:'done',run_id:'progress-run',elapsed:900};
+  await expect(indicator).toHaveCount(0,{timeout:10000});
+  const done=page.locator('.planning-input').getByRole('region',{name:'전망 계산 진행'});
+  await expect(done).toContainText('계산 완료');
+  await done.getByRole('button',{name:'결과 보기'}).click();
+  await expect(page).toHaveURL(/#simulation$/);
+});
+
+test('진행을 지켜본 계산이 실패하면 상단바 표시를 지우고 서버 오류를 보여 준다',async({page})=>{
+  test.setTimeout(40000);
+  let job:Record<string,unknown>={state:'running',run_id:'failing-run',message:'창별 최적화',windows_done:1,windows_total:4,elapsed:30};
+  await page.route('**/api/job',r=>r.fulfill({json:job}));
+  await page.goto('/#data');
+  const indicator=page.locator('.top-bar').getByRole('button',{name:/전망 계산 중 25%/});
+  await expect(indicator).toBeVisible();
+  await page.getByRole('tab',{name:'전망 입력·계산'}).click();
+  await expect(page.locator('.planning-input')).toContainText('1 / 4 구간 완료');
+  job={state:'error',run_id:'failing-run',error:'해 찾기 시간 초과'};
+  await expect(indicator).toHaveCount(0,{timeout:10000});
+  await expect(page.locator('.planning-input').getByRole('alert')).toContainText('계산 실패: 해 찾기 시간 초과');
+});
+
+test('계산 상태를 확인하지 못하면 상단바에 진행을 꾸며 내지 않는다',async({page})=>{
+  await page.route('**/api/job',r=>r.fulfill({status:403,json:{detail:'Forbidden'}}));
+  await page.goto('/#data');
+  await page.getByRole('tab',{name:'전망 입력·계산'}).click();
+  await expect(page.getByLabel('기준으로 가져올 입력')).toBeVisible();
+  await expect(page.locator('.top-bar').getByRole('button',{name:/전망 계산/})).toHaveCount(0);
+  await expect(page.locator('.gf-job-progress')).toHaveCount(0);
+});
+
+test('승인 대기 계정에는 계산 진행 표시를 보이지 않는다',async({page})=>{
+  await page.route('**/api/auth/session',r=>r.fulfill({json:{user:{id:'00000000-0000-4000-8000-000000000002',username:'waiting',displayName:'Waiting',role:'member',status:'pending',version:1,createdAt:0,reviewedAt:null,mustChangePassword:0},scope:'pending'}}));
+  await page.route('**/api/job',r=>r.fulfill({json:{state:'running',run_id:'r',windows_done:1,windows_total:4}}));
+  await page.goto('/#data');
+  await expect(page.getByRole('heading',{name:'관리자 승인 대기 중'})).toBeVisible();
+  await expect(page.locator('.gf-job-indicator')).toHaveCount(0);
+});

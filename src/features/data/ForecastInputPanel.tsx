@@ -2,11 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAccount } from '@/lib/account-context';
 import { Button } from '@/components/ui/button';
 import { PlanningInputForm, type PlanningInputDetail } from './PlanningInputForm';
+import { PlanningJobProgress } from '@/components/planning-job/PlanningJobProgress';
+import { parsePlanningJob, planningJobView, type PlanningJob } from '@/domain/planning-job';
+import { planningJobStore } from '@/domain/use-planning-job';
 import './data.css';
 import './forecast-input.css';
 
 type Input = {id: number; name: string; start: string; end: string};
-type Job = {state: string; run_id?: string; windows_done?: number; windows_total?: number; error?: string};
+type Job = PlanningJob;
 type Execution = {id: string; input_id: number; state: string; error?: string; summary?: {scenario: {name: string; start: string; end: string}}};
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -48,6 +51,7 @@ export function ForecastInputPanel({onResult, onSetup}: {onResult: (run: {id: st
       if (!Array.isArray(history)) throw new Error('계산 이력을 확인하지 못했습니다.');
       if (!['idle','running','done','error'].includes(current.state)) throw new Error('계산 상태 응답을 확인하지 못했습니다.');
       setJob(current); setExecutions(history); setStatusError(''); setStatusReady(true);
+      planningJobStore.publish(parsePlanningJob(current));
     } catch(e) { setStatusError((e as Error).message); }
   }, []);
   useEffect(() => { void refreshInputs(); void refreshStatus(); }, [refreshInputs, refreshStatus]);
@@ -92,7 +96,7 @@ export function ForecastInputPanel({onResult, onSetup}: {onResult: (run: {id: st
       {message && <p>{message}</p>}
       {error && <p role="alert">{error}</p>}
       {statusError && <p role="alert">계산 상태를 확인하지 못했습니다. 연결을 다시 확인하고 있습니다. {statusError}</p>}
-      {tracking && <div><strong>전망을 계산하고 있습니다</strong><p>수요 전망 → 호기별 발전계획 → 연료 사용량·재고 전망</p>{job.windows_total ? <><progress aria-label="계산 진행률" value={job.windows_done ?? 0} max={job.windows_total}/><span>{job.windows_done ?? 0} / {job.windows_total} 구간 완료</span></> : <p>계산 자료를 준비하고 있습니다.</p>}</div>}
+      {tracking && <div><strong>전망을 계산하고 있습니다</strong><p>수요 전망 → 호기별 발전계획 → 연료 사용량·재고 전망</p>{job.state === 'running' ? <PlanningJobProgress view={planningJobView(job, true)}/> : <p>계산 자료를 준비하고 있습니다.</p>}</div>}
       {failed && <p role="alert">계산을 완료하지 못했습니다. {failed.error} 저장된 조건을 수정해 다시 실행하세요.</p>}
       {retryInput !== undefined && <Button disabled={busy || tracking || Boolean(statusError)} onClick={async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await start(retryInput);}catch(e){setError((e as Error).message);}finally{lock.current=false;setBusy(false);}}}>저장된 조건으로 다시 실행</Button>}
       {completed && <Button onClick={()=>onResult({id:completed.id,...completed.summary!.scenario})}>이번 계산 결과 보기</Button>}

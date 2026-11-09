@@ -1,0 +1,35 @@
+.gf-job-progress { display:grid; gap:8px; margin-top:16px; padding:14px 16px; border:1px solid var(--border); border-left:3px solid var(--primary); border-radius:10px; background:var(--card); color:var(--foreground); font-size:13px; line-height:1.5; min-width:0; }
+.gf-job-progress-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; min-width:0; }
+.gf-job-progress-head strong { font-size:14px; font-weight:600; overflow-wrap:anywhere; min-width:0; }
+.gf-job-progress-head b { font-variant-numeric:tabular-nums; color:var(--primary); font-weight:600; }
+.gf-job-progress-head span { color:var(--muted-foreground); font-size:12px; }
+.gf-job-progress progress { display:block; width:100%; max-width:none; height:8px; margin:0; border:0; border-radius:999px; overflow:hidden; appearance:none; -webkit-appearance:none; background:var(--muted); color:var(--primary); accent-color:var(--primary); }
+.gf-job-progress progress::-webkit-progress-bar { background:var(--muted); border-radius:999px; }
+.gf-job-progress progress::-webkit-progress-value { background:var(--primary); border-radius:999px; }
+.gf-job-progress progress::-moz-progress-bar { background:var(--primary); border-radius:999px; }
+.gf-job-progress progress:not([value])::-webkit-progress-bar { background:linear-gradient(90deg, var(--muted) 0%, var(--primary) 50%, var(--muted) 100%); background-size:200% 100%; animation:gf-job-indeterminate 1.6s linear infinite; }
+@keyframes gf-job-indeterminate { from { background-position:100% 0; } to { background-position:-100% 0; } }
+.gf-job-progress-detail { margin:0; }
+.gf-job-progress-times { display:flex; flex-wrap:wrap; gap:4px 20px; margin:0; color:var(--muted-foreground); }
+.gf-job-progress-times div { display:flex; gap:6px; }
+.gf-job-progress-times dt { font-weight:400; }
+.gf-job-progress-times dd { margin:0; color:var(--foreground); font-variant-numeric:tabular-nums; }
+.gf-job-progress-done { border-left-color:var(--data-green, #16a34a); }
+.gf-job-progress-done > button { justify-self:start; }
+.gf-job-progress-error { border-left-color:var(--destructive, #dc2626); }
+.gf-job-progress-error p { margin:0; overflow-wrap:anywhere; }
+.gf-job-progress-line { margin:8px 0; font-size:13px; color:var(--muted-foreground); overflow-wrap:anywhere; }
+
+.gf-job-indicator-slot { display:inline-flex; flex:0 0 auto; min-width:0; }
+.gf-job-indicator { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 10px; border:1px solid var(--primary); border-radius:999px; background:var(--card); color:var(--primary); font-size:12px; font-weight:600; white-space:nowrap; cursor:pointer; flex:0 0 auto; font-variant-numeric:tabular-nums; }
+.gf-job-indicator:hover { background:var(--accent); }
+.gf-job-indicator:focus-visible { outline:2px solid var(--ring, var(--primary)); outline-offset:2px; }
+.gf-job-indicator-icon { animation:gf-job-spin 1.2s linear infinite; }
+.gf-job-indicator-short { display:none; }
+@keyframes gf-job-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .gf-job-indicator-icon, .gf-job-progress progress:not([value])::-webkit-progress-bar { animation:none; } }
+@media (max-width:720px) {
+  .gf-job-indicator { padding:0 8px; gap:4px; }
+  .gf-job-indicator-text { display:none; }
+  .gf-job-indicator-short { display:inline; }
+}

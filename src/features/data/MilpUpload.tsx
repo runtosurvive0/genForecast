@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { PlanningJobProgress } from "@/components/planning-job/PlanningJobProgress";
+import { usePlanningJob } from "@/domain/use-planning-job";
 import { Button } from "@/components/ui/button";
 import { Section } from "@/components/tower/primitives";
 import { number as n } from "@/lib/format";
@@ -25,15 +27,6 @@ type InputDetail = {
     };
     heat_prices: Record<string, number[]>;
   };
-};
-type Job = {
-  state: string;
-  run_id?: string;
-  stage?: string;
-  message?: string;
-  windows_done?: number;
-  windows_total?: number;
-  error?: string;
 };
 type Execution = {
   id: string;
@@ -72,32 +65,29 @@ export function MilpUpload({
   const [inputs, setInputs] = useState<InputSet[]>([]);
   const [selected, setSelected] = useState<InputDetail | null>(null);
   const [executions, setExecutions] = useState<Execution[]>([]);
-  const [job, setJob] = useState<Job>({ state: "idle" });
+  const { job, view, refresh: refreshJob } = usePlanningJob();
+  const running = job?.state === "running";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [stockRun, setStockRun] = useState("");
   async function refresh() {
-    const [sets, runs, current] = await Promise.all([
+    const [sets, runs] = await Promise.all([
       api<InputSet[]>("/api/planning/inputs"),
       api<Execution[]>("/api/planning/executions"),
-      api<Job>("/api/job"),
     ]);
     setInputs(sets);
     setExecutions(runs);
-    setJob(current);
     setStockRun((id) => id || runs.find((r) => r.state === "done")?.id || "");
   }
   useEffect(() => {
     refresh().catch((e: Error) => setError(e.message));
   }, []);
+  // 계산 상태는 공유 훅이 폴링한다. 끝난 계산을 확인하면 실행 이력만 다시 읽는다.
   useEffect(() => {
-    if (job.state !== "running") return;
-    const timer = setTimeout(() => {
-      refresh().catch((e: Error) => setError(e.message));
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [job]);
+    if (view.phase !== "done" && view.phase !== "error") return;
+    refresh().catch((e: Error) => setError(e.message));
+  }, [view.phase, view.runId]);
   async function action(task: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -111,11 +101,32 @@ export function MilpUpload({
     }
   }
   const done = executions.filter((r) => r.state === "done" && r.summary);
+  const finished = view.phase === "done" ? done.find((r) => r.id === view.runId) : undefined;
+  const progress = (compact?: boolean) => (
+    <PlanningJobProgress
+      view={view}
+      compact={compact}
+      resultAction={finished && (
+        <Button
+          size="sm"
+          onClick={() =>
+            onResult({
+              id: finished.id,
+              start: finished.summary!.scenario.start,
+              end: finished.summary!.scenario.end,
+            })
+          }
+        >
+          결과 보기
+        </Button>
+      )}
+    />
+  );
   return (
     <div className="milp-admin">
       {error && <p className="error-banner" role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
-      <PlanningInputForm inputs={inputs} busy={busy || job.state === "running"}
+      <PlanningInputForm inputs={inputs} busy={busy || running} status={progress()}
         onLoad={async id => {
           if (id !== 0) return api<PlanningInputDetail>(`/api/planning/inputs/${id}`);
           const [meta, settings] = await Promise.all([
@@ -143,9 +154,10 @@ export function MilpUpload({
               try { await refresh(); } catch { /* Keep the saved input selected even when refresh fails. */ }
               throw new Error(`입력 세트 #${saved.id}는 저장됐지만 계산을 시작하지 못했습니다. ${((e as Error).message)}`);
             }
-            setJob({state:"running",run_id:result.run_id});
             setMessage(`입력 세트 #${saved.id} 저장 · 계산 시작: ${result.run_id}`);
+            const jobChecked = refreshJob();
             try { await refresh(); } catch { /* Polling will retry without misreporting the started job. */ }
+            await jobChecked;
           } else { await refresh(); setMessage(`입력 세트 #${saved.id}를 DB에 저장했습니다.`); }
         })}/>
       <Section
@@ -260,7 +272,7 @@ export function MilpUpload({
             이력 새로고침
           </Button>
           <Button
-            disabled={!selected || busy || job.state === "running"}
+            disabled={!selected || busy || running}
             onClick={() =>
               void action(async () => {
                 const r = await api<{ run_id: string }>("/api/run", {
@@ -268,7 +280,7 @@ export function MilpUpload({
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ input_id: selected!.id }),
                 });
-                await refresh();
+                await Promise.all([refresh(), refreshJob()]);
                 setMessage(`계산 시작: ${r.run_id}`);
               })
             }
@@ -286,19 +298,7 @@ export function MilpUpload({
             {selected.payload.scenario.quality}
           </p>
         )}
-        {job.state === "running" && (
-          <div role="status">
-            <p>
-              {job.message ?? "MILP 계산 중"} · {job.windows_done ?? 0} /{" "}
-              {job.windows_total ?? "준비 중"} 창 완료
-            </p>
-            <progress
-              value={job.windows_done ?? 0}
-              max={job.windows_total ?? 1}
-            />
-          </div>
-        )}
-        {job.state === "error" && <p role="alert">계산 실패: {job.error}</p>}
+        {progress(true)}
         <div className="tower-table-wrap">
           <table className="tower-table">
             <thead>
