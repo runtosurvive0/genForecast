@@ -45,7 +45,9 @@ def aggregate_fuel(dates: list[str], units: list[str], heat: np.ndarray,
 
 
 def planned_fuel(folder: Path, summary: dict, calorific: float | None) -> dict:
-    master = {u.name: u for u in load_coal_units()}
+    reference = summary.get('input_reference')
+    units = load_coal_units(rows=reference['coal_units']) if reference else load_coal_units()
+    master = {u.name: u for u in units}
     with np.load(folder / "hourly.npz") as data:
         names = [str(n) for n in data["names"]]
         indices = [names.index(u) for u in summary["units"]]

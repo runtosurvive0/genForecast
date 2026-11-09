@@ -1,5 +1,19 @@
 # SPEC v0.1 페이지 데이터 계약
 
+## 오늘 기준 전망 (2026-11-09)
+
+새 MILP 기본 입력과 수급 예측 표본은 한국시간 오늘 00:00부터 시작한다. 기본 MILP 기간은 90일이며 저장 입력·과거 결과의 날짜는 보존한다. 조건 설정의 `오늘부터 90일`로 기존 입력을 복사할 기간을 지정한다. 모의 엔진은 발전계획을 전망 기간+고갈 탐색 기간+재고일수 7일 전체에 대해 검증하고 누락을 마지막 값으로 연장하지 않는다. 추가 입력·적용 범위는 [오늘부터 실행하는 전망과 추가 데이터](ROLLING_FORECAST_DATA.md)를 따른다.
+
+## CSV 제원·연월 단가·정비 입력 (2026-11-09)
+
+- `milp_inputs.payload.input_reference`는 선택 입력이다. `coal_units`, `nuclear_units`, `heat_prices_by_month[unit][YYYY-MM]`, `price_regression`, `overrides`, `source_files`를 계산 입력과 함께 고정 보관한다. 없는 이전 입력은 기존 공개 제원과 1~12월 단가 계약을 유지한다.
+- CSV를 작업 DB에 등록하는 명령은 `python -m midterm.reference_data --help`다. 공개 원본·공유 초기 DB를 덮어쓰지 않고 별도의 작업 DB를 지정한다. 실제 사용자 파일 내용은 Git에 포함하지 않는다. 재등록은 입력 해시로 중복을 방지한다.
+- `POST /api/planning/inputs/upload`의 선택 파일 `input_reference`는 같은 JSON 계약이다. 화면에서 기존 입력을 수정해 저장할 때도 전달한다. 연월 단가를 수정하면 `price_overrides`에 수기 수정 출처를 남긴다. 계산 기간과 예열을 덮는 월별 양수 단가·호기 제원을 검증한다.
+- 회귀 추정은 목표월 이전의 연속된 월별 단가로 호기별 선형 OLS를 적용한다. 마지막 2개월의 과거 구간 검증과 전체 과거 이력으로 재적합한 예측을 구분해 보존한다. 추정값의 분류는 `estimated`이며 원본 미래 입력을 과거월 회귀에 사용하지 않는다.
+- `python -m midterm run --input-id ID`와 웹 계산은 저장 입력의 제원·연월 단가를 사용한다. 새 결과는 `input_reference`도 보존하며 연료 소비량 환산과 이용률 집계가 같은 제원을 사용한다. 원전의 선택 필드 `active_from`은 해당 KST 날짜부터 가동 대상으로 취급하고 정비 기간은 제외한다.
+- `GET /api/planning/outages`는 활성 입력의 석탄·원전 정비 전체를 반환한다. 정지계획 메뉴는 운영 데이터 모드에서 이 DB 일정을 연도·발전원·호기로 조회한다. 표본 모드(`?source=synthetic`, 단일 HTML)는 기존 표본 일정을 유지한다. 특정 MILP 결과 화면은 계속 그 계산에 고정된 일정을 표시한다. 날짜 두 칸이 모두 빈 CSV 행은 일정 미등록, 한쪽만 비어 있으면 입력 오류다.
+- 저탄장 재고·확정 성상·입하 배분은 기존 `yard_baselines`, 항차/분석, Pile 재고 및 수급 원장의 공통 엔진을 따른다. 위 MILP 입력 등록은 실제 재고를 생성하거나 실제 DB 연결 실패를 추정 재고로 대체하지 않는다.
+
 ## 공용 수기 항차 원장 (2026-11-06 추가)
 
 `voyage_registry_ships.ship_code` → `voyage_registry_voyages.ship_code`, `voyage_registry_voyages.voyage_no` → `voyage_registry_cargo.voyage_no`의 1:N 관계다. 원장 키는 불변 내부 관리ID이며 표시용 항차번호와 MMSI/IMO를 분리한다. MMSI/IMO는 선박별 고유 텍스트다. 화물별 `destination_plant_id`는 기존 발전소 ID를 사용한다. `planned_t`와 `bl_t`는 t이며 적어도 하나 필요하다. 기존 화물의 `cv/cv_basis`, 회분·황분/`analysis_basis`, 전수분 AR 값은 호환용으로 보존한다. 새 성상 입력은 화물에 연결한 별도 분석 원장을 사용한다(아래 확장 계약 참조). 선택값 미확인은 null, 0은 확정된 0이다. 날짜는 KST ISO8601, 예정·실제 일정은 각각 시간 순서를 검증한다.

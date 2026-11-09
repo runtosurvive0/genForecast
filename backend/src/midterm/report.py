@@ -24,7 +24,8 @@ def summarize(result: AnnualResult) -> dict:
     """화면·엑셀이 같이 쓰는 표. MW 는 시간평균, MWh 는 합계."""
     dj = _dangjin_index(result)
     names = [result.names[j] for j in dj]
-    capacity = {u.name: u.installed_mw for u in load_coal_units()}
+    units = (load_coal_units(rows=result.input_reference['coal_units']) if result.input_reference else load_coal_units())
+    capacity = {u.name: u.installed_mw for u in units}
     installed = sum(capacity.get(n, 0) for n in names)
     out = result.output[:, dj]
     on = result.online[:, dj]
@@ -90,6 +91,7 @@ def summarize(result: AnnualResult) -> dict:
         "scenario": result.scenario.to_json(),
         "units": names, "installed_mw": installed,
         "unit_capacity_mw": {n: capacity[n] for n in result.names},
+        "input_reference": result.input_reference,
         "annual": {
             "dangjin_mwh": round(total_mwh, 0),
             "dangjin_avg_mw": round(total_mwh / hours_total, 1),

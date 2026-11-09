@@ -936,6 +936,19 @@ test('older AIS at a berth remains visible as an unconfirmed last position',asyn
   await expect(page.locator('.gf-rail-pair')).toContainText('0/ 3');
 });
 
+test('수급 예측의 날짜는 KST 자정이 지나면 열린 화면에서도 오늘로 바뀐다', async ({page}) => {
+  await page.clock.install({time:new Date('2026-11-08T14:59:50Z')});
+  await page.goto('/#forecast');
+  await expect(page.locator('.dfc-basis')).toContainText('2026-11-08 00:00');
+  await page.clock.fastForward(61_000);
+  await expect(page.locator('.dfc-basis')).toContainText('2026-11-09 00:00');
+  // 가상 시계 테스트에서는 위치 안정화 대기 대신 키보드로 같은 기간 변경을 검증한다.
+  const shortPeriod = page.getByRole('group',{name:'예측 기간',exact:true}).getByRole('button',{name:'7일',exact:true});
+  await shortPeriod.focus();
+  await shortPeriod.press('Enter');
+  await expect(page.locator('.dfc-basis')).toContainText('7일');
+});
+
 test('수급 예측은 운영 화면과 같은 머리글·조회 막대를 쓰고, 상황 반영·기준 복귀·규칙 해석 대체가 동작한다',async({page})=>{
   await page.route('**/api/demo-forecast/interpret',r=>r.fulfill({status:503,json:{detail:'LLM 해석이 설정되지 않았습니다.'}}));
   await page.goto('/#forecast');

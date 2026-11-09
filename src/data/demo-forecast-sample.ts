@@ -3,8 +3,7 @@
 // 선박 앞 5척은 접안·하역 화면의 예시 항차와 같고, 이후 계약 선박은 가상이다. 산지명은 실제, 성상은 가상.
 import catalog from './fuel-reference/demo-catalog.json' with { type: 'json' };
 import type { ForecastInput, Grade, VesselInput } from '../domain/demo-forecast/engine.ts';
-
-export const DEMO_FORECAST_START = '2026-11-06T00:00:00+09:00';
+import { kstDay } from '../domain/operations-status.ts';
 
 const YARDS = [
   { id: 'Y1', name: '1저탄장', yard: 1, capacity: 220000, units: [1, 2, 3, 4] },
@@ -25,20 +24,25 @@ function rng(seed: number) {
 }
 
 /** 호기별 일 발전량 계획(MWh). 겨울 수요 + 주말 감소 + 맑은 날 태양광 감발을 반영한 가상 급전 계획 */
-export function demoDispatch(days: number) {
+export function demoDispatch(days: number, startAt = `${kstDay(new Date())}T00:00:00+09:00`) {
   const rand = rng(20261106);
   const caps = [500, 500, 500, 500, 500, 500, 500, 500, 1020, 1020];
   const base = [0.8, 0.79, 0.82, 0.78, 0.81, 0.8, 0.77, 0.8, 0.86, 0.85];
   const outages = [{ unit: 4, from: 20, to: 33 }, { unit: 9, from: 52, to: 55 }];
-  const start = Date.parse(DEMO_FORECAST_START);
-  return caps.map((cap, u) => Array.from({ length: days }, (_, d) => {
-    const dow = new Date(start + d * 86400000 + 9 * 3600000).getUTCDay();
-    const weekend = dow === 0 || dow === 6 ? 0.9 : 1;
-    const winter = 1 + 0.06 * Math.sin(Math.PI * Math.min(1, d / 75)); // 12~1월 수요 증가
-    const sunny = rand() < 0.45 ? 0.94 : 1; // 맑은 날 낮 시간 감발
-    const out = outages.some(o => o.unit === u + 1 && d >= o.from && d <= o.to);
-    return out ? 0 : Math.round(cap * 24 * Math.min(0.95, base[u] * weekend * winter * sunny * (1 + (rand() - 0.5) * 0.04)));
-  }));
+  const start = Date.parse(startAt);
+  return caps.map((cap, u) => {
+    const extraRand = rng(20261107 + u);
+    // 기간을 늘려도 기존 첫 150일과 선박 배정을 바꾸지 않는다.
+    return Array.from({ length: Math.max(150, days) }, (_, d) => {
+      const random = d < 150 ? rand : extraRand;
+      const dow = new Date(start + d * 86400000 + 9 * 3600000).getUTCDay();
+      const weekend = dow === 0 || dow === 6 ? 0.9 : 1;
+      const winter = 1 + 0.06 * Math.sin(Math.PI * Math.min(1, d / 75)); // 표본 기간 안의 수요 변화 가정
+      const sunny = random() < 0.45 ? 0.94 : 1; // 맑은 날 낮 시간 감발
+      const out = outages.some(o => o.unit === u + 1 && d >= o.from && d <= o.to);
+      return out ? 0 : Math.round(cap * 24 * Math.min(0.95, base[u] * weekend * winter * sunny * (1 + (random() - 0.5) * 0.04)));
+    }).slice(0, days);
+  });
 }
 
 const ORIGINS: { origin: string; grade: Grade; cv: number }[] = [
@@ -97,11 +101,12 @@ export function demoVessels(dispatch = demoDispatch(150)): VesselInput[] {
   return [...head, ...rest].sort((a, b) => a.eta - b.eta);
 }
 
-export function demoForecastInput(horizonDays = 90): ForecastInput {
+export function demoForecastInput(horizonDays = 90, start = `${kstDay(new Date())}T00:00:00+09:00`): ForecastInput {
   const tailDays = 60;
-  const dispatch = demoDispatch(Math.max(150, horizonDays + tailDays));
+  // 재고일수는 마지막 계산일 뒤 7일의 발전계획까지 필요하다.
+  const dispatch = demoDispatch(Math.max(150, horizonDays + tailDays + 7), start);
   return {
-    start: DEMO_FORECAST_START,
+    start,
     horizonDays,
     tailDays,
     yards: YARDS.map(y => ({ id: y.id, name: y.name, capacity: y.capacity, stock: yardStock(y.yard) })),

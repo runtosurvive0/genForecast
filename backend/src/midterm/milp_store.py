@@ -25,7 +25,7 @@ def init_store(db):
     """)
 
 
-def clean_input(scenario_data, prices, fuel, files=None):
+def clean_input(scenario_data, prices, fuel, files=None, input_reference=None):
     scenario = Scenario.from_json(scenario_data)
     if not isinstance(scenario.name, str) or not 1 <= len(scenario.name.strip()) <= 100:
         raise ValueError("시나리오 이름은 1~100자 문자열로 입력하세요")
@@ -42,18 +42,26 @@ def clean_input(scenario_data, prices, fuel, files=None):
         raise ValueError("운전예비율은 0~1, 월별 보정은 -100~300%로 입력하세요")
     if any(v is not None and not -100 <= v <= 300 for v in (scenario.demand_growth_pct, scenario.solar_growth_pct)):
         raise ValueError("수요·태양광 증가율은 -100~300%로 입력하세요")
-    for kind, units in (("coal", load_coal_units()), ("nuclear", load_nuclear_units())):
+    if input_reference is not None:
+        from midterm.reference_data import validate_reference
+        validate_reference(input_reference, scenario)
+    coal = load_coal_units(rows=input_reference['coal_units']) if input_reference else load_coal_units()
+    nuclear = load_nuclear_units(rows=input_reference['nuclear_units']) if input_reference else load_nuclear_units()
+    for kind, units in (("coal", coal), ("nuclear", nuclear)):
         unknown = validate_units(getattr(scenario, kind + "_oh"), [u.name for u in units], kind)
         if unknown:
             raise ValueError("미등록 호기: " + ", ".join(unknown))
-    required = {u.name for u in load_coal_units()}
+    required = {u.name for u in coal}
     if not required.issubset(prices):
         raise ValueError("열량단가 누락 호기: " + ", ".join(sorted(required - set(prices))))
     for unit, values in prices.items():
         if len(values) != 12 or any(not math.isfinite(float(v)) or float(v) <= 0 for v in values):
             raise ValueError(f"{unit}: 1~12월 열량단가는 양수 12개(원/Gcal)가 필요합니다")
-    return {"scenario": scenario.to_json(), "heat_prices": prices, "fuel": _clean_fuel(fuel),
-            "files": files or [], "classification": "scenario_forecast"}
+    payload = {"scenario": scenario.to_json(), "heat_prices": prices, "fuel": _clean_fuel(fuel),
+               "files": files or [], "classification": "scenario_forecast"}
+    if input_reference is not None:
+        payload['input_reference'] = input_reference
+    return payload
 
 
 def save_input(payload, path=DATABASE):
@@ -83,6 +91,12 @@ def list_inputs(path=DATABASE):
                  "start": json.loads(r["payload"])["scenario"]["start"],
                  "end": json.loads(r["payload"])["scenario"]["end"]}
                 for r in db.execute("SELECT * FROM milp_inputs ORDER BY id DESC")]
+
+
+def active_input(path=DATABASE):
+    with connect(path) as db:
+        row = db.execute("SELECT value FROM settings WHERE key='active_milp_input_id'").fetchone()
+    return get_input(json.loads(row[0]), path) if row else None
 
 
 def begin_run(run_id, input_id, path=DATABASE):
@@ -141,16 +155,22 @@ def table_rows(raw, filename):
 
 
 def price_rows(rows):
+    from midterm.units import canonical_unit_name
     header, *data = rows
     columns = [str(c).strip() for c in header]
+    named = [c for c in columns if c]
+    if len(named) != len(set(named)):
+        raise ValueError('열량단가 머리말 중복')
     keys = ["unit", *[f"{m}월" for m in range(1, 13)]]
     if any(k not in columns for k in keys):
         raise ValueError("열량단가 헤더는 unit,1월,...,12월입니다")
     prices = {}
     for row in data:
         values = dict(zip(columns, row))
-        unit = str(values.get("unit", "")).strip()
+        unit = canonical_unit_name(str(values.get("unit", "")).strip())
+        if not unit:
+            raise ValueError('열량단가 호기 이름이 비었습니다')
         if unit in prices:
             raise ValueError("열량단가 호기 중복: " + unit)
-        prices[unit] = [float(values[f"{m}월"]) for m in range(1, 13)]
+        prices[unit] = [float(str(values[f"{m}월"]).replace(',', '').strip()) for m in range(1, 13)]
     return prices

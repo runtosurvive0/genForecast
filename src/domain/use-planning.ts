@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
 import {
   addDays,
+  initialPlanningQuery,
   loadPlanningRuns,
   loadPlanningSnapshot,
   type PlanningRun,
   type PlanningSnapshot,
 } from "./planning";
+import { kstDay } from './operations-status';
 
-export const initialPlanningQuery = (run: PlanningRun) => ({
-  runId: run.id,
-  start: run.start,
-  horizon: addDays(run.start, 29) <= run.end ? 30 : 7,
-});
+export { initialPlanningQuery } from './planning';
 export type PlanningQuery = ReturnType<typeof initialPlanningQuery>;
 
 /** App owns this state so both supply screens keep the same query and result. */
@@ -35,11 +33,13 @@ export function usePlanning(enabled: boolean) {
       .then((rows) => {
         if (controller.signal.aborted) return;
         setRuns(rows);
+        const today = kstDay(new Date());
+        const preferred = rows.find(r => r.start <= today && addDays(today, 6) <= r.end) ?? rows[0];
         setQuery((current) =>
           current && rows.some((r) => r.id === current.runId)
             ? current
-            : rows[0]
-              ? initialPlanningQuery(rows[0])
+            : preferred
+              ? initialPlanningQuery(preferred, today)
               : null,
         );
       })

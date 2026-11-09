@@ -66,6 +66,7 @@ def run_plan(run_id):
         "outages": summary["outages"], "name": summary["scenario"]["name"],
         "classification": summary.get("classification", "scenario_forecast"),
         "unit_capacity_mw": summary.get("unit_capacity_mw"),
+        "input_reference": summary.get("input_reference"),
         "classification_note": summary.get("classification_note", "")}
 
 
@@ -84,7 +85,10 @@ def db_plan(batch_id, path=DATABASE):
 def model_forecast(scenario: Scenario, path=DATABASE):
     """MIP 를 호출하지 않고 세 모델의 독립 결과 스냅샷을 DB에 보존."""
     from midterm.annual import prepare, WARMUP_DAYS
-    prep = prepare(scenario)
+    from midterm.milp_store import active_input
+    active = active_input(path)
+    reference = active['payload'].get('input_reference') if active else None
+    prep = prepare(scenario, active['payload']['heat_prices'], reference) if reference else prepare(scenario)
     keep = slice(WARMUP_DAYS * 24, None)
     demand = np.concatenate([f.demand_mw for f in prep["forecast"]])[keep]
     solar = np.concatenate([f.solar_mw for f in prep["forecast"]])[keep]

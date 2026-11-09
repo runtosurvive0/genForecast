@@ -59,6 +59,7 @@ class AnnualResult:
     model_info: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     headroom: dict[str, np.ndarray] = field(default_factory=dict)  # absent on legacy runs, never imputed
+    input_reference: dict = field(default_factory=dict)
 
     @property
     def net(self) -> np.ndarray:
@@ -124,7 +125,7 @@ def _segments(total_days: int, count: int) -> list[tuple[int, int]]:
     return [(int(a), int(b)) for a, b in zip(edges[:-1], edges[1:]) if b > a]
 
 
-def prepare(scenario: Scenario, heat_prices: dict | None = None) -> dict:
+def prepare(scenario: Scenario, heat_prices: dict | None = None, input_reference: dict | None = None) -> dict:
     """MILP 직전까지: 순수요·원전·석탄목표·입력행렬. 화면 미리보기도 이것을 쓴다."""
     warmup_first = scenario.start - timedelta(days=WARMUP_DAYS)
     all_days = [warmup_first + timedelta(days=i)
@@ -135,15 +136,19 @@ def prepare(scenario: Scenario, heat_prices: dict | None = None) -> dict:
         demand_growth=None if scenario.demand_growth_pct is None else scenario.demand_growth_pct / 100,
         solar_growth=None if scenario.solar_growth_pct is None else scenario.solar_growth_pct / 100)
     hours = hours_of(all_days)
-    nuclear, running = nuclear_hourly(load_nuclear_units(), scenario.nuclear_oh, hours)
+    reference = input_reference or {}
+    nuclear_units = (load_nuclear_units(rows=reference['nuclear_units']) if reference else load_nuclear_units())
+    nuclear, running = nuclear_hourly(nuclear_units, scenario.nuclear_oh, hours)
     coal_model = load_coal_curve_model()
     raw = np.concatenate([
         predict_coal_curve(coal_model, day=f.day, demand_mw=f.demand_mw, solar_mw=f.solar_mw,
                            nuclear_mw=nuclear[24 * i:24 * i + 24])
         for i, f in enumerate(forecast)])
     adjust = np.asarray([1 + scenario.coal_adjust_pct[at.month - 1] / 100 for at in hours])
-    units = load_coal_units()
-    inputs = coal_inputs(units, heat_prices if heat_prices is not None else load_heat_prices(), scenario.coal_oh, hours)
+    units = load_coal_units(rows=reference['coal_units']) if reference else load_coal_units()
+    prices = heat_prices if heat_prices is not None else load_heat_prices()
+    inputs = (coal_inputs(units, prices, scenario.coal_oh, hours, prices_by_month=reference['heat_prices_by_month'])
+              if reference else coal_inputs(units, prices, scenario.coal_oh, hours))
     available = inputs.available_max
     target = np.clip(raw * adjust, 0, available * TARGET_CAP_OF_AVAILABLE)
     warnings = []
@@ -152,8 +157,7 @@ def prepare(scenario: Scenario, heat_prices: dict | None = None) -> dict:
         warnings.append(
             "석탄곡선 모델은 2026-01~09 실적으로만 학습돼 10~12월을 본 적이 없습니다. "
             "2025-10~12 표본외 검증에서 +15~+40% 과대예측했습니다 -- 월별 석탄목표 보정을 검토하세요.")
-    nuclear_units = [u for u in load_nuclear_units() if u.active]
-    fleet_mw = sum(u.available_mw for u in nuclear_units) * NUCLEAR_OUTPUT_FACTOR
+    fleet_mw = float(nuclear_hourly(nuclear_units, [], hours)[0][WARMUP_DAYS * 24:].mean())
     share = float(nuclear[WARMUP_DAYS * 24:].mean()) / fleet_mw if fleet_mw else 0.0
     if share > 0.90:
         warnings.append(
@@ -166,14 +170,15 @@ def prepare(scenario: Scenario, heat_prices: dict | None = None) -> dict:
                         f"{clipped / 1e3:,.0f} GWh 를 잘랐습니다(정비로 가용설비 부족).")
     return dict(all_days=all_days, hours=hours, forecast=forecast, nuclear=nuclear,
                 running=running, raw=raw, target=target, available=available, inputs=inputs,
-                net_model=net_model, coal_model=coal_model, warnings=warnings)
+                net_model=net_model, coal_model=coal_model, warnings=warnings, input_reference=reference)
 
 
-def run_annual(scenario: Scenario, progress: Progress | None = None, heat_prices: dict | None = None) -> AnnualResult:
+def run_annual(scenario: Scenario, progress: Progress | None = None, heat_prices: dict | None = None,
+               input_reference: dict | None = None) -> AnnualResult:
     began = time.perf_counter()
     notify = progress or (lambda event: None)
     notify({"stage": "prepare", "message": "순수요·원전·석탄목표 계산"})
-    return solve_prepared(prepare(scenario, heat_prices), scenario, notify, began)
+    return solve_prepared(prepare(scenario, heat_prices, input_reference), scenario, notify, began)
 
 
 def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: float) -> AnnualResult:
@@ -302,7 +307,7 @@ def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: floa
                          "max_mw": float(values.max())} for key, values in headroom.items() if 'short_mw' in key},
                      "segment_diagnostics": diagnostics,
                      "global_segment_seams_certified": False}},
-        headroom=headroom, warnings=[*prep["warnings"],
+        input_reference=prep.get('input_reference', {}), headroom=headroom, warnings=[*prep["warnings"],
             "상·하향 요구량은 석탄목표×입력 예비율인 정적 프록시입니다. 원천 가을 P3와 다른 조건이며 응답 예비력 인증이 아닙니다.",
             "병렬 구간 경계는 2일 예열만 사용하며 연간 전체의 물리 연속성은 인증하지 않습니다."])
     notify({"stage": "done", "elapsed": result.elapsed_seconds})
