@@ -1,4 +1,4 @@
-/** 원장 화면의 더미 표시 판정. 백엔드 voyage_registry.dummy_keys()와 같은 규칙을 따른다. */
+/** 원장 화면의 더미 표시 판정. 백엔드 voyage_registry.dummy_keys()와 같은 규칙(단, 빈 문자열은 값 없음으로 봄)을 따른다. */
 type Value = string | number | null | undefined;
 type DummyRow = Record<string, Value>;
 interface FieldLike {

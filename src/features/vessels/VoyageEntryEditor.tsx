@@ -363,7 +363,7 @@ export function VoyageEntryEditor({
                 · {c.action === "create" ? "추가" : "수정"}
               </summary>
               <dl>
-                {schema[c.entity].fields
+                {visibleFields(schema[c.entity].fields)
                   .filter(
                     (f) =>
                       f.key !== schema[c.entity].key &&

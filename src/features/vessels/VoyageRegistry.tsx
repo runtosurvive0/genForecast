@@ -854,27 +854,27 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                           >
                             {i === 0 ? (
                               <>
-                              <button
-                                className="vr-record-link"
-                                aria-label={`${fieldFor(key)?.reference ? referenceLabel(fieldFor(key)!.reference!, row[key]) : row[key] || row.plan_name || "번호 미정"} 상세 보기`}
-                                onClick={() =>
-                                  setSelected(String(row[spec!.key]))
-                                }
-                              >
-                                {fieldFor(key)?.reference
-                                  ? referenceLabel(
-                                      fieldFor(key)!.reference!,
-                                      row[key],
-                                    )
-                                  : display(
-                                      row[key] ||
-                                        (key === "voyage_number"
-                                          ? "번호 미정"
-                                          : null),
-                                      fieldFor(key),
-                                    )}
-                              </button>
-                              {isDummyRow(row) && <DummyBadge />}
+                                <button
+                                  className="vr-record-link"
+                                  aria-label={`${fieldFor(key)?.reference ? referenceLabel(fieldFor(key)!.reference!, row[key]) : row[key] || row.plan_name || "번호 미정"} 상세 보기`}
+                                  onClick={() =>
+                                    setSelected(String(row[spec!.key]))
+                                  }
+                                >
+                                  {fieldFor(key)?.reference
+                                    ? referenceLabel(
+                                        fieldFor(key)!.reference!,
+                                        row[key],
+                                      )
+                                    : display(
+                                        row[key] ||
+                                          (key === "voyage_number"
+                                            ? "번호 미정"
+                                            : null),
+                                        fieldFor(key),
+                                      )}
+                                </button>
+                                {isDummyRow(row) && <DummyBadge />}
                               </>
                             ) : fieldFor(key)?.reference ? (
                               referenceLabel(
@@ -1349,7 +1349,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                         {c.key}
                       </summary>
                       <dl>
-                        {schema![c.entity].fields
+                        {visibleFields(schema![c.entity].fields)
                           .filter((f) => c.before?.[f.key] !== c.after[f.key])
                           .map((f) => (
                             <div key={f.key}>
@@ -1450,7 +1450,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                         {after === null && " · 아래는 삭제 전 값입니다."}
                       </p>
                       <dl>
-                        {schema?.[a.entity]?.fields
+                        {visibleFields(schema?.[a.entity]?.fields ?? [])
                           .filter((f) =>
                             after === null
                               ? before[f.key] != null

@@ -682,3 +682,41 @@ test('변경 이력에 삭제 기록과 더미 적재가 예외 없이 보인다
   await expect(dialog.locator('details').first()).toContainText('MIXED UI COAL');
   expect(errors).toEqual([]);
 });
+
+test('변경 확인·배선 미리보기·변경 이력에 더미 구분 칸 줄이 없다', async ({ page }) => {
+  const editedBefore = { cargo_no: MIXED_CARGO, voyage_no: DUMMY_VOYAGE, coal_name: 'MIXED UI COAL', cv: 6000, sulfur_pct: 0.5, data_origin: 'dummy', dummy_fields: null };
+  const editedAfter = { ...editedBefore, cv: 6100, data_origin: 'mixed', dummy_fields: 'sulfur_pct' };
+  await serveDummyRecords(page, [
+    { id: 900003, entity: 'cargo', record_key: MIXED_CARGO, origin: 'manual', at: '2026-11-10T11:00:00', actor: 'test-admin', revision: 903,
+      before_json: JSON.stringify(editedBefore), after_json: JSON.stringify(editedAfter) },
+  ]);
+  const revision = await page.evaluate(async () => (await (await fetch('/api/voyage-registry/records')).json()).revision);
+  await page.route('**/api/voyage-registry/preview', (route) => route.fulfill({ json: {
+    revision, counts: { create: 0, update: 1 }, unchanged: 0, errors: [],
+    changes: [{ entity: 'cargo', sheet: '화물', row: 2, key: MIXED_CARGO, action: 'update', before: editedBefore, after: editedAfter }],
+  } }));
+  const noSystemRows = async (scope: ReturnType<Page['locator']>) => {
+    await expect(scope).toContainText('열량(kcal/kg)');
+    await expect(scope.getByText('더미 구분')).toHaveCount(0);
+    await expect(scope.getByText('더미 칸')).toHaveCount(0);
+  };
+  // 1) 원장 수정 대화상자의 변경 확인
+  await page.getByRole('tab', { name: /^화물 원장/ }).click();
+  await page.getByLabel('원장 검색', { exact: true }).fill('MIXED UI COAL');
+  await page.getByRole('button', { name: 'MIXED UI COAL 상세 보기', exact: true }).click();
+  await page.locator('.vr-detail').getByRole('button', { name: '수정' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '변경 내용 확인', exact: true }).click();
+  await noSystemRows(page.locator('.vr-change').first());
+  await page.getByRole('button', { name: '입력 닫기' }).click();
+  // 2) 변경 이력
+  await page.getByRole('button', { name: '최근 변경 이력', exact: true }).click();
+  const history = page.getByRole('dialog').locator('details').first();
+  await history.locator('summary').click();
+  await noSystemRows(history);
+  await page.getByRole('button', { name: '이력 닫기', exact: true }).click();
+  // 3) 배선 등록 화면의 변경 미리보기
+  await page.getByRole('tab', { name: /^배선 원장/ }).click();
+  await page.getByRole('button', { name: '배선 등록', exact: true }).click();
+  await page.getByRole('button', { name: '변경 내용 확인', exact: true }).click();
+  await noSystemRows(page.locator('.ve-workspace'));
+});
