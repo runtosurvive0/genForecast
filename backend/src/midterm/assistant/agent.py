@@ -96,6 +96,9 @@ def ask(question: str, history: list[dict], ctx: ToolContext, llm: Llm,
         bad = unverified_numbers(answer, facts)
         if not bad:
             return _result(final, facts, answer, calls)
+        remaining = TOTAL_SECONDS - (clock() - started)
+        if remaining <= 0:
+            return _result(final, facts, FALLBACK_ANSWER, calls)
         messages.append({"role": "assistant", "content": json.dumps(final, ensure_ascii=False)})
         messages.append({"role": "user", "content": f"근거 없는 숫자: {', '.join(bad)}. facts에 있는 값만 쓰세요."})
         turn = step(remaining)

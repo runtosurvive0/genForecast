@@ -75,3 +75,35 @@ def test_unknown_call_id_dropped_and_long_question_rejected(tmp_ctx):
     assert ask('q', [], tmp_ctx, FakeLlm([LlmTurn([], final('답', facts=[fact(1, 'nope')]))]))['facts'] == []
     with pytest.raises(ValueError):
         ask('가' * 1001, [], tmp_ctx, FakeLlm([]))
+
+
+class RecordingLlm(FakeLlm):
+    def __init__(self, script):
+        super().__init__(script)
+        self.timeouts = []
+
+    def step(self, system, messages, tools, final_schema, timeout_s):
+        self.timeouts.append(timeout_s)
+        return super().step(system, messages, tools, final_schema, timeout_s)
+
+
+def _bad_script():
+    bad = final('재고는 98,000 t', facts=[fact(123456, 'c1')])
+    return [LlmTurn([ToolCall('c1', 'stock_snapshot', {'at': None})], None), LlmTurn([], bad), LlmTurn([], bad)]
+
+
+def test_retry_skipped_when_time_is_up(tmp_ctx):
+    import itertools
+    ticks = itertools.chain(iter([0, 1, 2]), itertools.repeat(61))
+    llm = RecordingLlm(_bad_script())
+    out = ask('재고?', [], tmp_ctx, llm, clock=lambda: next(ticks))
+    assert len(llm.timeouts) == 2
+    assert out['answer'] == '아래 근거 표를 확인해 주세요.' and out['facts'][0]['value'] == 123456
+
+
+def test_retry_timeout_is_recomputed(tmp_ctx):
+    import itertools
+    ticks = itertools.chain(iter([0, 1, 2]), itertools.repeat(40))
+    llm = RecordingLlm(_bad_script())
+    ask('재고?', [], tmp_ctx, llm, clock=lambda: next(ticks))
+    assert len(llm.timeouts) == 3 and llm.timeouts[2] == 20
