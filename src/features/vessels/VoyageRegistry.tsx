@@ -27,6 +27,7 @@ import {
   DUMMY_ROW_TITLE,
   auditOriginLabel,
   dummyFieldKeys,
+  dummyRowTitle,
   isDummyRow,
   parseAuditRow,
   visibleFields,
@@ -161,11 +162,11 @@ function display(value: Row[string], field?: Field): string {
     ? value.toLocaleString("ko-KR", { maximumFractionDigits: 3 })
     : value;
 }
-function DummyBadge({ field = false }: { field?: boolean }) {
+function DummyBadge({ field = false, row }: { field?: boolean; row?: Row }) {
   return (
     <span
       className="vr-dummy-badge"
-      title={field ? DUMMY_FIELD_TITLE : DUMMY_ROW_TITLE}
+      title={field ? DUMMY_FIELD_TITLE : row ? dummyRowTitle(row) : DUMMY_ROW_TITLE}
     >
       더미
     </span>
@@ -874,7 +875,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                                         fieldFor(key),
                                       )}
                                 </button>
-                                {isDummyRow(row) && <DummyBadge />}
+                                {isDummyRow(row) && <DummyBadge row={row} />}
                               </>
                             ) : fieldFor(key)?.reference ? (
                               referenceLabel(
@@ -947,7 +948,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                           ? "수기 입력 · 일부 더미"
                           : "수기 입력"}{" "}
                       · {spec!.label} 원장
-                      {isDummyRow(selectedRow) && <DummyBadge />}
+                      {isDummyRow(selectedRow) && <DummyBadge row={selectedRow} />}
                     </p>
                     {(entity === "cargo" || entity === "assays") && (
                       <QualitySummary

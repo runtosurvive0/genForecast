@@ -98,6 +98,12 @@ def _is_dangjin(voyage: dict, plants: dict[str, set]) -> bool:
     return "당진" in port or "dangjin" in port or "dangjin" in plants.get(voyage["voyage_no"], set())
 
 
+def _origin(row: dict) -> dict:
+    """원장 행의 더미 구분. data_origin: entered(입력)·dummy(행 전체 더미)·mixed(dummy_fields 칸만 더미)."""
+    fields = [k.strip() for k in str(row.get("dummy_fields") or "").split(",") if k.strip()]
+    return {"data_origin": row.get("data_origin") or "entered", "dummy_fields": fields or None}
+
+
 def _list_voyages(args: dict, ctx: ToolContext) -> dict:
     try:
         book = snapshot(ctx.db_path)
@@ -123,7 +129,7 @@ def _list_voyages(args: dict, ctx: ToolContext) -> dict:
             "voyage_no": v["voyage_no"], "ship": ships.get(v.get("ship_code")), "status": v.get("status"),
             "planned_arrival": v.get("planned_arrival"), "actual_arrival": v.get("actual_arrival"),
             "actual_berth": v.get("actual_berth"), "planned_unload_end": v.get("planned_unload_end"),
-            "berth_id": v.get("berth_id"), "notes": v.get("notes"),
+            "berth_id": v.get("berth_id"), "notes": v.get("notes"), **_origin(v),
         } for v in rows[:MAX_VOYAGES]]
         data = {"voyages": voyages, "count": len(rows)}
         if len(rows) > MAX_VOYAGES:

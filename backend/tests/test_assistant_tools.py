@@ -62,6 +62,21 @@ def test_list_voyages_status_and_day_filters(tmp_registry):
     assert run_tool('list_voyages', {'status': 'weird'}, ctx(tmp_registry))['ok'] is False
 
 
+def test_list_voyages_carries_dummy_markers(tmp_registry):
+    from midterm.voyage_registry import snapshot
+    rev = snapshot(tmp_registry)['revision']
+    commit({'voyages': [{'voyage_no': 'DV-1', 'status': 'planned', 'destination_port': '당진',
+                         'planned_arrival': '2026-11-20 09:00', 'data_origin': 'dummy'},
+                        {'voyage_no': 'V1', 'ship_code': 'S1', 'status': 'planned', 'destination_port': '당진',
+                         'planned_arrival': '2026-11-10 09:00', 'planned_unload_end': '2026-11-11 09:00',
+                         'berth_id': 'BD-1', 'data_origin': 'mixed', 'dummy_fields': 'berth_id'}]},
+           rev, 'dummy-seed', 'dummy-data', tmp_registry)
+    voyages = {v['voyage_no']: v for v in run_tool('list_voyages', {}, ctx(tmp_registry))['data']['voyages']}
+    assert voyages['DV-1']['data_origin'] == 'dummy' and voyages['DV-1']['dummy_fields'] is None
+    assert voyages['V1']['data_origin'] == 'mixed' and voyages['V1']['dummy_fields'] == ['berth_id']
+    assert voyages['V2']['data_origin'] == 'entered' and voyages['V2']['dummy_fields'] is None
+
+
 def test_list_voyages_truncates_at_50(tmp_path):
     path = tmp_path / 'many.sqlite3'
     commit({'voyages': [{'voyage_no': f'M{i:03}', 'status': 'planned', 'destination_port': '당진',

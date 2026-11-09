@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   auditOriginLabel,
   dummyFieldKeys,
+  dummyRowTitle,
   isDummyRow,
   isFieldDummy,
   parseAuditRow,
@@ -25,6 +26,11 @@ test('행 배지는 data_origin이 dummy 또는 mixed일 때만 붙는다', () =
   assert.equal(isDummyRow({ data_origin: 'entered' }), false);
   assert.equal(isDummyRow({ data_origin: null }), false);
   assert.equal(isDummyRow({}), false);
+});
+
+test('행 배지 툴팁은 dummy면 생성 자료, mixed면 일부 칸 더미로 구분한다', () => {
+  assert.equal(dummyRowTitle({ data_origin: 'dummy' }), '더미 자료(공개 일반값으로 생성)');
+  assert.equal(dummyRowTitle({ data_origin: 'mixed', dummy_fields: 'cv' }), '일부 칸을 더미로 채움');
 });
 
 test('dummy 행은 키 칸과 system 칸을 뺀 값 있는 모든 칸이 더미다', () => {

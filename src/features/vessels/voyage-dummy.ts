@@ -8,6 +8,12 @@ interface FieldLike {
 
 export const DUMMY_ROW_TITLE = "더미 자료(공개 일반값으로 생성)";
 export const DUMMY_FIELD_TITLE = "빈칸을 더미로 채운 값";
+export const MIXED_ROW_TITLE = "일부 칸을 더미로 채움";
+
+/** 행 배지 툴팁: 행 전체가 더미(dummy)인지, 실제 행의 일부 칸만 더미(mixed)인지 구분한다. */
+export function dummyRowTitle(row: DummyRow): string {
+  return row.data_origin === "mixed" ? MIXED_ROW_TITLE : DUMMY_ROW_TITLE;
+}
 
 /** 행 배지: data_origin이 dummy 또는 mixed인 행. */
 export function isDummyRow(row: DummyRow): boolean {

@@ -624,6 +624,7 @@ test('원장 표와 상세에 더미 표시가 보인다', async ({ page }) => {
   await page.getByLabel('원장 검색', { exact: true }).fill('MIXED UI COAL');
   await page.getByRole('button', { name: 'MIXED UI COAL 상세 보기', exact: true }).click();
   await expect(table.locator('.vr-dummy-badge')).toHaveCount(1);
+  await expect(table.locator('.vr-dummy-badge')).toHaveAttribute('title', '일부 칸을 더미로 채움');
   const detail = page.locator('.vr-detail dl');
   const item = (label: string) => detail.locator('div').filter({ has: page.getByText(label, { exact: true }) });
   await expect(item('열량(kcal/kg)').locator('.vr-dummy-badge')).toHaveAttribute('title', '빈칸을 더미로 채운 값');
