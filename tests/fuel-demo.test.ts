@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import {
   createFuelDemoTransport,
   demoStreamUrl,
+  takeControllerToken,
 } from "../src/domain/fuel-demo/transport.ts";
 const require = createRequire(import.meta.url);
 const { createDemoServer } = require("../scripts/fuel-demo/server.cjs");
@@ -177,4 +178,47 @@ test("disconnect rejects an in-flight command without silently resending it", as
   await assert.rejects(client.command({ op: "preset" }), /연결/);
   await until(() => client.getSnapshot().status === "online");
   assert.equal(commands, 1);
+});
+
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return { getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => void values.set(k, v) };
+}
+test("controller URLs carry an encoded token only for the controller role", () => {
+  assert.equal(
+    demoStreamUrl({ protocol: "https:", host: "zgx.test" }, "controller", "a b&c"),
+    "wss://zgx.test/demo-stream?role=controller&token=a%20b%26c",
+  );
+  assert.equal(
+    demoStreamUrl({ protocol: "https:", host: "zgx.test" }, "viewer", "secret"),
+    "wss://zgx.test/demo-stream?role=viewer",
+  );
+  assert.equal(
+    demoStreamUrl({ protocol: "https:", host: "zgx.test" }, "controller", null),
+    "wss://zgx.test/demo-stream?role=controller",
+  );
+});
+test("the controller token is taken from the hash or query, kept in session storage and scrubbed from the URL", () => {
+  const storage = memoryStorage();
+  assert.deepEqual(takeControllerToken({ hash: "#demo-control?token=abc", search: "" }, storage), { token: "abc", scrubbed: "#demo-control" });
+  assert.equal(storage.getItem("gf-demo-controller-token"), "abc");
+  assert.deepEqual(takeControllerToken({ hash: "#demo-control", search: "" }, storage), { token: "abc", scrubbed: null });
+  assert.deepEqual(takeControllerToken({ hash: "#demo-control?x=1&token=new", search: "" }, storage), { token: "new", scrubbed: "#demo-control?x=1" });
+  assert.deepEqual(takeControllerToken({ hash: "#demo-control", search: "?token=q1&y=2" }, storage), { token: "q1", scrubbed: "?y=2#demo-control" });
+  assert.equal(storage.getItem("gf-demo-controller-token"), "q1");
+  assert.deepEqual(takeControllerToken({ hash: "#demo-control?token=nostore", search: "" }, null), { token: "nostore", scrubbed: "#demo-control" });
+  assert.deepEqual(takeControllerToken({ hash: "#demo-control", search: "" }, memoryStorage()), { token: null, scrubbed: null });
+});
+test("a controller transport connects to a token-protected server with the stored token", async (t) => {
+  const app = createDemoServer({ port: 0, interval: 25, controllerToken: "shared-secret" });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const controller = createFuelDemoTransport({
+    role: "controller",
+    url: () => demoStreamUrl({ protocol: "http:", host: `127.0.0.1:${port}` }, "controller", "shared-secret"),
+  });
+  t.after(() => controller.stop());
+  controller.start();
+  await until(() => controller.getSnapshot().status === "online");
+  assert.equal((await controller.command({ op: "speed", value: 60 })).ok, true);
 });

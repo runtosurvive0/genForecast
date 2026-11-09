@@ -12,5 +12,10 @@ User=puyo
 WorkingDirectory=/home/puyo/genforecast
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/puyo/miniforge3/envs/genforecast/bin/python /home/puyo/genforecast/bin/update.py deploy
-TimeoutStartSec=40min
+TimeoutStartSec=120min
+# 75: 다른 갱신이 진행 중, 76: GitHub 검사 대기 (정상 종료로 본다)
+SuccessExitStatus=75 76
+# 시험·빌드 프로세스가 키 파일을 읽지 못하게 한다(갱신기는 이 파일들이 필요 없다).
+InaccessiblePaths=-/home/puyo/.config/genforecast/backend.env
+InaccessiblePaths=-/home/puyo/.config/genforecast/demo.env
 Nice=10

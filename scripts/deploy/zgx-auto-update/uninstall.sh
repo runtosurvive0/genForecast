@@ -48,18 +48,22 @@ remove_root_file /etc/sudoers.d/genforecast
 step 5 "Tailscale에서 $DEMO_PATH 경로만 제거"
 case "$(sudo tailscale serve status --json 2>/dev/null || true)" in *"\"$DEMO_PATH\""*) has_demo=1 ;; *) has_demo=0 ;; esac
 if [ "$has_demo" = 1 ]; then
-  sudo tailscale serve --set-path "$DEMO_PATH" off
+  sudo tailscale funnel --set-path "$DEMO_PATH" off
   info "제거했습니다."
 else
   info "이미 없음"
 fi
-sudo tailscale serve status --json 2>/dev/null | "$PY" -c '
+# /와 /api, Funnel이 그대로 살아 있어야 한다.
+if ! { sudo tailscale serve status --json 2>/dev/null || echo '{}'; } | "$PY" -c '
 import json, sys
 config = json.load(sys.stdin) or {}
 paths = {p for web in (config.get("Web") or {}).values() for p in (web.get("Handlers") or {})}
 funnel = any((config.get("AllowFunnel") or {}).values())
 print("  - 남은 경로:", ", ".join(sorted(paths)) or "없음", "/ Funnel:", "켜짐" if funnel else "꺼짐")
-' || true
+sys.exit(0 if funnel and {"/", "/api"} <= paths else 1)
+'; then
+  die "Tailscale에서 / 또는 /api 경로나 Funnel이 사라졌습니다. 'sudo tailscale serve status'로 확인하고, 변경 전 설정(~/.config/genforecast/backups/tailscale-serve-before-autodeploy.json)을 참고해 복구하세요."
+fi
 
 step 6 "상태 확인"
 ok=1
@@ -73,5 +77,5 @@ done
 info "백엔드 HTTP $b, 화면 HTTP $f"
 
 trap - ERR
-printf '\n해제 완료. 데이터와 /home/puyo/genforecast(저장소·릴리스·상태·shared/runs·shared/inputs), 백업은 남겨 두었습니다.\n'
+printf '\n해제 완료. 데이터와 /home/puyo/genforecast(저장소·릴리스·상태·shared/runs·shared/inputs), 백업, demo.env는 남겨 두었습니다.\n'
 printf '자동 갱신 중 새로 생긴 실행 결과는 /home/puyo/genforecast/shared/runs에 있습니다. 옛 설치로 옮기는 방법은 docs/ZGX_AUTO_DEPLOY.md를 보세요.\n'

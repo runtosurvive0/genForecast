@@ -166,7 +166,7 @@ def test_demo_unit_allows_zgx_origin_and_keeps_privileges_dropped():
     update_unit = (DEPLOY_DIR / 'systemd/genforecast-update.service').read_text(encoding='utf-8')
     settings = [line for line in update_unit.splitlines() if not line.startswith('#')]
     assert not any(line.startswith('NoNewPrivileges') for line in settings)
-    assert 'TimeoutStartSec=40min' in settings
+    assert 'TimeoutStartSec=120min' in settings
     assert '/home/puyo/genforecast/bin/update.py deploy' in update_unit
 
 
@@ -174,12 +174,14 @@ class Steps:
     """deploy()가 부르는 부작용 단계를 기록하는 가짜."""
 
     def __init__(self, upd, monkeypatch, *, current=OLD, ready=None, prepare_error=None,
-                 health=(True,), previous_target='/base/releases/old'):
+                 health=(True,), previous_target='/base/releases/old', ci='pass'):
         self.calls = []
         self.health = list(health)
         self.current_rev = current
         self.target_path = Path(previous_target) if previous_target else None
+        self.ci = ci
         self.upd = upd
+        self.marker_seen = []
         upd.STATE.mkdir(parents=True, exist_ok=True)
 
         def prepare(sha):
@@ -190,6 +192,7 @@ class Steps:
 
         def point(path):
             self.calls.append(('point', Path(path)))
+            self.marker_seen.append((upd.STATE / 'activating').is_file())
             self.target_path = Path(path)
 
         def remove_current():
@@ -200,14 +203,20 @@ class Steps:
             self.calls.append(('health',))
             return self.health.pop(0) if self.health else True
 
+        def backup():
+            self.calls.append(('backup',))
+            return Path('/backups/auto-20261109T000000Z')
+
         replacements = {
             'update_lock': lambda: contextlib.nullcontext(True),
             'fetch_target': lambda: NEW,
+            'ci_status': lambda sha: self.ci,
             'current_revision': lambda: self.current_rev,
             'current_target': lambda: self.target_path,
             'find_ready_release': lambda sha: Path(ready) if ready else None,
             'prepare_release': prepare,
-            'backup_data': lambda: self.calls.append(('backup',)),
+            'backup_data': backup,
+            'link_shared_dirs': lambda release, sha: self.calls.append(('link_dirs',)),
             'point_current': point,
             'remove_current': remove_current,
             'restart_services': lambda: self.calls.append(('restart',)),
@@ -223,19 +232,45 @@ class Steps:
         return [call[0] for call in self.calls]
 
 
+SWITCH = ['backup', 'link_dirs', 'point', 'restart', 'health']
+
+
 def test_deploy_test_failure_never_switches_and_records_failure(upd, monkeypatch):
     steps = Steps(upd, monkeypatch, prepare_error=('종료 코드 1', '백엔드 시험'))
     assert upd.deploy() == 1
-    assert steps.names() == ['prepare']
+    assert steps.names() == ['prepare', 'prune']
     assert upd.read_state('failed') == NEW
+    result = upd.read_result()
+    assert (result['commit'], result['result'], result['step']) == (NEW, 'test_failed', '백엔드 시험')
 
 
-@pytest.mark.parametrize('step', ['git fetch', 'git archive', 'venv 생성', 'pip install', 'npm ci', '공유 데이터 연결'])
+@pytest.mark.parametrize('step', ['git archive', 'venv 생성', 'pip install', 'npm ci', '공유 데이터 연결'])
 def test_transient_prepare_failure_is_retried_next_cycle(upd, monkeypatch, step):
     steps = Steps(upd, monkeypatch, prepare_error=('네트워크 오류', step))
     assert upd.deploy() == 1
-    assert steps.names() == ['prepare']
+    assert steps.names() == ['prepare', 'prune']
     assert upd.read_state('failed') is None
+    assert upd.read_result()['result'] == 'retry_later'
+
+
+def test_transient_failures_are_capped_at_three_retries_per_commit(upd, monkeypatch):
+    Steps(upd, monkeypatch, prepare_error=('ETIMEDOUT', 'npm ci'))
+    for _ in range(3):
+        assert upd.deploy() == 1
+        assert upd.read_state('failed') is None
+    assert upd.deploy() == 1
+    assert upd.read_state('failed') == NEW
+    assert upd.read_result()['result'] == 'retry_exhausted'
+
+
+@pytest.mark.parametrize('state, sha, expected', [
+    ({}, NEW, ({'commit': NEW, 'count': 1}, False)),
+    ({'commit': NEW, 'count': 3}, NEW, ({'commit': NEW, 'count': 4}, True)),
+    ({'commit': NEW, 'count': 2}, NEW, ({'commit': NEW, 'count': 3}, False)),
+    ({'commit': OLD, 'count': 9}, NEW, ({'commit': NEW, 'count': 1}, False)),
+])
+def test_bump_retry(upd, state, sha, expected):
+    assert upd.bump_retry(state, sha) == expected
 
 
 def test_unexpected_os_error_in_prepare_is_retried(upd, monkeypatch):
@@ -260,7 +295,7 @@ def test_fetch_failure_is_not_recorded(upd, monkeypatch):
 
 
 @pytest.mark.parametrize('step, recorded', [
-    ('백엔드 시험', True), ('npm test', True), ('npm run build', True),
+    ('백엔드 시험', True), ('npm test', True), ('npm run build', True), ('pyproject', True),
     ('git fetch', False), ('git archive', False), ('pip install', False), ('npm ci', False),
     ('venv 생성', False), ('공유 데이터 연결', False), ('', False),
 ])
@@ -268,14 +303,85 @@ def test_should_record_failure(upd, step, recorded):
     assert upd.should_record_failure(step) is recorded
 
 
+def test_broken_pyproject_is_a_recorded_failure(upd):
+    with pytest.raises(upd.StepError) as caught:
+        upd.read_dependencies('[project\nname = ')
+    assert caught.value.step == 'pyproject' and upd.should_record_failure(caught.value.step)
+    with pytest.raises(upd.StepError):
+        upd.read_dependencies('[tool.x]\na = 1\n')
+
+
+def test_ci_pending_waits_without_blaming_commit(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch, ci='pending')
+    assert upd.deploy() == upd.EXIT_WAITING
+    assert steps.calls == [] and upd.read_state('failed') is None
+    assert upd.read_result()['result'] == 'waiting_ci'
+
+
+def test_ci_failure_records_commit_without_building(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch, ci='fail')
+    assert upd.deploy() == 1
+    assert steps.calls == [] and upd.read_state('failed') == NEW
+    assert upd.read_result()['result'] == 'ci_failed'
+
+
+def run(name, status='completed', conclusion='success', id=1):
+    return {'name': name, 'status': status, 'conclusion': conclusion, 'id': id}
+
+
+@pytest.mark.parametrize('runs, expected', [
+    ([run('verify'), run('backend')], 'pass'),
+    ([run('verify'), run('backend'), run('lint', conclusion='failure')], 'pass'),
+    ([run('verify')], 'pending'),
+    ([], 'pending'),
+    ([run('verify'), run('backend', status='in_progress', conclusion=None)], 'pending'),
+    ([run('verify'), run('backend', conclusion='failure')], 'fail'),
+    ([run('verify', conclusion='cancelled'), run('backend', status='queued', conclusion=None)], 'fail'),
+    ([run('verify'), run('backend', conclusion='failure', id=1), run('backend', id=2)], 'pass'),
+    ([run('verify'), run('backend', id=3, conclusion='timed_out'), run('backend', id=2)], 'fail'),
+    ([run('verify'), run('backend', conclusion='skipped')], 'pending'),
+])
+def test_ci_verdict(upd, runs, expected):
+    assert upd.ci_verdict({'total_count': len(runs), 'check_runs': runs}) == expected
+
+
+def test_ci_verdict_tolerates_garbage(upd):
+    assert upd.ci_verdict(None) == 'pending'
+    assert upd.ci_verdict({'check_runs': 'x'}) == 'pending'
+
+
+def test_ci_status_network_error_is_pending(upd, monkeypatch):
+    def boom(*args, **kwargs):
+        raise OSError('network down')
+    monkeypatch.setattr(upd, 'urlopen', boom)
+    assert upd.ci_status(NEW) == 'pending'
+
+
 def test_deploy_health_failure_rolls_back_to_previous(upd, monkeypatch):
     steps = Steps(upd, monkeypatch, health=(False, True))
     assert upd.deploy() == 1
-    assert steps.names() == ['prepare', 'backup', 'point', 'restart', 'health',
-                             'point', 'restart', 'health']
-    assert steps.calls[2][1] == upd.RELEASES / 'new'
-    assert steps.calls[5][1] == Path('/base/releases/old')
+    assert steps.names() == ['prepare', *SWITCH, 'point', 'restart', 'health', 'prune']
+    assert steps.calls[3][1] == upd.RELEASES / 'new'
+    assert steps.calls[6][1] == Path('/base/releases/old')
     assert upd.read_state('failed') == NEW
+    assert not (upd.STATE / 'activating').exists()
+    assert upd.read_result()['result'] == 'rolled_back'
+
+
+def test_activating_marker_exists_while_switching(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch)
+    assert upd.deploy() == 0
+    assert steps.marker_seen == [True]
+    assert not (upd.STATE / 'activating').exists()
+
+
+def test_rollback_health_failure_points_to_backup(upd, monkeypatch, capsys):
+    Steps(upd, monkeypatch, health=(False, False))
+    assert upd.deploy() == 1
+    result = upd.read_result()
+    assert result['result'] == 'rollback_unhealthy'
+    assert result['backup'] == str(Path('/backups/auto-20261109T000000Z'))
+    assert str(Path('/backups/auto-20261109T000000Z')) in capsys.readouterr().out
 
 
 def test_deploy_restart_error_also_rolls_back(upd, monkeypatch):
@@ -287,24 +393,28 @@ def test_deploy_restart_error_also_rolls_back(upd, monkeypatch):
             raise upd.StepError('재시작 실패')
     monkeypatch.setattr(upd, 'restart_services', broken_restart)
     assert upd.deploy() == 1
-    assert steps.names() == ['prepare', 'backup', 'point', 'restart', 'point', 'restart', 'health']
+    assert steps.names() == ['prepare', 'backup', 'link_dirs', 'point', 'restart',
+                             'point', 'restart', 'health', 'prune']
     assert upd.read_state('failed') == NEW
 
 
 def test_first_deploy_failure_without_previous_removes_current(upd, monkeypatch):
     steps = Steps(upd, monkeypatch, current=None, previous_target=None, health=(False,))
     assert upd.deploy() == 1
-    assert steps.names() == ['prepare', 'backup', 'point', 'restart', 'health', 'remove_current']
+    assert steps.names() == ['prepare', *SWITCH, 'remove_current', 'prune']
     assert upd.read_state('failed') == NEW
 
 
 def test_deploy_success_clears_failure_prunes_and_updates_itself(upd, monkeypatch):
     steps = Steps(upd, monkeypatch)
     upd.write_state('failed', OLD)
+    upd.write_json('retries.json', {'commit': NEW, 'count': 2})
     assert upd.deploy() == 0
-    assert steps.names() == ['prepare', 'backup', 'point', 'restart', 'health', 'prune', 'self_update']
+    assert steps.names() == ['prepare', *SWITCH, 'self_update', 'prune']
     assert upd.read_state('failed') is None
+    assert upd.read_json('retries.json') is None
     assert upd.read_state('previous') == str(Path('/base/releases/old'))
+    assert upd.read_result()['result'] == 'deployed'
 
 
 def test_backup_failure_aborts_before_switch_without_blaming_commit(upd, monkeypatch):
@@ -312,10 +422,22 @@ def test_backup_failure_aborts_before_switch_without_blaming_commit(upd, monkeyp
 
     def broken_backup():
         steps.calls.append(('backup',))
-        raise upd.StepError('백업 실패')
+        raise upd.StepError('백업 실패', step='백업')
     monkeypatch.setattr(upd, 'backup_data', broken_backup)
     assert upd.deploy() == 1
-    assert steps.names() == ['prepare', 'backup']
+    assert steps.names() == ['prepare', 'backup', 'prune']
+    assert upd.read_state('failed') is None
+
+
+def test_shared_dir_link_failure_aborts_before_switch(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch)
+
+    def broken_link(release, sha):
+        steps.calls.append(('link_dirs',))
+        raise upd.StepError('폴더 충돌', step='공유 데이터 연결')
+    monkeypatch.setattr(upd, 'link_shared_dirs', broken_link)
+    assert upd.deploy() == 1
+    assert steps.names() == ['prepare', 'backup', 'link_dirs', 'prune']
     assert upd.read_state('failed') is None
 
 
@@ -328,20 +450,52 @@ def test_deploy_skips_same_and_failed_commits(upd, monkeypatch):
     assert upd.deploy(retry=True) == 0 and steps.names()[0] == 'prepare'
 
 
-def test_no_switch_prepares_only_and_prepared_release_is_reused(upd, monkeypatch):
+def test_no_switch_prepares_only_without_touching_shared_dirs(upd, monkeypatch):
     steps = Steps(upd, monkeypatch)
     assert upd.deploy(no_switch=True) == 0
-    assert steps.names() == ['prepare']
+    assert steps.names() == ['prepare', 'prune']
+    assert upd.read_result()['result'] == 'prepared'
     steps = Steps(upd, monkeypatch, ready='/base/releases/ready')
     assert upd.deploy() == 0
-    assert steps.names() == ['backup', 'point', 'restart', 'health', 'prune', 'self_update']
-    assert steps.calls[1][1] == Path('/base/releases/ready')
+    assert steps.names() == [*SWITCH, 'self_update', 'prune']
+    assert steps.calls[2][1] == Path('/base/releases/ready')
 
 
-def test_busy_lock_exits_quietly(upd, monkeypatch):
+def test_busy_lock_exits_with_75(upd, monkeypatch):
     steps = Steps(upd, monkeypatch)
     monkeypatch.setattr(upd, 'update_lock', lambda: contextlib.nullcontext(False))
-    assert upd.deploy() == 0 and steps.calls == []
+    assert upd.deploy() == 75 and steps.calls == []
+    assert upd.EXIT_LOCKED == 75
+
+
+def test_interrupted_switch_unhealthy_is_rolled_back_first(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch, current=NEW, previous_target='/base/releases/new', health=(False, True))
+    upd.write_json('activating', {'previous': '/base/releases/old', 'target': '/base/releases/new',
+                                  'commit': NEW, 'at': '2026-11-09T00:00:00Z'})
+    assert upd.deploy() == 1
+    assert steps.names() == ['health', 'point', 'restart', 'health', 'prune']
+    assert steps.calls[1][1] == Path('/base/releases/old')
+    assert upd.read_state('failed') == NEW
+    assert not (upd.STATE / 'activating').exists()
+    assert upd.read_result()['result'] == 'recovered_interrupted'
+
+
+def test_interrupted_switch_without_previous_removes_current(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch, current=NEW, health=(False,))
+    upd.write_json('activating', {'previous': None, 'target': '/base/releases/new', 'commit': NEW, 'at': 'x'})
+    assert upd.deploy() == 1
+    assert steps.names() == ['health', 'remove_current', 'prune']
+    assert upd.read_state('failed') == NEW
+
+
+def test_interrupted_switch_healthy_is_accepted_and_run_continues(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch, current=NEW)
+    upd.write_json('activating', {'previous': '/base/releases/old', 'target': '/base/releases/new',
+                                  'commit': NEW, 'at': 'x'})
+    assert upd.deploy() == 0
+    assert steps.names() == ['health']
+    assert not (upd.STATE / 'activating').exists()
+    assert upd.read_state('failed') is None
 
 
 def test_manual_rollback_restores_previous_and_blocks_redeploy(upd, monkeypatch, tmp_path):
@@ -354,12 +508,78 @@ def test_manual_rollback_restores_previous_and_blocks_redeploy(upd, monkeypatch,
     assert steps.calls[0][1] == old
     assert upd.read_state('failed') == NEW
     assert upd.read_state('previous') == str(tmp_path / 'releases/new')
+    assert upd.read_result()['result'] == 'manual_rollback'
 
 
 def test_manual_rollback_without_previous_fails_safely(upd, monkeypatch):
     steps = Steps(upd, monkeypatch)
     assert upd.rollback() == 1
     assert steps.calls == []
+
+
+@pytest.mark.parametrize('statuses, ok, warnings', [
+    ({'백엔드': 401, '화면': 200, '데모': 200}, True, []),
+    ({'백엔드': 401, '화면': 200, '데모': None}, True, ['데모']),
+    ({'백엔드': 502, '화면': 200, '데모': 200}, False, []),
+    ({'백엔드': 401, '화면': 503, '데모': None}, False, ['데모']),
+])
+def test_judge_health_only_backend_and_frontend_decide(upd, statuses, ok, warnings):
+    assert upd.judge_health(statuses) == (ok, warnings)
+
+
+def test_wait_healthy_needs_two_consecutive_passes(upd, monkeypatch):
+    answers = iter([True, False, True, True])
+    sleeps = []
+    monkeypatch.setattr(upd, 'check_health_once', lambda: next(answers))
+    monkeypatch.setattr(upd.time, 'sleep', lambda s: sleeps.append(s))
+    assert upd.wait_healthy(wait=600) is True
+    assert sleeps.count(upd.HEALTH_CONFIRM_GAP) == 2
+
+
+def test_wait_healthy_gives_up_after_deadline(upd, monkeypatch):
+    clock = iter(range(0, 10000, 5))
+    monkeypatch.setattr(upd.time, 'monotonic', lambda: next(clock))
+    monkeypatch.setattr(upd.time, 'sleep', lambda s: None)
+    monkeypatch.setattr(upd, 'check_health_once', lambda: False)
+    assert upd.wait_healthy(wait=60) is False
+
+
+def test_step_timeouts_fit_inside_service_timeout(upd):
+    assert upd.worst_case_seconds() <= 100 * 60
+    unit = (DEPLOY_DIR / 'systemd/genforecast-update.service').read_text(encoding='utf-8')
+    assert 'TimeoutStartSec=120min' in unit.splitlines()
+
+
+def test_update_unit_hides_key_files_and_accepts_wait_codes():
+    lines = (DEPLOY_DIR / 'systemd/genforecast-update.service').read_text(encoding='utf-8').splitlines()
+    assert 'InaccessiblePaths=-/home/puyo/.config/genforecast/backend.env' in lines
+    assert 'InaccessiblePaths=-/home/puyo/.config/genforecast/demo.env' in lines
+    assert 'SuccessExitStatus=75 76' in lines
+    timer = (DEPLOY_DIR / 'systemd/genforecast-update.timer').read_text(encoding='utf-8')
+    assert 'Persistent' not in timer
+    demo = (DEPLOY_DIR / 'systemd/genforecast-demo.service').read_text(encoding='utf-8').splitlines()
+    assert 'EnvironmentFile=-/home/puyo/.config/genforecast/demo.env' in demo
+
+
+def test_prepare_installs_all_dependencies_before_tests(upd, monkeypatch):
+    order = []
+    monkeypatch.setattr(upd, 'extract', lambda sha, dest: (order.append('extract'), dest.mkdir(parents=True)))
+    monkeypatch.setattr(upd, 'ensure_python_deps', lambda release: order.append('python_deps'))
+    monkeypatch.setattr(upd, 'install_frontend', lambda dest: order.append('npm_ci'))
+    monkeypatch.setattr(upd, 'run_backend_tests', lambda sha, name, python: order.append('pytest'))
+    monkeypatch.setattr(upd, 'build_frontend', lambda dest: order.append('frontend'))
+    monkeypatch.setattr(upd, 'link_shared_data', lambda dest, sha: order.append('link_data'))
+    release = upd.prepare_release(NEW)
+    assert order == ['extract', 'python_deps', 'npm_ci', 'pytest', 'frontend', 'link_data']
+    assert (release / '.ready').is_file()
+
+
+def test_status_prints_last_result(upd, monkeypatch, capsys):
+    monkeypatch.setattr(upd, 'git', lambda *a, **k: NEW + '\n')
+    upd.write_result(NEW, 'deployed', step='', message='반영 완료')
+    assert upd.status() == 0
+    out = capsys.readouterr().out
+    assert 'deployed' in out and NEW[:10] in out
 
 
 def symlinks_supported(tmp_path):
@@ -527,3 +747,47 @@ def test_dropins_run_services_from_current_release_venv():
         lines = [line for line in (DEPLOY_DIR / 'systemd' / name).read_text(encoding='utf-8').splitlines()
                  if line.startswith('ExecStart')]
         assert lines == ['ExecStart=', f'ExecStart={command}'], name
+
+
+def test_seed_shared_runs_only_once(upd, tmp_path):
+    old = tmp_path / 'old/backend'
+    (old / 'runs/a').mkdir(parents=True)
+    (old / 'runs/a/summary.json').write_text('a')
+    assert upd.seed_shared(old) == 0
+    (old / 'runs/b').mkdir()
+    (old / 'runs/b/summary.json').write_text('b')
+    assert upd.seed_shared(old) == 0
+    assert (upd.SHARED_STATE / 'runs/a/summary.json').is_file()
+    assert not (upd.SHARED_STATE / 'runs/b').exists()
+    assert (upd.SHARED_STATE / '.seeded').is_file()
+
+
+def test_self_update_reverts_when_new_updater_cannot_run_status(upd, tmp_path):
+    release = tmp_path / 'rel'
+    source = release / upd.UPDATER_IN_REPO
+    source.parent.mkdir(parents=True)
+    upd.BIN.mkdir(parents=True)
+    (upd.BIN / 'update.py').write_text('print("v1")\n')
+    source.write_text('import sys\nsys.exit(3)\n')
+    upd.self_update(release)
+    assert (upd.BIN / 'update.py').read_text() == 'print("v1")\n'
+    source.write_text('print("v2")\n')
+    upd.self_update(release)
+    assert (upd.BIN / 'update.py').read_text() == 'print("v2")\n'
+    assert (upd.BIN / 'update.py.prev').read_text() == 'print("v1")\n'
+
+
+def test_node_modules_of_not_yet_activated_releases_are_kept(upd):
+    names = ['20261101T000000Z-1', '20261102T000000Z-2', '20261103T000000Z-3']
+    assert upd.select_node_modules_prune(names, current='20261102T000000Z-2', previous=None) == ['20261101T000000Z-1']
+    assert upd.select_node_modules_prune(names, current=None, previous=None) == []
+
+
+def test_successful_retry_clears_failure_record(upd, monkeypatch):
+    Steps(upd, monkeypatch)
+    upd.write_state('failed', NEW)
+    upd.write_json('retries.json', {'commit': NEW, 'count': 4})
+    assert upd.deploy(no_switch=True, retry=True) == 0
+    assert upd.read_state('failed') is None
+    assert upd.read_json('retries.json') is None
+    assert upd.deploy() == 0  # 실패 기록이 없으니 준비된 릴리스로 진행한다(가짜 단계에서는 다시 prepare)

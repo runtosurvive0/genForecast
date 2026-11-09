@@ -5,7 +5,6 @@ Description=GenForecast ZGX auto-update timer
 [Timer]
 OnBootSec=3min
 OnUnitActiveSec=5min
-Persistent=true
 Unit=genforecast-update.service
 
 [Install]
