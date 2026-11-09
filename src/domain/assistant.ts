@@ -60,22 +60,34 @@ export function formatAsOf(iso: string): string {
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 
-// 서버 전체 제한(60초)보다 약간 길게 둔다. 호출자가 signal을 주면 그것을 쓴다.
+// 서버 전체 제한(60초)보다 약간 길게 둔다. 호출자 signal이 있어도 이 제한은 함께 적용한다.
 const CLIENT_TIMEOUT_MS = 65000;
+const TIMEOUT_MESSAGE = '응답이 늦어 질문을 멈췄습니다. 잠시 후 다시 시도해 주세요.';
 
-export async function askAssistant(question: string, history: AssistantTurn[], signal?: AbortSignal): Promise<AssistantAnswer> {
-  // 로그인 세션·CSRF 헤더는 installAuthenticatedFetch가 감싼 전역 fetch가 붙인다.
-  const response = await fetch('/api/assistant/ask', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, history }),
-    signal: signal ?? AbortSignal.timeout(CLIENT_TIMEOUT_MS),
-  });
-  const value = await response.json().catch(() => null);
-  if (response.status === 429) throw new Error('잠시 후 다시 질문해 주세요.');
-  if (!response.ok) {
-    const detail = isObject(value) && isStr(value.detail) && value.detail ? value.detail : '';
-    throw new Error(detail || `도우미 응답 실패 (${response.status})`);
+export async function askAssistant(
+  question: string, history: AssistantTurn[], signal?: AbortSignal, timeoutMs: number = CLIENT_TIMEOUT_MS,
+): Promise<AssistantAnswer> {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  try {
+    // 로그인 세션·CSRF 헤더는 installAuthenticatedFetch가 감싼 전역 fetch가 붙인다.
+    const response = await fetch('/api/assistant/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, history }),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
+    const value = await response.json().catch((e: unknown) => {
+      if (timeout.aborted || signal?.aborted) throw e;
+      return null;
+    });
+    if (response.status === 429) throw new Error('잠시 후 다시 질문해 주세요.');
+    if (!response.ok) {
+      const detail = isObject(value) && isStr(value.detail) && value.detail ? value.detail : '';
+      throw new Error(detail || `도우미 응답 실패 (${response.status})`);
+    }
+    return parseAnswer(value);
+  } catch (error) {
+    if (timeout.aborted && !signal?.aborted) throw new Error(TIMEOUT_MESSAGE);
+    throw error;
   }
-  return parseAnswer(value);
 }
