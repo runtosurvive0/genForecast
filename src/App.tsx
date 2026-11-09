@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -9,6 +9,7 @@ import {
   Check,
   ChevronRight,
   CircleHelp,
+  MessageCircleQuestion,
   Clock3,
   Factory,
   Fuel,
@@ -28,6 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AssistantPanel } from "@/features/assistant/AssistantPanel";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -217,6 +219,14 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
   } | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const assistantButtonRef = useRef<HTMLButtonElement>(null);
+  const assistantWasOpen = useRef(false);
+  useEffect(() => {
+    if (assistantWasOpen.current && !assistantOpen) assistantButtonRef.current?.focus();
+    assistantWasOpen.current = assistantOpen;
+  }, [assistantOpen]);
+  const closeAssistant = useCallback(() => setAssistantOpen(false), []);
   const [scheduleFilter, setScheduleFilter] = useState("all");
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
   const selectedPlants = useMemo(
@@ -569,6 +579,16 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
               {theme === "light" ? <Moon /> : <Sun />}
             </Button>
             <Button
+              ref={assistantButtonRef}
+              variant="ghost"
+              aria-label="운영 질문하기"
+              aria-expanded={assistantOpen}
+              onClick={() => setAssistantOpen(o => !o)}
+            >
+              <MessageCircleQuestion />
+              <span className="gf-asst-open-label">질문하기</span>
+            </Button>
+            <Button
               variant="ghost"
               size="icon"
               className="notification-button"
@@ -582,6 +602,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
             <AccountControls />
           </div>
         </header>
+        <AssistantPanel open={assistantOpen} onClose={closeAssistant} />
         <aside className="sidebar">
           <nav aria-label="주 메뉴">{nav}</nav>
         </aside>

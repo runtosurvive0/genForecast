@@ -1,0 +1,12 @@
+{"id": "q01_upcoming", "question": "앞으로 7일 안에 당진항에 입항할 예정인 선박을 알려 줘.", "expect_tools": ["list_voyages"], "expect_gap": false, "numeric": []}
+{"id": "q02_voyage_status", "question": "가장 먼저 입항할 예정인 항차의 현재 상태와 계획 입항일을 알려 줘.", "expect_tools": ["list_voyages"], "expect_gap": false, "numeric": []}
+{"id": "q03_waiting", "question": "지금 당진항 밖에서 대기 중인 선박이 있어?", "expect_tools": ["waiting_vessels"], "expect_gap": false, "numeric": []}
+{"id": "q04_stock_groups", "question": "저탄장 그룹별 현재 재고와 재고일수를 알려 줘.", "expect_tools": ["stock_snapshot"], "expect_gap": false, "numeric": [{"label_contains": "재고", "min": 0, "max": 100000000}]}
+{"id": "q05_plan_burn", "question": "오늘 발전계획상 연료 사용량은 호기별로 얼마야?", "expect_tools": ["plan_for_day"], "expect_gap": false, "numeric": []}
+{"id": "q06_unknown_vessel", "question": "MMSI 999999999 선박의 현재 위치와 입항 예정일을 알려 줘.", "expect_tools": [], "expect_gap": true, "numeric": []}
+{"id": "q07_delay", "question": "첫 번째 입항 예정 선박이 3일 늦게 도착하면 30일 전망에서 그룹별 최소 재고일수가 어떻게 달라져?", "expect_tools": ["simulate_scenario"], "expect_gap": false, "numeric": []}
+{"id": "q08_load_down", "question": "다음 주 전체 부하가 20% 줄면 30일 재고 전망은 어떻게 바뀌어?", "expect_tools": ["simulate_scenario"], "expect_gap": false, "numeric": []}
+{"id": "q09_load_up", "question": "내일부터 3일간 부하가 15% 늘어나면 7일 재고 전망은 어떻게 돼?", "expect_tools": ["simulate_scenario"], "expect_gap": false, "numeric": []}
+{"id": "q10_delay_load", "question": "첫 번째 입항 예정 선박이 2일 늦고 같은 기간 부하가 10% 늘면 30일 최소 재고일수는 어떻게 돼?", "expect_tools": ["simulate_scenario"], "expect_gap": false, "numeric": []}
+{"id": "q11_outage", "question": "하역 부두 설비가 이틀 동안 정지하면 재고 전망은 어떻게 돼?", "expect_tools": [], "expect_gap": true, "numeric": []}
+{"id": "q12_strategy", "question": "상탄 전략을 저열량탄 우선으로 바꾸면 재고일수가 어떻게 달라져?", "expect_tools": [], "expect_gap": true, "numeric": []}

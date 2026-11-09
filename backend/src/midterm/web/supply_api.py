@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -277,11 +278,30 @@ def forecast(start: str, days: int = Query(default=67, ge=14, le=90)):
     return model_forecast(scenario)
 
 
+class DashboardInputError(ValueError):
+    """대시보드 요청 입력(전망 기간) 오류."""
+
+
+class PlanNotFound(LookupError):
+    """선택한 발전계획이 없음."""
+
+
 @router.get("/dashboard")
 def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key: str | None = None):
+    as_of = parse_at(at) if at and horizon in (7, 30, 60, 90) else None
+    try:
+        return build_dashboard(horizon, as_of, plan_key)
+    except DashboardInputError as exc:
+        raise HTTPException(400, str(exc))
+    except PlanNotFound as exc:
+        raise HTTPException(404, str(exc))
+
+
+def build_dashboard(horizon: int, at: datetime | None, plan_key: str | None,
+                    adjust: Callable[[dict, dict], tuple[dict, dict]] | None = None) -> dict:
     if horizon not in (7, 30, 60, 90):
-        raise HTTPException(400, "전망 기간은 7일, 30일, 60일, 90일 중 선택하세요")
-    as_of = parse_at(at) if at else now()
+        raise DashboardInputError("전망 기간은 7일, 30일, 60일, 90일 중 선택하세요")
+    as_of = at or now()
     data = read_supply()
     plans = []
     for path in sorted((ROOT / "runs").glob("*/summary.json"), reverse=True):
@@ -302,7 +322,7 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
         (p for p in plans if p["start"] <= as_of.date().isoformat() <= p["end"]), None)
     plan, model_rows, source = {}, [], None
     if plan_key and not chosen:
-        raise HTTPException(404, "선택한 발전계획이 없습니다")
+        raise PlanNotFound("선택한 발전계획이 없습니다")
     if chosen:
         if chosen["key"].startswith("mip:"):
             plan, model_rows, source = run_plan(chosen["key"][4:])
@@ -313,6 +333,8 @@ def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key:
     selected_run = chosen["key"][4:] if chosen and chosen["key"].startswith("mip:") else None
     data["baselines"] = [b for b in data["baselines"] if b.get("run_id") is None or b.get("run_id") == selected_run]
     data["vessels"] = [v for v in data["vessels"] if v.get("run_id") is None or v.get("run_id") == selected_run]
+    if adjust:
+        data, plan = adjust(data, plan)
     reference = (source or {}).get('input_reference')
     from midterm.fleet import load_coal_units
     master = {u.name: u for u in load_coal_units(rows=reference['coal_units']) if u.is_dangjin} if reference else None
