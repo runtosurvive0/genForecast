@@ -150,4 +150,144 @@ def test_rule_exception_goes_to_errors(db, monkeypatch):
     monkeypatch.setitem(checks._RULES, 'blend', boom)
     result = run_checks('blend', {}, ctx_for(db))
     assert result['items'] == []
-    assert result['errors'] == ['상탄·혼탄 점검 실패: boom']
+    assert result['errors'] == ['상탄·혼탄 점검 실패: 내부 오류(서버 로그 확인)']
+
+
+def test_rule_value_error_message_is_kept(db, monkeypatch):
+    def bad(params, ctx):
+        raise ValueError('저장된 입력 세트가 없습니다')
+    monkeypatch.setitem(checks._RULES, 'blend', bad)
+    result = run_checks('blend', {}, ctx_for(db))
+    assert result['errors'] == ['상탄·혼탄 점검 실패: 저장된 입력 세트가 없습니다']
+
+
+def test_rule_os_error_path_not_in_response(db, monkeypatch):
+    def bad(params, ctx):
+        raise OSError(2, 'unable to open database file', 'X:/secret/path/db.sqlite3')
+    monkeypatch.setitem(checks._RULES, 'blend', bad)
+    result = run_checks('blend', {}, ctx_for(db))
+    assert 'secret' not in repr(result) and 'sqlite3' not in repr(result)
+    assert result['errors'][0].startswith('상탄·혼탄 점검 실패:')
+
+
+def test_blend_same_label_lots_both_kept(db):
+    row = {'location': LOCS[0], 'coal_name': 'A', 'tonnes': 100, 'voyage_number': '26-1-001', 'grade': '고열량'}
+    build(db, [('s1', 'A', 100, {'assay': FULL})], baseline_lots=[row, dict(row)])
+    lots = run_checks('blend', {}, ctx_for(db))['details']['lots']
+    assert len(lots) == 2
+
+
+# ---- simulation / planning_input / forecast / scenario ----
+from midterm import milp_store  # noqa: E402
+from midterm.web import planning_api  # noqa: E402
+
+PRICES_OK = {'U1': [100.0] * 12, 'U2': [100.0] * 12}
+
+
+class FakeUnit:
+    def __init__(self, name):
+        self.name = name
+
+
+def stub_input(monkeypatch, scenario=None, prices=None, units=('U1', 'U2'), reference=None):
+    scen = {'name': 'x', 'start': '2027-01-01', 'end': '2027-12-31', 'coal_oh': [{'unit': 'U1'}]}
+    scen.update(scenario or {})
+    payload = {'scenario': scen, 'heat_prices': PRICES_OK if prices is None else prices}
+    if reference:
+        payload['input_reference'] = reference
+    monkeypatch.setattr(milp_store, 'list_inputs', lambda path=None: [{'id': 7, 'name': 'x'}, {'id': 3, 'name': 'y'}])
+    monkeypatch.setattr(milp_store, 'get_input', lambda i, path=None: {'id': i, 'payload': payload})
+    monkeypatch.setattr(checks, 'load_coal_units', lambda rows=None: [FakeUnit(n) for n in
+                        ([r['name'] for r in rows] if rows else units)])
+
+
+def test_simulation_no_run(db, monkeypatch):
+    monkeypatch.setattr(milp_store, 'stored_runs', lambda path=None: [{'id': 'r1', 'state': 'error'}])
+    got = run_checks('simulation', {}, ctx_for(db))
+    assert [i['id'] for i in got['items']] == ['simulation.no_run']
+    assert got['items'][0]['kind'] == 'missing'
+    assert got['items'][0]['action'] == {'page': 'data', 'label': '전망 입력·계산 열기'}
+
+
+def test_simulation_issues_mapped(db, monkeypatch):
+    seen = []
+    monkeypatch.setattr(milp_store, 'stored_runs', lambda path=None: [
+        {'id': 'new', 'state': 'done'}, {'id': 'old', 'state': 'done'}])
+
+    def snap(run_id, start, horizon):
+        seen.append((run_id, start, horizon))
+        return {'issues': ['수기 기준재고 미등록', '기준시각 경과 · 3일']}
+    monkeypatch.setattr(planning_api, 'snapshot', snap)
+    got = run_checks('simulation', {}, ctx_for(db))
+    items = by_id(got)
+    assert seen == [('new', None, 30)]
+    assert items['simulation.issue.0']['kind'] == 'missing'
+    assert items['simulation.issue.1']['kind'] == 'stale'
+    assert all(i['targets'] == [] and i['count'] == 1 for i in got['items'])
+    assert got['errors'] == []
+
+
+def test_simulation_unknown_run(db, monkeypatch):
+    monkeypatch.setattr(milp_store, 'stored_runs', lambda path=None: [{'id': 'r1', 'state': 'done'}])
+
+    def snap(run_id, start, horizon):
+        raise ValueError('실행 없음')
+    monkeypatch.setattr(planning_api, 'snapshot', snap)
+    got = run_checks('simulation', {'run_id': 'gone'}, ctx_for(db))
+    assert got['items'] == []
+    assert got['errors'][0].startswith('통합 시뮬레이션 점검 실패:')
+
+
+def test_planning_input_price_missing(db, monkeypatch):
+    stub_input(monkeypatch, prices={'U1': [100.0] * 11 + [0.0]})
+    got = by_id(run_checks('planning_input', {'input_id': 7}, ctx_for(db)))['planning_input.price_missing']
+    assert got['kind'] == 'missing'
+    labels = {t['label']: t['reason'] for t in got['targets']}
+    assert set(labels) == {'U1', 'U2'}
+    assert '12월' in labels['U1']
+
+
+def test_planning_input_price_uses_reference_units(db, monkeypatch):
+    stub_input(monkeypatch, prices={'R1': [1.0] * 12}, reference={'coal_units': [{'name': 'R1'}]})
+    got = by_id(run_checks('planning_input', {}, ctx_for(db)))
+    assert 'planning_input.price_missing' not in got
+
+
+def test_planning_input_no_maintenance(db, monkeypatch):
+    stub_input(monkeypatch, scenario={'coal_oh': []})
+    got = by_id(run_checks('planning_input', {}, ctx_for(db)))['planning_input.no_maintenance']
+    assert '무정비 확정을 의미하지 않습니다' in got['detail']
+
+
+def test_planning_input_price_estimated(db, monkeypatch):
+    stub_input(monkeypatch, scenario={'start': '2026-11-10', 'end': '2027-02-07'})
+    got = by_id(run_checks('planning_input', {}, ctx_for(db)))['planning_input.price_estimated']
+    assert got['kind'] == 'stale'
+    assert [t['label'] for t in got['targets']] == ['2026-11', '2026-12']
+    stub_input(monkeypatch)
+    assert 'planning_input.price_estimated' not in by_id(run_checks('planning_input', {}, ctx_for(db)))
+
+
+def test_planning_input_none_saved(db, monkeypatch):
+    monkeypatch.setattr(milp_store, 'list_inputs', lambda path=None: [])
+    got = run_checks('planning_input', {}, ctx_for(db))
+    assert [i['id'] for i in got['items']] == ['planning_input.no_input']
+
+
+def test_forecast_sample_inputs(db):
+    got = by_id(run_checks('forecast', {'live': ['stock']}, ctx_for(db)))['forecast.sample_inputs']
+    assert got['kind'] == 'sample'
+    assert [t['label'] for t in got['targets']] == ['하역 잔량', '호기 출력']
+    assert run_checks('forecast', {'live': ['stock', 'ships', 'units']}, ctx_for(db))['items'] == []
+
+
+def test_forecast_unknown_live_name(db):
+    with pytest.raises(ValueError):
+        run_checks('forecast', {'live': ['x']}, ctx_for(db))
+
+
+def test_scenario_sample_all(db):
+    got = run_checks('scenario', {}, ctx_for(db))
+    assert [i['id'] for i in got['items']] == ['scenario.sample_all']
+    assert got['items'][0]['title'] == '이 화면은 표본 자료로 계산합니다'
+    assert got['items'][0]['kind'] == 'sample'

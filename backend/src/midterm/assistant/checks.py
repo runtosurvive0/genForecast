@@ -1,9 +1,13 @@
 """Read-only screen checks: what the open screen is missing, faking, sampling or has gone stale on."""
+import logging
 from datetime import date
 
-from midterm import stock_baseline, voyage_registry
+from midterm import milp_store, stock_baseline, voyage_registry
 from midterm.baseline_quality import QUALITY_FIELDS, match_lot_quality
+from midterm.fleet import load_coal_units
 from midterm.supply import KST
+
+logger = logging.getLogger(__name__)
 
 SCREENS = ('blend', 'forecast', 'simulation', 'planning_input', 'scenario')
 SCREEN_LABELS = {'blend': '상탄·혼탄', 'forecast': '수급 예측', 'simulation': '통합 시뮬레이션',
@@ -11,6 +15,8 @@ SCREEN_LABELS = {'blend': '상탄·혼탄', 'forecast': '수급 예측', 'simula
 BASELINE_STALE_DAYS = 3
 MAX_TARGETS = 20
 KIND_ORDER = {'missing': 0, 'stale': 1, 'dummy': 2, 'sample': 3}
+ESTIMATED_PRICE_MONTHS = ('2026-11', '2026-12')
+LIVE_INPUTS = {'stock': '저탄장 재고', 'ships': '하역 잔량', 'units': '호기 출력'}
 FIELD_REASONS = {'gcv_arb': '발열량 없음', 'tm_ar': '총수분 없음', 'sulfur_ar': '황분 없음'}
 
 
@@ -63,7 +69,12 @@ def _blend(params, ctx):
         if not text:
             grade_unknown.append({'label': label, 'reason': '고열량·저열량 구분 없음'})
         a = assay or {}
-        details[row.get('source_id') or label] = {
+        key = row.get('source_id') or label
+        n = 1
+        while key in details:
+            n += 1
+            key = f"{row.get('source_id') or label} ({n})"
+        details[key] = {
             'grade': text[:1] if text[:1] in ('고', '저') else None,
             'gcv_arb': a.get('gcv_arb'), 'sulfur_ar': a.get('sulfur_ar'), 'tm_ar': a.get('tm_ar'),
             'dummy': used_dummy, 'reason': ', '.join(reasons) or None}
@@ -88,22 +99,109 @@ def _blend(params, ctx):
     return [i for i in items if i], {'lots': details}
 
 
-def _no_rules(params, ctx):
-    return [], None
+def _simulation(params, ctx):
+    from midterm.web import planning_api
+    run_id = params.get('run_id')
+    if not run_id:
+        done = [r for r in milp_store.stored_runs(ctx.db_path) if r.get('state') == 'done']
+        if not done:
+            item = _item('simulation.no_run', 'missing', '완료된 계산이 없습니다',
+                         '통합 시뮬레이션이 읽을 완료된 계산이 없습니다.',
+                         action={'page': 'data', 'label': '전망 입력·계산 열기'}, count=1)
+            return [item], None
+        run_id = done[0]['id']
+    issues = planning_api.snapshot(run_id, None, 30)['issues']
+    items = []
+    for n, text in enumerate(issues):
+        kind = 'stale' if ('경과' in text or 'stale' in text.lower()) else 'missing'
+        items.append(_item(f'simulation.issue.{n}', kind, text, '선택한 계산 결과를 읽으며 확인된 사항입니다.', count=1))
+    return items, None
 
 
-_RULES = {'blend': _blend, 'forecast': _no_rules, 'simulation': _no_rules,
-          'planning_input': _no_rules, 'scenario': _no_rules}
+def _planning_input(params, ctx):
+    input_id = params.get('input_id')
+    if input_id is None:
+        saved = milp_store.list_inputs(ctx.db_path)
+        if not saved:
+            item = _item('planning_input.no_input', 'missing', '저장된 전망 입력이 없습니다',
+                         '저장된 입력 세트가 없어 점검할 내용이 없습니다.',
+                         action={'page': 'data', 'label': '전망 입력·계산 열기'}, count=1)
+            return [item], None
+        input_id = saved[0]['id']
+    payload = milp_store.get_input(input_id, ctx.db_path)['payload']
+    scenario = payload.get('scenario') or {}
+    reference = payload.get('input_reference')
+    units = load_coal_units(rows=reference['coal_units']) if reference else load_coal_units()
+    prices = payload.get('heat_prices') or {}
+    bad = []
+    for unit in sorted(u.name for u in units):
+        values = prices.get(unit)
+        if not values:
+            bad.append({'label': unit, 'reason': '열량단가 없음'})
+            continue
+        months = [f'{m}월' for m, v in enumerate(values, 1) if not isinstance(v, (int, float)) or not v > 0]
+        if months:
+            bad.append({'label': unit, 'reason': ', '.join(months) + ' 단가 없음 또는 0 이하'})
+    action = {'page': 'data', 'label': '전망 입력·계산 열기'}
+    items = [_grouped('planning_input.price_missing', 'missing', '열량단가가 빠진 호기',
+                      '호기별 1~12월 열량단가는 양수여야 계산할 수 있습니다.', bad, action)]
+    if not scenario.get('coal_oh'):
+        items.append(_item('planning_input.no_maintenance', 'missing', '등록된 석탄 정비 일정이 없습니다',
+                           '등록된 정비 일정이 없다는 뜻이며, 무정비 확정을 의미하지 않습니다.', action=action, count=1))
+    first, last = str(scenario.get('start', ''))[:7], str(scenario.get('end', ''))[:7]
+    months = [m for m in ESTIMATED_PRICE_MONTHS if first <= m <= last]
+    if months:
+        items.append(_item('planning_input.price_estimated', 'stale', '추정 단가를 쓰는 달이 계산 기간에 있습니다',
+                           '이 달들의 열량단가는 확정 전 추정 값입니다.',
+                           [{'label': m, 'reason': '추정 단가'} for m in months], action))
+    return [i for i in items if i], None
+
+
+def _forecast(params, ctx):
+    live = params.get('live') or []
+    sample = [{'label': name, 'reason': '표본 자료 사용'} for key, name in LIVE_INPUTS.items() if key not in live]
+    if not sample:
+        return [], None
+    return [_item('forecast.sample_inputs', 'sample', f'표본 자료로 계산하는 입력 {len(sample)}건',
+                  '실제 수신 자료가 연결되지 않은 입력은 표본 값으로 계산합니다.', sample)], None
+
+
+def _scenario(params, ctx):
+    return [_item('scenario.sample_all', 'sample', '이 화면은 표본 자료로 계산합니다',
+                  '시나리오 분석은 표본 자료 기준이며 운영 실제 값이 아닙니다.', count=1)], None
+
+
+_RULES = {'blend': _blend, 'forecast': _forecast, 'simulation': _simulation,
+          'planning_input': _planning_input, 'scenario': _scenario}
+
+
+def _validate(screen, params):
+    if screen not in SCREENS:
+        raise ValueError(f'알 수 없는 화면: {screen}')
+    if screen == 'forecast':
+        live = params.get('live') or []
+        if not isinstance(live, (list, tuple)) or any(n not in LIVE_INPUTS for n in live):
+            raise ValueError('알 수 없는 live 입력 이름: 허용 값은 ' + ', '.join(LIVE_INPUTS))
+
+
+def _reason(exc):
+    if isinstance(exc, ValueError):
+        return str(exc)
+    detail = getattr(exc, 'detail', None)  # fastapi HTTPException messages are ours
+    if isinstance(detail, str):
+        return detail
+    return '내부 오류(서버 로그 확인)'
 
 
 def run_checks(screen, params, ctx):
-    if screen not in SCREENS:
-        raise ValueError(f'알 수 없는 화면: {screen}')
+    params = params or {}
+    _validate(screen, params)
     result = {'screen': screen, 'as_of': ctx.now.astimezone(KST).isoformat(), 'items': [], 'errors': []}
     try:
-        items, details = _RULES[screen](params or {}, ctx)
+        items, details = _RULES[screen](params, ctx)
     except Exception as exc:  # a failing rule is reported, never turned into an item
-        result['errors'].append(f'{SCREEN_LABELS[screen]} 점검 실패: {exc}')
+        logger.exception('screen check failed: %s', screen)
+        result['errors'].append(f'{SCREEN_LABELS[screen]} 점검 실패: {_reason(exc)}')
         return result
     result['items'] = sort_items(items)
     if details is not None:
