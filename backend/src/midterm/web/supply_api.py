@@ -278,21 +278,29 @@ def forecast(start: str, days: int = Query(default=67, ge=14, le=90)):
     return model_forecast(scenario)
 
 
+class DashboardInputError(ValueError):
+    """대시보드 요청 입력(전망 기간) 오류."""
+
+
+class PlanNotFound(LookupError):
+    """선택한 발전계획이 없음."""
+
+
 @router.get("/dashboard")
 def dashboard(horizon: int = Query(default=30), at: str | None = None, plan_key: str | None = None):
     as_of = parse_at(at) if at and horizon in (7, 30, 60, 90) else None
     try:
         return build_dashboard(horizon, as_of, plan_key)
-    except ValueError as exc:
+    except DashboardInputError as exc:
         raise HTTPException(400, str(exc))
-    except LookupError as exc:
+    except PlanNotFound as exc:
         raise HTTPException(404, str(exc))
 
 
 def build_dashboard(horizon: int, at: datetime | None, plan_key: str | None,
                     adjust: Callable[[dict, dict], tuple[dict, dict]] | None = None) -> dict:
     if horizon not in (7, 30, 60, 90):
-        raise ValueError("전망 기간은 7일, 30일, 60일, 90일 중 선택하세요")
+        raise DashboardInputError("전망 기간은 7일, 30일, 60일, 90일 중 선택하세요")
     as_of = at or now()
     data = read_supply()
     plans = []
@@ -314,7 +322,7 @@ def build_dashboard(horizon: int, at: datetime | None, plan_key: str | None,
         (p for p in plans if p["start"] <= as_of.date().isoformat() <= p["end"]), None)
     plan, model_rows, source = {}, [], None
     if plan_key and not chosen:
-        raise LookupError("선택한 발전계획이 없습니다")
+        raise PlanNotFound("선택한 발전계획이 없습니다")
     if chosen:
         if chosen["key"].startswith("mip:"):
             plan, model_rows, source = run_plan(chosen["key"][4:])

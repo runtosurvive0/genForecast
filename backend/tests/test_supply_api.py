@@ -273,6 +273,22 @@ def test_build_dashboard_matches_route_and_applies_adjust(client):
         build_dashboard(7, at, 'db:999999')
 
 
+def test_dashboard_route_maps_only_input_errors_to_4xx(client, monkeypatch):
+    at, key = seed_baselines_and_plan(client)
+    bad = client.get('/api/supply/dashboard', params={'horizon': 5, 'at': at.isoformat(), 'plan_key': key})
+    assert bad.status_code == 400
+    assert bad.json()['detail'] == '전망 기간은 7일, 30일, 60일, 90일 중 선택하세요'
+    missing = client.get('/api/supply/dashboard', params={'horizon': 7, 'at': at.isoformat(), 'plan_key': 'db:999999'})
+    assert missing.status_code == 404
+    assert missing.json()['detail'] == '선택한 발전계획이 없습니다'
+
+    def boom(*args, **kwargs):
+        raise KeyError('internal')
+    monkeypatch.setattr(supply_api, 'simulate', boom)
+    with pytest.raises(KeyError):  # 내부 오류는 4xx로 바뀌지 않고 그대로 전파(서버에서는 500)
+        supply_api.dashboard(horizon=7, at=at.isoformat(), plan_key=key)
+
+
 def test_local_mip_adapter_preserves_source_period_and_national_curve():
     from midterm.supply_plans import run_plan
     from midterm.scenario import ROOT
