@@ -247,3 +247,23 @@ def test_pile_receipt_and_blend_api_use_shared_inventory_and_confirmed_assay(tmp
         assert result.json()['reconciliations'][0]['actor'] == member['id']
         assert result.json()['reconciliations'][0]['actor_name'] == 'Member'
         assert client.post(base + '/inventory/reconcile', json=correction).status_code == 422
+
+
+def test_api_commit_still_rejects_dummy_origin(tmp_path):
+    store = AccessStore(tmp_path / 'auth.sqlite3')
+    store.init_admin('admin', 'Admin', PASSWORD)
+    app = FastAPI()
+    app.state.voyage_registry_path = tmp_path / 'registry.sqlite3'
+    app.include_router(router)
+    install_access(app, store, {'http://testserver'}, secure=False)
+    changes = records()
+    changes['voyages'][0].update(data_origin='dummy', dummy_fields='status')
+    changes['cargo'][0].update(data_origin='dummy')
+    with TestClient(app, headers={'Origin': 'http://testserver'}) as client:
+        login(client)
+        response = client.post('/api/voyage-registry/commit', json={'changes': changes, 'revision': 0})
+        assert response.status_code == 200
+        saved = response.json()
+    assert {a['origin'] for a in saved['audit']} == {'manual'}
+    assert {r['data_origin'] for r in saved['voyages'] + saved['cargo']} == {'entered'}
+    assert saved['voyages'][0]['dummy_fields'] is None

@@ -6,6 +6,46 @@ from datetime import date, datetime, timezone
 from midterm.database import connect
 from midterm.stock_inventory import LOCATIONS
 
+DUMMY_ACTOR = 'dummy-seed'
+LOT_KEY = ('source_id', 'location', 'coal_name', 'voyage_number')
+
+
+def lot_key(lot):
+    return tuple(lot.get(k) for k in LOT_KEY)
+
+
+def dummy_names(lot):
+    return {k.strip() for k in str(lot.get('dummy_fields') or '').split(',') if k.strip()}
+
+
+def unique_lots(lots):
+    """Lots by lot_key, plus the keys that occur more than once (those cannot be matched)."""
+    by_key, twins = {}, set()
+    for lot in lots:
+        key = lot_key(lot)
+        if key in by_key:
+            twins.add(key)
+        by_key[key] = lot
+    return {k: v for k, v in by_key.items() if k not in twins}, twins
+
+
+def _keep_human_edits(db, day, clean):
+    """A person may only keep or shrink the dummy marks of the previous baseline, never add to them.
+
+    A marked field whose value changed is a human value and loses its mark. Unmatchable lots lose all marks."""
+    row = (db.execute('SELECT payload FROM yard_baselines WHERE as_of=? ORDER BY revision DESC LIMIT 1', (day,)).fetchone()
+           or db.execute('SELECT payload FROM yard_baselines ORDER BY revision DESC LIMIT 1').fetchone())
+    previous, old_twins = unique_lots(json.loads(row['payload']) if row else [])
+    _, new_twins = unique_lots(clean)
+    for lot in clean:
+        key = lot_key(lot)
+        old = previous.get(key) if key not in new_twins | old_twins else None
+        names = {n for n in dummy_names(lot) & dummy_names(old or {}) if lot.get(n) == old.get(n)} if old else set()
+        if names:
+            lot['dummy_fields'] = ','.join(sorted(names))
+        else:
+            lot.pop('dummy_fields', None)
+
 
 def _init(db):
     db.executescript('''
@@ -45,7 +85,7 @@ def save_baseline(value, revision, actor, path):
     rows = value['lots']
     if not isinstance(rows, list) or not rows or len(rows) > 1000:
         raise ValueError('적치 내역을 확인하세요')
-    allowed = {'source_id', 'location', 'coal_name', 'tonnes', 'voyage_number', 'grade', 'age_days', 'start_m', 'end_m'}
+    allowed = {'source_id', 'location', 'coal_name', 'tonnes', 'voyage_number', 'grade', 'age_days', 'start_m', 'end_m', 'temperature_c', 'dummy_fields'}
     clean = []
     for row in rows:
         if not isinstance(row, dict) or set(row) - allowed or row.get('location') not in LOCATIONS:
@@ -59,6 +99,11 @@ def save_baseline(value, revision, actor, path):
             item = row.get(key)
             if item is not None and (isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item) or item < 0):
                 raise ValueError('적치 이력과 위치를 확인하세요')
+        temp = row.get('temperature_c')
+        if temp is not None and (isinstance(temp, bool) or not isinstance(temp, (int, float)) or not math.isfinite(temp) or not 0 <= temp <= 150):
+            raise ValueError('더미 표시와 온도를 확인하세요')
+        if row.get('dummy_fields') is not None and (not isinstance(row['dummy_fields'], str) or len(row['dummy_fields']) > 200):
+            raise ValueError('더미 표시와 온도를 확인하세요')
         if row.get('start_m') is not None and row.get('end_m') is not None and row['start_m'] > row['end_m']:
             raise ValueError('적치 구간의 시작과 끝을 확인하세요')
         if any(row.get(key) is not None and (not isinstance(row[key], str) or len(row[key]) > 100) for key in ('source_id', 'voyage_number', 'grade')):
@@ -70,6 +115,8 @@ def save_baseline(value, revision, actor, path):
         current = db.execute('SELECT revision FROM yard_baseline_meta WHERE id=1').fetchone()[0]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision != current:
             raise ValueError('재고 현황이 변경되었습니다. 다시 불러오세요')
+        if actor != DUMMY_ACTOR:
+            _keep_human_edits(db, day.isoformat(), clean)
         next_rev = current + 1
         db.execute('INSERT INTO yard_baselines(revision,as_of,actor,recorded_at,payload) VALUES(?,?,?,?,?)',
                    (next_rev, day.isoformat(), actor, datetime.now(timezone.utc).isoformat(), json.dumps(clean, ensure_ascii=False)))

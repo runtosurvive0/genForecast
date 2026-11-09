@@ -1,0 +1,1606 @@
+{
+  "classification": "dummy",
+  "note": "공개 자료 기반 일반값. 사내·계약 자료 아님. 등급 경계와 탄종 등급은 국내 발전사 수입 범위 공개 조사(korea-import-ranges)를 우선하고, 나머지 성상은 탄종별 공개 성상 조사(coal-specs)를 출발점으로 함. 원소·공업분석 합계는 생성 단계에서 맞춤.",
+  "classes": {
+    "high_cv": {
+      "gcv_arb_min": 5700,
+      "gcv_arb_max": 6500,
+      "sulfur_ar_max": 0.8,
+      "source": "https://koreascience.kr/article/JAKO201334460142117.pdf (범위탄 하한 5,700·수입탄 상한 6,500 GAR); https://www.petromindo.com/news/article/coal-tender-ewp-coal-2010-sp06 (고열 입찰 황분 상한 0.8)"
+    },
+    "low_cv": {
+      "gcv_arb_min": 3700,
+      "gcv_arb_max": 5349,
+      "sulfur_ar_max": 1.0,
+      "source": "https://koreascience.kr/article/JAKO201334460142117.pdf (저급탄 5,350 GAR 미만); https://www.petromindo.com/news/tag/coal-tender (초저열량 하한 3,700); https://www.petromindo.com/news/article/coal-tender-ewp-coal-2010-sp06 (저열 입찰 황분 상한 1.0)"
+    }
+  },
+  "coals": {
+    "AVRA": {
+      "origin": "인도네시아 칼리만탄 저품위 아역청탄(추정, ABM 계열 탄 판매사)",
+      "grade": "Indonesian 4200 GAR급(추정)",
+      "class": "low_cv",
+      "anthracite": false,
+      "confidence": "추정",
+      "sources": [
+        "https://coalspot.com/news/2328/indonesian-companies-abm-investama-and-avra-asia-work-out-long/936",
+        "https://www.idxchannel.com/economics/tentukan-harga-acuan-pemerintah-bagi-batu-bara-jadi-empat-kategori/all"
+      ],
+      "note": "korea-import-ranges 분류(저열, GAR 약 4,200)를 따름. coal-specs의 러시아 고열탄 가정은 폐기하고 HBA II(4,100 GAR)·LXI·Adaro 동반 성상에 맞춰 TM·회분·황분·휘발분·원소분석을 다시 정함. 등급 수치 공개 근거 없음.",
+      "fields": {
+        "gcv_arb": {
+          "typ": 4200,
+          "min": 4000,
+          "max": 4400
+        },
+        "tm_ar": {
+          "typ": 35.0,
+          "min": 32.0,
+          "max": 38.0
+        },
+        "im_adb": {
+          "typ": 18.0,
+          "min": 15.0,
+          "max": 21.0
+        },
+        "vm_adb": {
+          "typ": 39.0,
+          "min": 36.0,
+          "max": 42.0
+        },
+        "ash_adb": {
+          "typ": 4.5,
+          "min": 3.5,
+          "max": 6.0
+        },
+        "fc_adb": {
+          "typ": 38.5,
+          "min": 35.0,
+          "max": 42.0
+        },
+        "sulfur_ar": {
+          "typ": 0.25,
+          "min": 0.18,
+          "max": 0.35
+        },
+        "c_db": {
+          "typ": 68.0,
+          "min": 66.0,
+          "max": 70.0
+        },
+        "h_db": {
+          "typ": 4.9,
+          "min": 4.5,
+          "max": 5.3
+        },
+        "n_db": {
+          "typ": 0.9,
+          "min": 0.7,
+          "max": 1.1
+        },
+        "o_db": {
+          "typ": 20.3,
+          "min": 17.0,
+          "max": 24.0
+        },
+        "s_db": {
+          "typ": 0.39,
+          "min": 0.28,
+          "max": 0.51
+        },
+        "hgi": {
+          "typ": 58,
+          "min": 52,
+          "max": 65
+        },
+        "csn": {
+          "typ": 0,
+          "min": 0,
+          "max": 1
+        },
+        "fusion_it": {
+          "typ": 1130,
+          "min": 1080,
+          "max": 1180
+        },
+        "fusion_st": {
+          "typ": 1170,
+          "min": 1120,
+          "max": 1220
+        },
+        "fusion_ht": {
+          "typ": 1200,
+          "min": 1150,
+          "max": 1250
+        },
+        "fusion_ft": {
+          "typ": 1240,
+          "min": 1190,
+          "max": 1290
+        },
+        "chlorine_db_ppm": {
+          "typ": 200,
+          "min": 120,
+          "max": 300
+        },
+        "sio2": {
+          "typ": 35,
+          "min": 29.75,
+          "max": 40.25
+        },
+        "al2o3": {
+          "typ": 15,
+          "min": 12.75,
+          "max": 17.25
+        },
+        "fe2o3": {
+          "typ": 13,
+          "min": 11.05,
+          "max": 14.95
+        },
+        "cao": {
+          "typ": 15,
+          "min": 12.75,
+          "max": 17.25
+        },
+        "mgo": {
+          "typ": 6.5,
+          "min": 5.52,
+          "max": 7.47
+        },
+        "na2o": {
+          "typ": 1.2,
+          "min": 1.02,
+          "max": 1.38
+        },
+        "k2o": {
+          "typ": 0.9,
+          "min": 0.77,
+          "max": 1.03
+        },
+        "so3": {
+          "typ": 10,
+          "min": 8.5,
+          "max": 11.5
+        },
+        "tio2": {
+          "typ": 0.8,
+          "min": 0.68,
+          "max": 0.92
+        },
+        "ash_other": {
+          "typ": 2.6,
+          "min": 2.21,
+          "max": 2.99
+        }
+      }
+    },
+    "MERCURIA": {
+      "origin": "인도네시아 중저열량 아역청탄(추정, 트레이더 공급)",
+      "grade": "Indonesian 4600 GAR급(추정)",
+      "class": "low_cv",
+      "anthracite": false,
+      "confidence": "추정",
+      "sources": [
+        "https://www.idxchannel.com/economics/tentukan-harga-acuan-pemerintah-bagi-batu-bara-jadi-empat-kategori/all",
+        "https://koreascience.kr/article/JAKO201717241626689.pdf"
+      ],
+      "note": "트레이더라 원산지·등급이 계약마다 다름. korea-import-ranges 가정(저열, GAR 약 4,600)을 따르고 저열량 동반 성상(TM 20~40, 회분 2~10, 황분 0.1~0.8)과 인니 ICI 4,600 NAR 수준을 참고해 따로 정함. KCH(Arutmin)과 값이 겹치지 않음. 공개 근거 없음.",
+      "fields": {
+        "gcv_arb": {
+          "typ": 4600,
+          "min": 4400,
+          "max": 4800
+        },
+        "tm_ar": {
+          "typ": 30.0,
+          "min": 27.0,
+          "max": 33.0
+        },
+        "im_adb": {
+          "typ": 15.0,
+          "min": 12.5,
+          "max": 17.5
+        },
+        "vm_adb": {
+          "typ": 40.0,
+          "min": 37.0,
+          "max": 43.0
+        },
+        "ash_adb": {
+          "typ": 6.0,
+          "min": 4.5,
+          "max": 7.5
+        },
+        "fc_adb": {
+          "typ": 39.0,
+          "min": 36.0,
+          "max": 42.0
+        },
+        "sulfur_ar": {
+          "typ": 0.35,
+          "min": 0.25,
+          "max": 0.5
+        },
+        "c_db": {
+          "typ": 69.5,
+          "min": 67.5,
+          "max": 71.5
+        },
+        "h_db": {
+          "typ": 5.0,
+          "min": 4.6,
+          "max": 5.4
+        },
+        "n_db": {
+          "typ": 1.0,
+          "min": 0.8,
+          "max": 1.2
+        },
+        "o_db": {
+          "typ": 16.9,
+          "min": 13.5,
+          "max": 20.3
+        },
+        "s_db": {
+          "typ": 0.5,
+          "min": 0.36,
+          "max": 0.68
+        },
+        "hgi": {
+          "typ": 54,
+          "min": 48,
+          "max": 60
+        },
+        "csn": {
+          "typ": 0,
+          "min": 0,
+          "max": 1
+        },
+        "fusion_it": {
+          "typ": 1160,
+          "min": 1110,
+          "max": 1210
+        },
+        "fusion_st": {
+          "typ": 1210,
+          "min": 1160,
+          "max": 1260
+        },
+        "fusion_ht": {
+          "typ": 1240,
+          "min": 1190,
+          "max": 1290
+        },
+        "fusion_ft": {
+          "typ": 1290,
+          "min": 1240,
+          "max": 1340
+        },
+        "chlorine_db_ppm": {
+          "typ": 250,
+          "min": 150,
+          "max": 350
+        },
+        "sio2": {
+          "typ": 40,
+          "min": 34.0,
+          "max": 46.0
+        },
+        "al2o3": {
+          "typ": 17,
+          "min": 14.45,
+          "max": 19.55
+        },
+        "fe2o3": {
+          "typ": 12,
+          "min": 10.2,
+          "max": 13.8
+        },
+        "cao": {
+          "typ": 12,
+          "min": 10.2,
+          "max": 13.8
+        },
+        "mgo": {
+          "typ": 5.5,
+          "min": 4.67,
+          "max": 6.32
+        },
+        "na2o": {
+          "typ": 1.4,
+          "min": 1.19,
+          "max": 1.61
+        },
+        "k2o": {
+          "typ": 1.0,
+          "min": 0.85,
+          "max": 1.15
+        },
+        "so3": {
+          "typ": 8,
+          "min": 6.8,
+          "max": 9.2
+        },
+        "tio2": {
+          "typ": 0.8,
+          "min": 0.68,
+          "max": 0.92
+        },
+        "ash_other": {
+          "typ": 2.3,
+          "min": 1.95,
+          "max": 2.64
+        }
+      }
+    },
+    "Flame": {
+      "origin": "남아프리카공화국 역청탄(논문 표기 'Flame(SA)')",
+      "grade": "6200 GAR급 역청탄",
+      "class": "high_cv",
+      "anthracite": false,
+      "confidence": "추정",
+      "sources": [
+        "https://koreascience.kr/article/JAKO201334460142117.pdf"
+      ],
+      "note": "korea-import-ranges 분류(고열, GAR 약 6,200; JAKO201334460142117 Table 10 'Flame(SA)' 6,212)를 따름. coal-specs의 인니 5,000 GAR 가정은 폐기하고 고열 역청탄(TM 8~15, 회분 7~17, 황분 0.8 이하)에 맞춰 공업·원소분석을 다시 정함. 다른 공개 자료는 Flame탄을 아역청탄 계열로 기술해 상충이 있음(트레이더가 여러 등급 공급 추정). 발열량 외 성상은 추정. 근거는 발열량 표 하나뿐이라 confidence는 추정.",
+      "fields": {
+        "gcv_arb": {
+          "typ": 6200,
+          "min": 5950,
+          "max": 6450
+        },
+        "tm_ar": {
+          "typ": 10.0,
+          "min": 8.0,
+          "max": 12.5
+        },
+        "im_adb": {
+          "typ": 3.5,
+          "min": 2.5,
+          "max": 5.0
+        },
+        "vm_adb": {
+          "typ": 28.0,
+          "min": 24.0,
+          "max": 32.0
+        },
+        "ash_adb": {
+          "typ": 14.5,
+          "min": 12.0,
+          "max": 17.0
+        },
+        "fc_adb": {
+          "typ": 54.0,
+          "min": 50.0,
+          "max": 58.0
+        },
+        "sulfur_ar": {
+          "typ": 0.6,
+          "min": 0.45,
+          "max": 0.8
+        },
+        "c_db": {
+          "typ": 71.5,
+          "min": 69.8,
+          "max": 72.8
+        },
+        "h_db": {
+          "typ": 4.3,
+          "min": 3.9,
+          "max": 4.7
+        },
+        "n_db": {
+          "typ": 1.7,
+          "min": 1.4,
+          "max": 2.0
+        },
+        "o_db": {
+          "typ": 6.8,
+          "min": 5.5,
+          "max": 8.5
+        },
+        "s_db": {
+          "typ": 0.67,
+          "min": 0.5,
+          "max": 0.86
+        },
+        "hgi": {
+          "typ": 52,
+          "min": 46,
+          "max": 60
+        },
+        "csn": {
+          "typ": 2,
+          "min": 1,
+          "max": 4
+        },
+        "fusion_it": {
+          "typ": 1350,
+          "min": 1300,
+          "max": 1400
+        },
+        "fusion_st": {
+          "typ": 1420,
+          "min": 1370,
+          "max": 1470
+        },
+        "fusion_ht": {
+          "typ": 1450,
+          "min": 1400,
+          "max": 1500
+        },
+        "fusion_ft": {
+          "typ": 1490,
+          "min": 1440,
+          "max": 1540
+        },
+        "chlorine_db_ppm": {
+          "typ": 150,
+          "min": 80,
+          "max": 250
+        },
+        "sio2": {
+          "typ": 50,
+          "min": 42.5,
+          "max": 57.5
+        },
+        "al2o3": {
+          "typ": 28,
+          "min": 23.8,
+          "max": 32.2
+        },
+        "fe2o3": {
+          "typ": 5,
+          "min": 4.25,
+          "max": 5.75
+        },
+        "cao": {
+          "typ": 7,
+          "min": 5.95,
+          "max": 8.05
+        },
+        "mgo": {
+          "typ": 2,
+          "min": 1.7,
+          "max": 2.3
+        },
+        "na2o": {
+          "typ": 0.4,
+          "min": 0.34,
+          "max": 0.46
+        },
+        "k2o": {
+          "typ": 0.7,
+          "min": 0.59,
+          "max": 0.8
+        },
+        "so3": {
+          "typ": 4,
+          "min": 3.4,
+          "max": 4.6
+        },
+        "tio2": {
+          "typ": 1.5,
+          "min": 1.27,
+          "max": 1.72
+        },
+        "ash_other": {
+          "typ": 1.4,
+          "min": 1.19,
+          "max": 1.61
+        }
+      }
+    },
+    "Glencore": {
+      "origin": "호주 뉴캐슬 일반탄(NEWC)",
+      "grade": "NEWC 6000 NAR급 (GAR 약 6300)",
+      "class": "high_cv",
+      "anthracite": false,
+      "confidence": "근거있음",
+      "sources": [
+        "https://www.spglobal.com/energy/en/pricing-benchmarks/our-methodology/subscriber-notes/051717-platts-proposes-new-fob-newcastle-5500-nar-max-23-ash-price-series",
+        "https://koreascience.kr/article/JAKO201334460142117.pdf"
+      ],
+      "note": "korea-import-ranges 분류(고열, GAR 약 6,300, NEWC 6000 NAR 수준)와 coal-specs 값이 일치. gcv_arb max만 고열 등급 상한 6,500으로 줄임. 세부 성상은 NEWC 일반값(추정 포함).",
+      "fields": {
+        "gcv_arb": {
+          "typ": 6300,
+          "min": 6050,
+          "max": 6500
+        },
+        "tm_ar": {
+          "typ": 9.0,
+          "min": 7.9,
+          "max": 10.1
+        },
+        "im_adb": {
+          "typ": 3.0,
+          "min": 2.5,
+          "max": 3.4
+        },
+        "vm_adb": {
+          "typ": 28.5,
+          "min": 26.2,
+          "max": 30.8
+        },
+        "ash_adb": {
+          "typ": 14.5,
+          "min": 11.6,
+          "max": 17.4
+        },
+        "fc_adb": {
+          "typ": 54.0,
+          "min": 49.7,
+          "max": 58.3
+        },
+        "sulfur_ar": {
+          "typ": 0.52,
+          "min": 0.39,
+          "max": 0.64
+        },
+        "c_db": {
+          "typ": 74.0,
+          "min": 73.2,
+          "max": 74.9
+        },
+        "h_db": {
+          "typ": 4.5,
+          "min": 4.1,
+          "max": 4.9
+        },
+        "n_db": {
+          "typ": 1.7,
+          "min": 1.4,
+          "max": 2.0
+        },
+        "o_db": {
+          "typ": 4.3,
+          "min": 3.4,
+          "max": 5.1
+        },
+        "s_db": {
+          "typ": 0.57,
+          "min": 0.43,
+          "max": 0.69
+        },
+        "hgi": {
+          "typ": 50,
+          "min": 44,
+          "max": 56
+        },
+        "csn": {
+          "typ": 5,
+          "min": 4,
+          "max": 6
+        },
+        "fusion_it": {
+          "typ": 1380,
+          "min": 1325,
+          "max": 1435
+        },
+        "fusion_st": {
+          "typ": 1450,
+          "min": 1392,
+          "max": 1508
+        },
+        "fusion_ht": {
+          "typ": 1480,
+          "min": 1421,
+          "max": 1539
+        },
+        "fusion_ft": {
+          "typ": 1520,
+          "min": 1459,
+          "max": 1581
+        },
+        "chlorine_db_ppm": {
+          "typ": 300,
+          "min": 180,
+          "max": 420
+        },
+        "sio2": {
+          "typ": 60.0,
+          "min": 51.0,
+          "max": 69.0
+        },
+        "al2o3": {
+          "typ": 27.0,
+          "min": 22.9,
+          "max": 31.0
+        },
+        "fe2o3": {
+          "typ": 4.5,
+          "min": 3.8,
+          "max": 5.2
+        },
+        "cao": {
+          "typ": 2.0,
+          "min": 1.7,
+          "max": 2.3
+        },
+        "mgo": {
+          "typ": 1.0,
+          "min": 0.8,
+          "max": 1.1
+        },
+        "na2o": {
+          "typ": 0.5,
+          "min": 0.4,
+          "max": 0.6
+        },
+        "k2o": {
+          "typ": 1.0,
+          "min": 0.8,
+          "max": 1.1
+        },
+        "so3": {
+          "typ": 0.8,
+          "min": 0.7,
+          "max": 0.9
+        },
+        "tio2": {
+          "typ": 1.3,
+          "min": 1.1,
+          "max": 1.5
+        },
+        "ash_other": {
+          "typ": 1.9,
+          "min": 1.5,
+          "max": 2.3
+        }
+      }
+    },
+    "Glencore(무연탄)": {
+      "origin": "무연탄(러시아/베트남계 추정)",
+      "grade": "무연탄(Anthracite) 6400~6500 GAR급(추정)",
+      "class": "high_cv",
+      "anthracite": true,
+      "confidence": "추정",
+      "sources": [
+        "https://thuanhai.com.vn/news/market-news/vietnam-coal-overview-and-outstanding-features.html"
+      ],
+      "note": "무연탄: 고정탄소가 높고 휘발분이 10% 미만이라 일반 혼탄(역청·아역청) 대상과 연소 성격이 다름. 혼탄 계산에 그대로 섞지 말 것. korea-import-ranges 가정 GAR 6,800(추정, 공개 근거 없음)은 고열 등급 상한 6,500을 넘으므로 등급 범위 안인 6,450으로 두고 회분을 16%로 올려 발열량과 맞춤. HGI는 coal-specs 70 대신 무연탄 일반값(분쇄가 어려움, 35~55 수준)인 45로 둠(추정).",
+      "fields": {
+        "gcv_arb": {
+          "typ": 6450,
+          "min": 6250,
+          "max": 6500
+        },
+        "tm_ar": {
+          "typ": 7.0,
+          "min": 6.0,
+          "max": 8.5
+        },
+        "im_adb": {
+          "typ": 2.0,
+          "min": 1.5,
+          "max": 2.5
+        },
+        "vm_adb": {
+          "typ": 6.0,
+          "min": 5.0,
+          "max": 7.5
+        },
+        "ash_adb": {
+          "typ": 16.0,
+          "min": 13.5,
+          "max": 18.5
+        },
+        "fc_adb": {
+          "typ": 76.0,
+          "min": 72.0,
+          "max": 80.0
+        },
+        "sulfur_ar": {
+          "typ": 0.47,
+          "min": 0.36,
+          "max": 0.59
+        },
+        "c_db": {
+          "typ": 77.5,
+          "min": 76.9,
+          "max": 78.1
+        },
+        "h_db": {
+          "typ": 2.2,
+          "min": 2.0,
+          "max": 2.5
+        },
+        "n_db": {
+          "typ": 0.9,
+          "min": 0.7,
+          "max": 1.1
+        },
+        "o_db": {
+          "typ": 2.6,
+          "min": 2.0,
+          "max": 3.2
+        },
+        "s_db": {
+          "typ": 0.51,
+          "min": 0.38,
+          "max": 0.62
+        },
+        "hgi": {
+          "typ": 45,
+          "min": 35,
+          "max": 55
+        },
+        "csn": {
+          "typ": 0,
+          "min": 0,
+          "max": 1
+        },
+        "fusion_it": {
+          "typ": 1400,
+          "min": 1344,
+          "max": 1456
+        },
+        "fusion_st": {
+          "typ": 1480,
+          "min": 1421,
+          "max": 1539
+        },
+        "fusion_ht": {
+          "typ": 1510,
+          "min": 1450,
+          "max": 1570
+        },
+        "fusion_ft": {
+          "typ": 1550,
+          "min": 1488,
+          "max": 1612
+        },
+        "chlorine_db_ppm": {
+          "typ": 100,
+          "min": 60,
+          "max": 140
+        },
+        "sio2": {
+          "typ": 55.0,
+          "min": 46.8,
+          "max": 63.2
+        },
+        "al2o3": {
+          "typ": 28.0,
+          "min": 23.8,
+          "max": 32.2
+        },
+        "fe2o3": {
+          "typ": 6.0,
+          "min": 5.1,
+          "max": 6.9
+        },
+        "cao": {
+          "typ": 3.0,
+          "min": 2.5,
+          "max": 3.4
+        },
+        "mgo": {
+          "typ": 1.5,
+          "min": 1.3,
+          "max": 1.7
+        },
+        "na2o": {
+          "typ": 0.5,
+          "min": 0.4,
+          "max": 0.6
+        },
+        "k2o": {
+          "typ": 2.5,
+          "min": 2.1,
+          "max": 2.9
+        },
+        "so3": {
+          "typ": 0.7,
+          "min": 0.6,
+          "max": 0.8
+        },
+        "tio2": {
+          "typ": 1.2,
+          "min": 1.0,
+          "max": 1.4
+        },
+        "ash_other": {
+          "typ": 1.6,
+          "min": 1.3,
+          "max": 1.9
+        }
+      }
+    },
+    "Centennial": {
+      "origin": "호주 NSW (Mandalong/Angus Place 등)",
+      "grade": "NSW 저유황 일반탄 6200 GAR급(추정)",
+      "class": "high_cv",
+      "anthracite": false,
+      "confidence": "추정",
+      "sources": [
+        "https://www.gem.wiki/Angus_Place_Coal_Mine"
+      ],
+      "note": "korea-import-ranges 가정(고열, GAR 약 6,200, 추정)을 따름. coal-specs 5,900에서 올리면서 회분 16.5→14.0, 탄소 72→73.5로 맞춤. 열량 수치 공개 근거 없음.",
+      "fields": {
+        "gcv_arb": {
+          "typ": 6200,
+          "min": 5950,
+          "max": 6450
+        },
+        "tm_ar": {
+          "typ": 10.0,
+          "min": 8.8,
+          "max": 11.2
+        },
+        "im_adb": {
+          "typ": 3.5,
+          "min": 3.0,
+          "max": 4.0
+        },
+        "vm_adb": {
+          "typ": 30.0,
+          "min": 27.6,
+          "max": 32.4
+        },
+        "ash_adb": {
+          "typ": 14.0,
+          "min": 11.5,
+          "max": 16.5
+        },
+        "fc_adb": {
+          "typ": 52.5,
+          "min": 48.5,
+          "max": 56.5
+        },
+        "sulfur_ar": {
+          "typ": 0.42,
+          "min": 0.31,
+          "max": 0.52
+        },
+        "c_db": {
+          "typ": 73.5,
+          "min": 72.4,
+          "max": 74.6
+        },
+        "h_db": {
+          "typ": 4.5,
+          "min": 4.1,
+          "max": 4.9
+        },
+        "n_db": {
+          "typ": 1.5,
+          "min": 1.3,
+          "max": 1.7
+        },
+        "o_db": {
+          "typ": 5.5,
+          "min": 4.4,
+          "max": 6.6
+        },
+        "s_db": {
+          "typ": 0.47,
+          "min": 0.35,
+          "max": 0.57
+        },
+        "hgi": {
+          "typ": 48,
+          "min": 42,
+          "max": 54
+        },
+        "csn": {
+          "typ": 4,
+          "min": 3,
+          "max": 5
+        },
+        "fusion_it": {
+          "typ": 1400,
+          "min": 1344,
+          "max": 1456
+        },
+        "fusion_st": {
+          "typ": 1470,
+          "min": 1411,
+          "max": 1529
+        },
+        "fusion_ht": {
+          "typ": 1500,
+          "min": 1440,
+          "max": 1560
+        },
+        "fusion_ft": {
+          "typ": 1540,
+          "min": 1478,
+          "max": 1602
+        },
+        "chlorine_db_ppm": {
+          "typ": 250,
+          "min": 150,
+          "max": 350
+        },
+        "sio2": {
+          "typ": 62.0,
+          "min": 52.7,
+          "max": 71.3
+        },
+        "al2o3": {
+          "typ": 26.0,
+          "min": 22.1,
+          "max": 29.9
+        },
+        "fe2o3": {
+          "typ": 4.0,
+          "min": 3.4,
+          "max": 4.6
+        },
+        "cao": {
+          "typ": 2.5,
+          "min": 2.1,
+          "max": 2.9
+        },
+        "mgo": {
+          "typ": 1.0,
+          "min": 0.8,
+          "max": 1.1
+        },
+        "na2o": {
+          "typ": 0.6,
+          "min": 0.5,
+          "max": 0.7
+        },
+        "k2o": {
+          "typ": 1.2,
+          "min": 1.0,
+          "max": 1.4
+        },
+        "so3": {
+          "typ": 0.7,
+          "min": 0.6,
+          "max": 0.8
+        },
+        "tio2": {
+          "typ": 1.2,
+          "min": 1.0,
+          "max": 1.4
+        },
+        "ash_other": {
+          "typ": 0.8,
+          "min": 0.6,
+          "max": 1.0
+        }
+      }
+    },
+    "KCH(Kaltim)": {
+      "origin": "인도네시아 Kaltim Prima Coal (Pinang 6200 GAR급 가정)",
+      "grade": "Pinang 6200 GAR급",
+      "class": "high_cv",
+      "anthracite": false,
+      "confidence": "근거있음",
+      "sources": [
+        "https://www.mining-technology.com/projects/kaltim/",
+        "https://www.scribd.com/document/7780933/Bumi-Coal-Mine-Description",
+        "https://www.kpc.co.id/what-we-do/coal-spesifications/"
+      ],
+      "note": "korea-import-ranges 분류(고열, GAR 약 6,200; Pinang 26.0 MJ/kg, TM 14, ash 6, S 0.5)를 따름. coal-specs 6,000에서 올리고 황분 0.61→0.50, 탄소 76.0→76.5로 맞춤.",
+      "fields": {
+        "gcv_arb": {
+          "typ": 6200,
+          "min": 6000,
+          "max": 6400
+        },
+        "tm_ar": {
+          "typ": 14.0,
+          "min": 12.5,
+          "max": 15.5
+        },
+        "im_adb": {
+          "typ": 8.0,
+          "min": 6.8,
+          "max": 9.2
+        },
+        "vm_adb": {
+          "typ": 41.0,
+          "min": 37.7,
+          "max": 44.3
+        },
+        "ash_adb": {
+          "typ": 5.5,
+          "min": 4.4,
+          "max": 6.6
+        },
+        "fc_adb": {
+          "typ": 45.5,
+          "min": 41.9,
+          "max": 49.1
+        },
+        "sulfur_ar": {
+          "typ": 0.5,
+          "min": 0.4,
+          "max": 0.65
+        },
+        "c_db": {
+          "typ": 76.5,
+          "min": 74.5,
+          "max": 78.5
+        },
+        "h_db": {
+          "typ": 5.4,
+          "min": 5.0,
+          "max": 5.8
+        },
+        "n_db": {
+          "typ": 1.5,
+          "min": 1.3,
+          "max": 1.7
+        },
+        "o_db": {
+          "typ": 10.0,
+          "min": 8.0,
+          "max": 12.0
+        },
+        "s_db": {
+          "typ": 0.58,
+          "min": 0.46,
+          "max": 0.74
+        },
+        "hgi": {
+          "typ": 47,
+          "min": 41,
+          "max": 53
+        },
+        "csn": {
+          "typ": 1,
+          "min": 0,
+          "max": 2
+        },
+        "fusion_it": {
+          "typ": 1250,
+          "min": 1200,
+          "max": 1300
+        },
+        "fusion_st": {
+          "typ": 1300,
+          "min": 1248,
+          "max": 1352
+        },
+        "fusion_ht": {
+          "typ": 1330,
+          "min": 1277,
+          "max": 1383
+        },
+        "fusion_ft": {
+          "typ": 1380,
+          "min": 1325,
+          "max": 1435
+        },
+        "chlorine_db_ppm": {
+          "typ": 200,
+          "min": 120,
+          "max": 280
+        },
+        "sio2": {
+          "typ": 45.0,
+          "min": 38.2,
+          "max": 51.7
+        },
+        "al2o3": {
+          "typ": 22.0,
+          "min": 18.7,
+          "max": 25.3
+        },
+        "fe2o3": {
+          "typ": 10.0,
+          "min": 8.5,
+          "max": 11.5
+        },
+        "cao": {
+          "typ": 10.0,
+          "min": 8.5,
+          "max": 11.5
+        },
+        "mgo": {
+          "typ": 5.0,
+          "min": 4.2,
+          "max": 5.8
+        },
+        "na2o": {
+          "typ": 1.0,
+          "min": 0.8,
+          "max": 1.1
+        },
+        "k2o": {
+          "typ": 1.0,
+          "min": 0.8,
+          "max": 1.1
+        },
+        "so3": {
+          "typ": 4.5,
+          "min": 3.8,
+          "max": 5.2
+        },
+        "tio2": {
+          "typ": 0.9,
+          "min": 0.8,
+          "max": 1.0
+        },
+        "ash_other": {
+          "typ": 0.6,
+          "min": 0.5,
+          "max": 0.7
+        }
+      }
+    },
+    "KCH(adaro)": {
+      "origin": "인도네시아 Adaro Envirocoal",
+      "grade": "Envirocoal E5000 GAR",
+      "class": "low_cv",
+      "anthracite": false,
+      "confidence": "근거있음",
+      "sources": [
+        "https://www.alamtri.com/files/news/berkas_eng/293/August-2012-Coaltrans_Brisbane.pdf"
+      ],
+      "note": "korea-import-ranges 분류(저열, GAR 약 5,000; E5000 TM 26.5, ash 2.5 AR)와 coal-specs 값이 일치해 그대로 씀.",
+      "fields": {
+        "gcv_arb": {
+          "typ": 5000,
+          "min": 4800,
+          "max": 5200
+        },
+        "tm_ar": {
+          "typ": 26.5,
+          "min": 23.3,
+          "max": 29.7
+        },
+        "im_adb": {
+          "typ": 16.5,
+          "min": 14.0,
+          "max": 19.0
+        },
+        "vm_adb": {
+          "typ": 42.0,
+          "min": 38.6,
+          "max": 45.4
+        },
+        "ash_adb": {
+          "typ": 3.5,
+          "min": 2.8,
+          "max": 4.2
+        },
+        "fc_adb": {
+          "typ": 38.0,
+          "min": 35.0,
+          "max": 41.0
+        },
+        "sulfur_ar": {
+          "typ": 0.16,
+          "min": 0.12,
+          "max": 0.2
+        },
+        "c_db": {
+          "typ": 71.0,
+          "min": 68.9,
+          "max": 73.1
+        },
+        "h_db": {
+          "typ": 5.3,
+          "min": 4.9,
+          "max": 5.7
+        },
+        "n_db": {
+          "typ": 1.0,
+          "min": 0.8,
+          "max": 1.1
+        },
+        "o_db": {
+          "typ": 18.3,
+          "min": 14.6,
+          "max": 22.0
+        },
+        "s_db": {
+          "typ": 0.22,
+          "min": 0.16,
+          "max": 0.26
+        },
+        "hgi": {
+          "typ": 50,
+          "min": 44,
+          "max": 56
+        },
+        "csn": {
+          "typ": 0,
+          "min": 0,
+          "max": 1
+        },
+        "fusion_it": {
+          "typ": 1150,
+          "min": 1104,
+          "max": 1196
+        },
+        "fusion_st": {
+          "typ": 1200,
+          "min": 1152,
+          "max": 1248
+        },
+        "fusion_ht": {
+          "typ": 1230,
+          "min": 1181,
+          "max": 1279
+        },
+        "fusion_ft": {
+          "typ": 1280,
+          "min": 1229,
+          "max": 1331
+        },
+        "chlorine_db_ppm": {
+          "typ": 250,
+          "min": 150,
+          "max": 350
+        },
+        "sio2": {
+          "typ": 30.0,
+          "min": 25.5,
+          "max": 34.5
+        },
+        "al2o3": {
+          "typ": 14.0,
+          "min": 11.9,
+          "max": 16.1
+        },
+        "fe2o3": {
+          "typ": 13.0,
+          "min": 11.0,
+          "max": 14.9
+        },
+        "cao": {
+          "typ": 18.0,
+          "min": 15.3,
+          "max": 20.7
+        },
+        "mgo": {
+          "typ": 8.0,
+          "min": 6.8,
+          "max": 9.2
+        },
+        "na2o": {
+          "typ": 1.2,
+          "min": 1.0,
+          "max": 1.4
+        },
+        "k2o": {
+          "typ": 0.8,
+          "min": 0.7,
+          "max": 0.9
+        },
+        "so3": {
+          "typ": 12.0,
+          "min": 10.2,
+          "max": 13.8
+        },
+        "tio2": {
+          "typ": 0.8,
+          "min": 0.7,
+          "max": 0.9
+        },
+        "ash_other": {
+          "typ": 2.2,
+          "min": 1.8,
+          "max": 2.6
+        }
+      }
+    },
+    "KCH(Arutmin)": {
+      "origin": "인도네시아 칼리만탄 Arutmin 아역청탄",
+      "grade": "Arutmin 5000 GAR급(가정)",
+      "class": "low_cv",
+      "anthracite": false,
+      "confidence": "추정",
+      "sources": [
+        "https://arutmin.com/business-info/marketing"
+      ],
+      "note": "한국 도입 등급 미확인. korea-import-ranges 가정(저열, GAR 5,000, Ecocoal~5500 저열량 등급의 중간값)을 따르고 coal-specs의 ECOCOAL 5800 값은 버림. 성상은 Arutmin 5000 등급 공개값(TM 25.5, Ash 8, VM 39.5) 기반.",
+      "fields": {
+        "gcv_arb": {
+          "typ": 5000,
+          "min": 4800,
+          "max": 5200
+        },
+        "tm_ar": {
+          "typ": 25.5,
+          "min": 22.4,
+          "max": 28.6
+        },
+        "im_adb": {
+          "typ": 14.0,
+          "min": 11.9,
+          "max": 16.1
+        },
+        "vm_adb": {
+          "typ": 39.5,
+          "min": 36.3,
+          "max": 42.7
+        },
+        "ash_adb": {
+          "typ": 8.0,
+          "min": 6.4,
+          "max": 9.6
+        },
+        "fc_adb": {
+          "typ": 38.5,
+          "min": 35.4,
+          "max": 41.6
+        },
+        "sulfur_ar": {
+          "typ": 0.47,
+          "min": 0.35,
+          "max": 0.58
+        },
+        "c_db": {
+          "typ": 70.5,
+          "min": 68.4,
+          "max": 72.6
+        },
+        "h_db": {
+          "typ": 5.0,
+          "min": 4.6,
+          "max": 5.4
+        },
+        "n_db": {
+          "typ": 1.1,
+          "min": 0.9,
+          "max": 1.3
+        },
+        "o_db": {
+          "typ": 13.5,
+          "min": 10.8,
+          "max": 16.2
+        },
+        "s_db": {
+          "typ": 0.63,
+          "min": 0.47,
+          "max": 0.74
+        },
+        "hgi": {
+          "typ": 55,
+          "min": 48,
+          "max": 62
+        },
+        "csn": {
+          "typ": 0,
+          "min": 0,
+          "max": 1
+        },
+        "fusion_it": {
+          "typ": 1150,
+          "min": 1104,
+          "max": 1196
+        },
+        "fusion_st": {
+          "typ": 1200,
+          "min": 1152,
+          "max": 1248
+        },
+        "fusion_ht": {
+          "typ": 1230,
+          "min": 1181,
+          "max": 1279
+        },
+        "fusion_ft": {
+          "typ": 1280,
+          "min": 1229,
+          "max": 1331
+        },
+        "chlorine_db_ppm": {
+          "typ": 250,
+          "min": 150,
+          "max": 350
+        },
+        "sio2": {
+          "typ": 38.0,
+          "min": 32.3,
+          "max": 43.7
+        },
+        "al2o3": {
+          "typ": 17.0,
+          "min": 14.4,
+          "max": 19.5
+        },
+        "fe2o3": {
+          "typ": 14.0,
+          "min": 11.9,
+          "max": 16.1
+        },
+        "cao": {
+          "typ": 14.0,
+          "min": 11.9,
+          "max": 16.1
+        },
+        "mgo": {
+          "typ": 6.0,
+          "min": 5.1,
+          "max": 6.9
+        },
+        "na2o": {
+          "typ": 1.5,
+          "min": 1.3,
+          "max": 1.7
+        },
+        "k2o": {
+          "typ": 1.0,
+          "min": 0.8,
+          "max": 1.1
+        },
+        "so3": {
+          "typ": 7.0,
+          "min": 6.0,
+          "max": 8.0
+        },
+        "tio2": {
+          "typ": 0.8,
+          "min": 0.7,
+          "max": 0.9
+        },
+        "ash_other": {
+          "typ": 0.7,
+          "min": 0.6,
+          "max": 0.8
+        }
+      }
+    },
+    "LXI": {
+      "origin": "인도네시아 저칼로리탄(추정, LX International 자원개발 연계)",
+      "grade": "Indonesian 4200 GAR급(GAM 광산 범위)",
+      "class": "low_cv",
+      "anthracite": false,
+      "confidence": "추정",
+      "sources": [
+        "https://www.gem.wiki/Ganda_Alam_Makmur_(GAM)_coal_mine",
+        "https://www.idxchannel.com/economics/tentukan-harga-acuan-pemerintah-bagi-batu-bara-jadi-empat-kategori/all"
+      ],
+      "note": "korea-import-ranges 분류(저열, GAR 약 4,200; GAM 광산 3,500~4,800)를 따름. coal-specs 4,400에서 내리면서 TM 32→34, 황분 0.25→0.22, 탄소 69→68로 맞춤. 세부 성상은 HBA II·저열량 동반 성상 기반 추정. LXI를 GAM 광산 탄으로 연결한 것 자체가 추정이라 confidence는 추정.",
+      "fields": {
+        "gcv_arb": {
+          "typ": 4200,
+          "min": 3900,
+          "max": 4500
+        },
+        "tm_ar": {
+          "typ": 34.0,
+          "min": 30.0,
+          "max": 38.0
+        },
+        "im_adb": {
+          "typ": 18.0,
+          "min": 15.0,
+          "max": 21.0
+        },
+        "vm_adb": {
+          "typ": 39.0,
+          "min": 35.9,
+          "max": 42.1
+        },
+        "ash_adb": {
+          "typ": 4.0,
+          "min": 3.2,
+          "max": 4.8
+        },
+        "fc_adb": {
+          "typ": 39.0,
+          "min": 35.5,
+          "max": 42.5
+        },
+        "sulfur_ar": {
+          "typ": 0.22,
+          "min": 0.15,
+          "max": 0.3
+        },
+        "c_db": {
+          "typ": 68.0,
+          "min": 66.0,
+          "max": 70.0
+        },
+        "h_db": {
+          "typ": 4.9,
+          "min": 4.5,
+          "max": 5.3
+        },
+        "n_db": {
+          "typ": 0.9,
+          "min": 0.8,
+          "max": 1.0
+        },
+        "o_db": {
+          "typ": 21.0,
+          "min": 17.0,
+          "max": 24.5
+        },
+        "s_db": {
+          "typ": 0.33,
+          "min": 0.23,
+          "max": 0.42
+        },
+        "hgi": {
+          "typ": 60,
+          "min": 53,
+          "max": 67
+        },
+        "csn": {
+          "typ": 0,
+          "min": 0,
+          "max": 1
+        },
+        "fusion_it": {
+          "typ": 1130,
+          "min": 1085,
+          "max": 1175
+        },
+        "fusion_st": {
+          "typ": 1170,
+          "min": 1123,
+          "max": 1217
+        },
+        "fusion_ht": {
+          "typ": 1200,
+          "min": 1152,
+          "max": 1248
+        },
+        "fusion_ft": {
+          "typ": 1250,
+          "min": 1200,
+          "max": 1300
+        },
+        "chlorine_db_ppm": {
+          "typ": 250,
+          "min": 150,
+          "max": 350
+        },
+        "sio2": {
+          "typ": 32.0,
+          "min": 27.2,
+          "max": 36.8
+        },
+        "al2o3": {
+          "typ": 15.0,
+          "min": 12.8,
+          "max": 17.2
+        },
+        "fe2o3": {
+          "typ": 14.0,
+          "min": 11.9,
+          "max": 16.1
+        },
+        "cao": {
+          "typ": 16.0,
+          "min": 13.6,
+          "max": 18.4
+        },
+        "mgo": {
+          "typ": 7.0,
+          "min": 6.0,
+          "max": 8.0
+        },
+        "na2o": {
+          "typ": 1.3,
+          "min": 1.1,
+          "max": 1.5
+        },
+        "k2o": {
+          "typ": 0.9,
+          "min": 0.8,
+          "max": 1.0
+        },
+        "so3": {
+          "typ": 10.0,
+          "min": 8.5,
+          "max": 11.5
+        },
+        "tio2": {
+          "typ": 0.8,
+          "min": 0.7,
+          "max": 0.9
+        },
+        "ash_other": {
+          "typ": 3.0,
+          "min": 2.4,
+          "max": 3.6
+        }
+      }
+    }
+  }
+}

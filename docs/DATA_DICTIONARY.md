@@ -230,6 +230,7 @@ DB 테이블·계정·관심 선박 ID 변경 없이 확장한다. [설정·이�
 ## 배선·화물·성상 공용 원장 확장
 
 - 저탄장 기준현황은 `yard_baselines`에 기준일·등록시각·등록자·구역별 탄종·재고량과 알려진 항차·적치 정보를 보관한다. 항차·화물 등록을 필수로 만들지 않으며, 기준일 이후의 입하를 중복 합산하지 않도록 입하 재고 원장과 별도로 보관한다. 기준현황은 실시간 센서값이 아니다.
+- 기준재고 lot은 선택값 `temperature_c`(적치 온도 °C, 0~150, 미확인 null)와 `dummy_fields`(더미로 채운 칸 이름 쉼표 목록, 200자 이하)를 허용한다. 사람이 저장하면 같은 기준일(없으면 최신) 직전 판의 같은 적치(`source_id`·`location`·`coal_name`·`voyage_number`)와 비교해 값이 그대로인 더미 칸만 `dummy_fields`에 남기고, 바뀐 칸·새로 붙인 표시·키가 겹치는 적치의 표시는 지운다.
 - 수급 전망은 기준일만 있는 저탄장별 기준량을 다음 날 00:00 KST부터 반영하며 같은 날 입하는 중복 합산하지 않는다. P1~4, P5~8, A/B 구역은 각각 g14, g58, g910 기준량에 대응한다. 기준일까지 분석된 확정 성상과 항차·탄종이 유일하게 일치하는 재고만 발열량을 연결하고, 양이 있는 모든 구간의 발열량이 확인되지 않으면 해당 처의 연소량과 전망은 미확정으로 둔다.
 - 모의 운전 WebSocket은 기본적으로 별도의 `backend/data/operating-simulation.sqlite3`에 상태 이력과 복원 지점을 기록한다. `SIMULATION_DB_PATH`로 별도 경로를 지정할 수 있으며 실제 입하·재고 원장에 쓰지 않는다. 재시작 시 마지막 설정과 예약을 복원하되 일시정지 상태로 시작한다.
 - 모의 운전에는 호기별 사일로·급탄기 6조가 있다. 기본 사일로 용량 1,000 t, 잔량 500 t은 모의 가정값이며 일시정지 중 조정할 수 있다. 지정된 주계통의 사일로로 상탄하고 급탄량(t/h)에 따라 잔량을 차감한다. 급탄기 속도비는 임의 정격 1,000 t/h에 선형 비례하는 모의치로, 실제 벨트 속도나 교정식이 아니다. 모사 시간은 최대 1초 구간으로 계산하며, 상탄은 빈 용량을 넘지 않고 급탄은 잔량을 넘지 않는다. 교차 공급, 이송 지연, 탄종별 혼합·보일러 열량 연계는 미구현이며 수기 조정량은 별도로 기록한다.
@@ -239,7 +240,11 @@ DB 테이블·계정·관심 선박 ID 변경 없이 확장한다. [설정·이�
 - `voyage_registry_assays`: `assay_id` 키, `cargo_no` 참조, stage loading/unloading/buyer, 분석·채취일·기관·성적서·결과상태. 재분석은 별도 행으로 보존한다.
 - 기본 성상: `gcv_arb/gcv_adb/gcv_db/ncv` kcal/kg, `ncv_basis` unknown/AR/ADB/DB, `tm_ar/sulfur_ar` %wt, `hgi`.
 - 공업분석 ADB %wt: `im_adb/vm_adb/ash_adb/fc_adb`. 원소분석 DB %wt: `c_db/h_db/n_db/o_db/s_db`. `derived_ash_db`는 Ash ADB×100/(100−IM ADB) 계산값이며 원본을 덮어쓰지 않는다.
-- 회성분 %wt: `sio2/al2o3/cao/mgo/na2o/k2o/so3/tio2/ash_other`.
+- 회성분 %wt: `sio2/al2o3/cao/mgo/na2o/k2o/so3/tio2/fe2o3/ash_other`. `fe2o3`(Fe2O3, 0~100)는 2026-11-10 추가 칸이다.
+- `voyage_registry_voyages.laytime_hours`: 허용정박시간(h, 0~1000). `demurrage_usd_per_day`: 체선료(USD/일, 0~1,000,000). 둘 다 선택값이며 미확인은 null이다.
+- `data_origin`(더미 구분, 항차·화물·성상 분석): `entered`(입력) / `dummy`(행 전체 더미) / `mixed`(입력+더미). 기본값과 기존 행 마이그레이션 값은 `entered`다. `dummy_fields`(더미 칸): `mixed` 행에서 더미로 채운 칸 이름을 쉼표로 이은 문자열이며 `dummy` 행은 비워 두고 키를 뺀 값 있는 모든 칸을 더미로 본다. 두 칸은 SCHEMA의 `system` 칸으로, 원장 저장 경로 `dummy-data`(적재 actor `dummy-seed`)만 쓸 수 있다. 수기·엑셀 저장은 입력값을 무시하고 엑셀 내보내기·읽기에도 넣지 않는다.
+- 회수 규칙: 사람이 수기·엑셀로 더미 칸을 고치면 그 칸을 `dummy_fields`에서 빼고 남은 칸이 없으면 `entered`·null로 바꾼다. `dummy` 행을 고치면 고친 칸을 뺀 나머지 값 칸을 `dummy_fields`로 둔 `mixed`가 된다.
+- 회수 규칙: 더미 행 삭제는 `purge`가 `dummy-data` 경로에서만 분석→화물→항차 순으로 수행하고, 행마다 audit(`after_json`은 `null`)를 남기며 revision을 1 올린다. 수기·엑셀 저장은 행을 지우지 않는다.
 - 연료특성: `combustion_start_c/combustion_end_c/combustion_peak_c` °C, `combustion_max_rate` %/min. 환원성 회융점: `fusion_it/fusion_st/fusion_ht/fusion_ft` °C.
 - `size_2mm/size_025mm`: 해당 체 이하 누적 %wt. `chlorine_db_ppm`: 건식 염소 ppm. `csn`: 점결성 지수.
 - `quality_selection[cargo_no]`: confirmed 하역 우선, 없으면 confirmed 선적. 동일 구분은 분석일·채취일·수정시각·관리ID 내림차순. 바이어는 비교용. 빈값은 null, 다른 분석과 자동 혼합하지 않는다. NCV 기준 unknown은 계산 사용 불가다.

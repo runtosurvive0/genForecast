@@ -10,6 +10,14 @@ from midterm.voyage_registry import KST, MAX_ROWS, SCHEMA, RegistryError
 
 MAX_FILE = 4 * 1024 * 1024
 FORMAT = 'gen4cast-voyage-v1'
+# Columns added after earlier workbooks were exported; files without them keep stored values.
+COMPATIBLE_MISSING = {'voyages': {'자료 구분', '허용정박시간(h)', '체선료(USD/일)'}, 'assays': {'Fe2O3'}}
+BUSINESS_COMPATIBLE_MISSING = {'배선등록': {'자료 구분', '허용정박시간(h)', '체선료(USD/일)'}, '성상분석': {'Fe2O3 (%wt)'}}
+
+
+def exchange_fields(fields):
+    """System markers (dummy-data origin) are never exported to or read from Excel."""
+    return [f for f in fields if not f.get('system')]
 
 
 def workbook_bytes(data, template=False, business=False):
@@ -19,10 +27,11 @@ def workbook_bytes(data, template=False, business=False):
     book.remove(book.active)
     for entity, spec in SCHEMA.items():
         sheet = book.create_sheet(spec['label'])
-        sheet.append([f['label'] for f in spec['fields']])
+        fields = exchange_fields(spec['fields'])
+        sheet.append([f['label'] for f in fields])
         for row in ([] if template else data[entity]):
             values = []
-            for f in spec['fields']:
+            for f in fields:
                 value = row[f['key']]
                 if f['kind'] == 'datetime' and value:
                     value = datetime.fromisoformat(value).astimezone(KST).replace(tzinfo=None)
@@ -33,7 +42,7 @@ def workbook_bytes(data, template=False, business=False):
                     cell.data_type = 's'  # Literal =/@/+/- text must never become a formula.
         sheet.freeze_panes = 'A2'
         sheet.auto_filter.ref = sheet.dimensions
-        for i, f in enumerate(spec['fields'], 1):
+        for i, f in enumerate(fields, 1):
             col = sheet.cell(1, i).column_letter
             sheet.column_dimensions[col].width = 26 if f['kind'] in ('datetime', 'memo') else 21
             header = sheet.cell(1, i)
@@ -67,7 +76,7 @@ def workbook_bytes(data, template=False, business=False):
     ]:
         guide.append(row)
     for spec in SCHEMA.values():
-        for f in spec['fields']:
+        for f in exchange_fields(spec['fields']):
             guide.append([spec['label'], f['label'], '필수' if f['required'] else '선택',
                           ', '.join(f.get('choices', {})) or f['kind']])
     for col, width in [('A', 23), ('B', 100), ('C', 14), ('D', 70)]:
@@ -75,7 +84,7 @@ def workbook_bytes(data, template=False, business=False):
     codes = book.create_sheet('코드표')
     codes.append(['시트', '헤더', '입력 코드', '설명'])
     for spec in SCHEMA.values():
-        for f in spec['fields']:
+        for f in exchange_fields(spec['fields']):
             for code, label in f.get('choices', {}).items():
                 codes.append([spec['label'], f['label'], code, label])
     for col in 'ABCD':
@@ -118,9 +127,10 @@ def parse_workbook(raw):
                     continue  # The original v1 workbook predates the analysis register.
                 raise RegistryError(f"{spec['label']} 시트가 없습니다. 템플릿을 사용하세요.")
             sheet = book[spec['label']]
-            if sheet.max_column > len(spec['fields']) or sheet.max_row > MAX_ROWS + 1:
+            exchanged = exchange_fields(spec['fields'])
+            if sheet.max_column > len(exchanged) or sheet.max_row > MAX_ROWS + 1:
                 raise RegistryError(f"{spec['label']} 시트의 행/열 한도를 초과했습니다.")
-            fields = {f['label']: f for f in spec['fields']}
+            fields = {f['label']: f for f in exchanged}
             headings = [c.value.strip() if isinstance(c.value, str) else c.value for c in next(sheet.iter_rows(max_row=1))]
             aliases = {'ships':{'선박코드':'선박 관리ID','선적국':'선박 국적'},
                        'voyages':{'항차번호':'배선 관리ID','선박코드':'선박','출항항':'선적항','주 도착항':'하역항'},
@@ -129,8 +139,8 @@ def parse_workbook(raw):
             legacy = {'ships':'선박코드','voyages':'선박코드','cargo':'화물번호'}.get(entity) in headings
             if legacy:
                 headings = [aliases.get(entity, {}).get(h,h) for h in headings]
-            required = {f['label'] for f in spec['fields'] if f['required']}
-            compatible_missing = {'자료 구분'} if entity == 'voyages' else set()
+            required = {f['label'] for f in exchanged if f['required']}
+            compatible_missing = COMPATIBLE_MISSING.get(entity, set())
             if len(set(headings)) != len(headings) or not set(headings) <= set(fields) or not required <= set(headings) or (not legacy and set(fields) - set(headings) - compatible_missing):
                 raise RegistryError(f"{spec['label']} 시트 헤더를 확인하세요. 필요 헤더: {', '.join(fields)}")
             rows = []
@@ -166,14 +176,14 @@ def business_columns():
             dict(key='cargo_no', label='화물 관리ID', kind='text', required=False),
             dict(key='batch_group', label='배선 묶음', kind='text', required=False),
             dict(key='cargo_index', label='화물순번', kind='number', required=False),
-            *[f for f in business_fields() if f['key'] != 'plan_name']]
+            *[f for f in exchange_fields(business_fields()) if f['key'] != 'plan_name']]
 
 
 def assay_columns():
     return [dict(key='voyage_number', label='항차번호', kind='text', required=False),
             dict(key='batch_group', label='배선 묶음', kind='text', required=False),
             dict(key='cargo_index', label='화물순번', kind='number', required=False),
-            *[{**f, 'label':f["label"] + (' (ADB, %wt)' if f.get('group')=='공업분석 · ADB, %wt' else ' (DB, %wt)' if f.get('group')=='원소분석 · DB, %wt' else ' (%wt)' if f.get('group')=='회성분 분석 · %wt' else ' (환원성, °C)' if f.get('group')=='회융점 · 환원성, °C' else '')} for f in SCHEMA['assays']['fields']]]
+            *[{**f, 'label':f["label"] + (' (ADB, %wt)' if f.get('group')=='공업분석 · ADB, %wt' else ' (DB, %wt)' if f.get('group')=='원소분석 · DB, %wt' else ' (%wt)' if f.get('group')=='회성분 분석 · %wt' else ' (환원성, °C)' if f.get('group')=='회융점 · 환원성, °C' else '')} for f in exchange_fields(SCHEMA['assays']['fields'])]]
 
 
 def business_workbook(data, template):
@@ -272,8 +282,8 @@ def parse_business(book, file_digest):
             raise RegistryError(f'{title} 시트의 행/열 한도를 초과했습니다.')
         mapping = {f['label']:f for f in fields}
         headers = [c.value for c in next(sheet.iter_rows(max_row=1))]
-        if title == '배선등록' and '자료 구분' not in headers:
-            mapping.pop('자료 구분', None)
+        for label in BUSINESS_COMPATIBLE_MISSING.get(title, set()) - set(headers):
+            mapping.pop(label, None)
         if title in ('배선등록', '성상분석') and '계획명' in headers and '배선 묶음' not in headers:
             mapping.pop('배선 묶음')
             mapping['계획명'] = dict(key='plan_name', label='계획명', kind='text', required=False)

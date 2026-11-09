@@ -10,6 +10,7 @@ import type {
   Field,
   Preview,
 } from "./VoyageRegistry";
+import { visibleFields } from "./voyage-dummy";
 
 const groups = [
   {
@@ -69,7 +70,7 @@ const cargoGroups = [
 ];
 function clean(schema: Schema, entity: Entity, row: Row): Row {
   return Object.fromEntries(
-    schema[entity].fields.map((f) => [f.key, row[f.key] ?? null]),
+    visibleFields(schema[entity].fields).map((f) => [f.key, row[f.key] ?? null]),
   );
 }
 export function VoyageEntryEditor({
@@ -362,7 +363,7 @@ export function VoyageEntryEditor({
                 · {c.action === "create" ? "추가" : "수정"}
               </summary>
               <dl>
-                {schema[c.entity].fields
+                {visibleFields(schema[c.entity].fields)
                   .filter(
                     (f) =>
                       f.key !== schema[c.entity].key &&
