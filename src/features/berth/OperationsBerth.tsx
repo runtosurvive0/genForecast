@@ -730,9 +730,9 @@ export function OperationsBerth({
               반입 불가: {blocked.map((item) => item.label).join(" · ")}
             </p>
             <label className="gf-ob-receiving-lot">
-              <span>도착 더미</span>
+              <span>도착 원탄</span>
               <select
-                aria-label="더미 선택"
+                aria-label="원탄 선택"
                 value={selectedLotId ?? ""}
                 onChange={(event) => chooseLot(event.target.value || null)}
               >

@@ -5,11 +5,11 @@ const svgNode=(tag,parent,attrs={})=>{const el=document.createElementNS(NS,tag);
 const intersects=(a,b)=>a.x<b.x+b.w+8&&a.x+a.w+8>b.x&&a.y<b.y+b.h+6&&a.y+a.h+6>b.y;
 
 export function createClearanceOverlay(host,{onClear}={}){
- const root=document.createElement('div');root.className='scene-clearance';root.hidden=true;root.setAttribute('aria-label','선택 더미 상부 이격거리');host.append(root);
+ const root=document.createElement('div');root.className='scene-clearance';root.hidden=true;root.setAttribute('aria-label','선택 원탄 상부 이격거리');host.append(root);
  const svg=svgNode('svg',root,{'aria-hidden':'true',class:'scene-clearance-lines'});
  const heading=document.createElement('div');heading.className='scene-clearance-heading';root.append(heading);
  const title=document.createElement('span');heading.append(title);
- if(onClear){const button=document.createElement('button');button.type='button';button.setAttribute('aria-label','더미 선택 해제');button.textContent='선택 해제';button.addEventListener('click',onClear);heading.append(button);}
+ if(onClear){const button=document.createElement('button');button.type='button';button.setAttribute('aria-label','원탄 선택 해제');button.textContent='선택 해제';button.addEventListener('click',onClear);heading.append(button);}
  const announcement=document.createElement('span');announcement.className='scene-clearance-announcement';announcement.setAttribute('role','status');announcement.setAttribute('aria-live','polite');root.append(announcement);
  const entries=new Map();let previousStatus='';
  function entry(key){
@@ -54,7 +54,7 @@ export function createClearanceOverlay(host,{onClear}={}){
    }
   }
   const statusKey=data.id+':'+stale+':'+data.measurements.map(m=>m.key+':'+m.state).join('|');
-  if(statusKey!==previousStatus){announcement.textContent=stale?'운전정보 수신이 끊겼습니다. 마지막 이격 추정값입니다.':breaches.length?`${data.title}. ${breaches.map(m=>m.side+' 더미와 상부 이격 기준 '+m.required+'m 미달').join('. ')}`:`${data.title}. ${data.message||'상부 이격 추정 표시'}`;previousStatus=statusKey;}
+  if(statusKey!==previousStatus){announcement.textContent=stale?'운전정보 수신이 끊겼습니다. 마지막 이격 추정값입니다.':breaches.length?`${data.title}. ${breaches.map(m=>m.side+' 원탄과 상부 이격 기준 '+m.required+'m 미달').join('. ')}`:`${data.title}. ${data.message||'상부 이격 추정 표시'}`;previousStatus=statusKey;}
  }
  return {host,update,clear:()=>update(null),dispose(){root.remove();entries.clear();},debug:()=>({selected:root.dataset.selectedLot,status:root.dataset.status,visible:!root.hidden,count:entries.size})};
 }

@@ -3155,7 +3155,7 @@ test("baseline pile detail remains separate from disconnected sensors and the st
   await page.route('**/api/runs', route => route.fulfill({json:[{id:'운영 계획',name:'운영 계획',period:'2027-01-01 ~ 2027-12-31'}]}));
   await page.route('**/api/planning/**', route => route.fulfill({json:snapshot}));
   await page.goto('/#yard');
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('P2-K1');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('P2-K1');
   const detail=page.getByRole('region',{name:'선택 구간 상세'});
   await expect(detail).toContainText('KCH(Kaltim)');
   await expect(detail).toContainText('26-1-039');
@@ -3483,7 +3483,7 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
 });
 test("berth, yard and reclaim views follow the selected actual inventory and allowed routes", async ({page}) => {
   await page.goto('/#yard');
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('P2-K1');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('P2-K1');
   const detail=page.getByRole('region',{name:'선택 구간 상세'});
   await expect(detail).toContainText('KCH(Kaltim)');
   await expect(detail).toContainText('센서 미연결');
@@ -3491,11 +3491,11 @@ test("berth, yard and reclaim views follow the selected actual inventory and all
   const receiving=page.getByRole('region',{name:'반입 가능 구역'});
   await expect(receiving.getByRole('button',{name:'Pile 7',exact:true})).toBeDisabled();
   await receiving.getByRole('button',{name:'Pile 2',exact:true}).click();
-  const lot=await page.getByLabel('더미 선택',{exact:true}).inputValue();
+  const lot=await page.getByLabel('원탄 선택',{exact:true}).inputValue();
   await page.getByRole('button',{name:/Pile 2 재고 보기/}).click();
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await page.getByRole('button',{name:'상탄 경로 보기'}).click();
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await expect(page.getByRole('heading',{level:1,name:'상탄·혼탄'})).toBeVisible();
 });
 

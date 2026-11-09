@@ -110,7 +110,8 @@ test('수급 원장은 기준재고 DB를 보여주고 이전 표본 선박과 �
   await expect(page.getByLabel('저탄장 기준재고')).toContainText('2026-11-04');
   await expect(page.getByLabel('저탄장 기준재고')).toContainText('1저탄장');
   await expect(page.locator('main')).not.toContainText('Pacific Horizon');
-  await expect(page.locator('main')).not.toContainText('운영 더미');
+  await expect(page.locator('main')).not.toContainText('운영 원탄');
+  expect(await page.locator('main').innerText()).not.toMatch(/더미(를|\s*선택|\s*목록)|대상 더미/);
   await expect(page.getByRole('button', {name:/총 저탄 재고/})).toContainText('0.03');
 });
 
@@ -395,7 +396,7 @@ test('Pile 검토는 계통 연결과 입력 계획을 구분해 공간 및 저�
   await expect(panel).toContainText('400 t');
   await page.getByLabel('이 화물 사용 계획 · t/일').fill('400');
   await expect(panel).toContainText('전량 사용 계획');
-  await expect(panel).toContainText('설비 신호와 인접 더미 상부 이격거리');
+  await expect(panel).toContainText('설비 신호와 인접 원탄 상부 이격거리');
   await page.setViewportSize({width:1920,height:1080});
   await panel.scrollIntoViewIfNeeded();
   await page.screenshot({path:'.tooling-tmp/pile-review-1920.png',animations:'disabled'});
@@ -546,10 +547,10 @@ test('berth satellite layout supports plan comparison, roof inspection and close
   await expect(viewport.locator('.fuel-scene__labels')).toContainText('5번');
   await page.locator('.gf-ob-dock').nth(1).click();
   await expect(viewport.locator('.fuel-scene__labels')).toContainText('9A번');
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('p5-b');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('p5-b');
   await expect(viewport.locator('.fuel-scene__labels')).toContainText('Pile 5');
   await page.screenshot({path:'artifacts/berth/receiving-route.png',fullPage:true,animations:'disabled'});
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('');
   await site.click();
   await expect(viewport.locator('.fuel-scene__labels')).toContainText('3부두');
   await page.screenshot({path:'artifacts/berth/site-1920.png',fullPage:true,animations:'disabled'});
@@ -614,7 +615,7 @@ test('blend supplies retain three yard models, boiler selection, analysis and re
   await expect(page.getByLabel('목표 발열량 ARB', {exact:true})).toBeVisible();
   await page.getByRole('button',{name:'공급 계통',exact:true}).click();
   await page.getByRole('group',{name:'주 공급 계통 선택'}).getByRole('button',{name:/1–4호기/}).click();
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('P2-K1');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('P2-K1');
   await expect(page.locator('.gf-bl-coal')).toContainText('KCH(Kaltim)');
   await page.getByRole('button',{name:'다크 모드로 전환',exact:true}).click();
   await expect(page.getByRole('button',{name:'라이트 모드로 전환',exact:true})).toHaveCSS('color','rgb(238, 240, 244)');
@@ -816,11 +817,11 @@ test('yard and berth share selection and reachable destinations',async({page})=>
   await page.getByRole('navigation',{name:'주 메뉴',exact:true}).getByRole('button',{name:'접안·하역',exact:true}).click();
   await expect(page.getByRole('region',{name:'반입 가능 구역'}).getByRole('button',{name:'Pile 7',exact:true})).toBeDisabled();
   await page.getByRole('region',{name:'반입 가능 구역'}).getByRole('button',{name:'Pile 2',exact:true}).click();
-  const lot=await page.getByLabel('더미 선택',{exact:true}).inputValue();
+  const lot=await page.getByLabel('원탄 선택',{exact:true}).inputValue();
   await page.getByRole('button',{name:/Pile 2 재고 보기/}).click();
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await page.getByRole('button',{name:'상탄 경로 보기'}).click();
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await expect(page.getByRole('heading',{level:1,name:'상탄·혼탄'})).toBeVisible();
 });
 
@@ -830,14 +831,14 @@ test('yard orbit and pan move the projected pile labels without changing the sel
   const viewport=page.locator('.fuel-scene__viewport');
   const position=()=>viewport.locator('.fuel-scene__labels span').first().evaluate(el=>el.getAttribute('style'));
   await expect(viewport).toHaveAttribute('data-renderer','webgl');
-  const initial=await position(), lot=await page.getByLabel('더미 선택',{exact:true}).inputValue();
+  const initial=await position(), lot=await page.getByLabel('원탄 선택',{exact:true}).inputValue();
   const box=(await viewport.boundingBox())!;
   const x=box.x+box.width/2, y=box.y+box.height/2;
   for(const orbit of [false,true]){
     if(orbit) await page.getByRole('button',{name:'드래그 회전'}).click();
     await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+75,y+20,{steps:5});await page.mouse.up();
     await expect.poll(position).not.toBe(initial);
-    await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+    await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
     if(orbit){
       const turned=await position();
       await viewport.press('Shift+ArrowRight');
@@ -846,17 +847,17 @@ test('yard orbit and pan move the projected pile labels without changing the sel
     await viewport.press('Home');
     await expect.poll(position).toBe(initial);
   }
-  await page.getByRole('button',{name:'선택 더미 확대'}).click();
+  await page.getByRole('button',{name:'선택 원탄 확대'}).click();
   await expect(page.getByLabel('장면 배율')).toHaveText('300%');
   const bounds=await viewport.boundingBox();
   await page.mouse.click(bounds!.x+bounds!.width/2,bounds!.y+bounds!.height/2);
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await viewport.press('Shift+ArrowLeft');
   await page.mouse.move(bounds!.x+bounds!.width/2+25,bounds!.y+bounds!.height/2);
   await page.mouse.move(bounds!.x+bounds!.width/2,bounds!.y+bounds!.height/2);
   await expect(viewport).toHaveCSS('cursor','pointer');
   await page.mouse.click(bounds!.x+bounds!.width/2,bounds!.y+bounds!.height/2);
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
 });
 
 for(const width of [1920,1131,390,320])test(`native operations layout remains usable at ${width}px`,async({page})=>{

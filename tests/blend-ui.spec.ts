@@ -53,12 +53,13 @@ test('no pile-dummy wording', async ({ page }) => {
 
 for (const width of [1920, 390]) {
   test(`blend checkbox inline ${width}`, async ({ page }) => {
-    await mockBlend(page);
+    await mockBlend(page, { 'L-A': { grade: '저', gcv_arb: 4200, sulfur_ar: 0.45, tm_ar: 12, dummy: true, reason: null } });
     await loginAndOpen(page, '/#blend', width);
     await page.getByRole('button', { name: '혼탄 분석', exact: true }).click();
     const row = page.locator('.gf-inventory-row').first();
     await expect(row).toBeVisible();
     const box = await row.locator('input[type=checkbox]').boundingBox();
+    await expect(row).toContainText('황분 0.45%');
     const name = await row.getByText('검증탄 A').boundingBox();
     expect(Math.abs(box!.y - name!.y)).toBeLessThanOrEqual(8);
     expect(box!.x).toBeLessThan(name!.x);

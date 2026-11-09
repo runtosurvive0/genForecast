@@ -936,7 +936,7 @@ function ReceiptReview({ snapshot: s, demoSnapshot, demoStatus, demoCatalog }: {
           </dl>
           <ul className="gf-ow-review-findings">
             <li>{!endpoint ? '구역을 선택하면 등록된 기준재고를 확인할 수 있습니다.' : baseline.error ? '기준재고를 불러오지 못했습니다.' : !baseline.data ? '기준재고를 불러오는 중입니다.' : baselineStock !== null ? `기준재고 ${fmt(baselineStock)} t · ${baseline.data.as_of ?? '기준일 미확인'} 기준` : '선택 구역의 기준재고가 없거나 확인되지 않았습니다.'}</li>
-            <li>계통 연결은 설비 운전 가능 상태가 아닙니다. 설비 신호와 인접 더미 상부 이격거리는 별도 확인이 필요합니다.</li>
+            <li>계통 연결은 설비 운전 가능 상태가 아닙니다. 설비 신호와 인접 원탄 상부 이격거리는 별도 확인이 필요합니다.</li>
             <li>실제 설비 운전 신호: 미연결</li>
             <li>{routeSignals.state === 'connected' ? `운전 정보 ${routeSignals.playing ? '수신 중' : '일시정지'} · ${routeSignals.signals.map((signal,index) => `설비 ${index+1}번 ${({running:'운전',stopped:'정지',fault:'고장',unknown:'미확인'} as Record<string,string>)[signal.status]}${signal.flow !== null ? ` ${fmt(signal.flow, 1)} t/h` : ''}`).join(' · ')}` : '운전 신호: 미연결 또는 선택 경로 없음'}</li>
             <li>저장기한 내 사용량은 입하 다음 날부터 기한일까지 입력한 일일 사용량이 일정하다고 가정합니다. 다른 화물의 사용량은 포함하지 않습니다.</li>

@@ -285,7 +285,7 @@ export function mountFuelScene(host, initial, onSelect, onView) {
     overlay = createClearanceOverlay(host,{onClear:()=>onSelect(null)});
     theme(); route(true);
     if (state.mode !== 'yard') berthFrame = measureBerthFrame();
-    renderer.domElement.addEventListener('webglcontextlost',event=>{event.preventDefault();lost=true;if(frame)cancelAnimationFrame(frame);frame=0;host.dataset.renderer='unavailable';overlay.clear();report('3D 표시가 중단되었습니다. 재고 표에서 더미를 확인할 수 있습니다.');},options);
+    renderer.domElement.addEventListener('webglcontextlost',event=>{event.preventDefault();lost=true;if(frame)cancelAnimationFrame(frame);frame=0;host.dataset.renderer='unavailable';overlay.clear();report('3D 표시가 중단되었습니다. 재고 표에서 원탄을 확인할 수 있습니다.');},options);
     renderer.domElement.addEventListener('webglcontextrestored',()=>{lost=false;report();schedule();},options);
     host.addEventListener('wheel',event=>{event.preventDefault();if(lost)return;const rect=host.getBoundingClientRect();zoomBy(Math.exp(-event.deltaY*.0015),{x:event.clientX-rect.left,y:event.clientY-rect.top});},{...options,passive:false});
     host.addEventListener('pointerdown', event => {

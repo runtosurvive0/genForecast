@@ -20,7 +20,7 @@ export function OperationsBlend({theme,snapshot,status,view,onView,onNavigate,on
   onNavigate:(page:string)=>void;onAsk:(question:string,context:AssistantContext)=>void;
 }){
   const baseline=useYardBaseline();
-  const [lotDetails,setLotDetails]=useState<Record<string,LotDetail>>({});
+  const [lotDetails,setLotDetails]=useState<Record<string,LotDetail>|null>(null);
   const referenceLots=useMemo(()=>yardBaselineLots(baseline.data?.lots??[],true),[baseline.data]);
   const baselineStock=useMemo(()=>Object.fromEntries((baseline.data?.lots??[]).filter(row=>row.source_id).map(row=>[row.source_id!,row.tonnes])),[baseline.data]);
   const baselineDetails=useMemo(()=>Object.fromEntries((baseline.data?.lots??[]).filter(row=>row.source_id).map(row=>[row.source_id!,{coal:row.coal_name,voyage:row.voyage_number??'',days:row.age_days??null}])),[baseline.data]);
@@ -45,7 +45,7 @@ export function OperationsBlend({theme,snapshot,status,view,onView,onNavigate,on
         <button aria-pressed={view==='analysis'} onClick={()=>onView('analysis')}><SlidersHorizontal size={16}/>혼탄 분석</button>
       </div>
     </header>
-    <AssistantSection screen="blend" params={{yard}} context={{screen:'blend',selection:{yard,view,...(lotId&&view==='diagram'?{lot:lotId}:{})}}} questions={SCREEN_QUESTIONS.blend} onAsk={onAsk} onNavigate={onNavigate} onResult={r=>setLotDetails(r?.details?.lots??{})}/>
+    <AssistantSection screen="blend" params={{yard}} context={{screen:'blend',selection:{yard,view,...(lotId&&view==='diagram'?{lot:lotId}:{})}}} questions={SCREEN_QUESTIONS.blend} onAsk={onAsk} onNavigate={onNavigate} onResult={r=>setLotDetails(r?r.details?.lots??{}:null)}/>
     {view==='analysis'?<div className="gf-bl-analysis"><InventoryWorkspace mode="blend" lotDetails={lotDetails}/></div>:<>
       <div className="gf-bl-command">
         <div className="gf-bl-line-tabs" role="group" aria-label="주 공급 계통 선택">

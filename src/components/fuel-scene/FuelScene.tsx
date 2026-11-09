@@ -76,10 +76,10 @@ export function FuelScene(props: FuelSceneProps) {
           </>}
           {mode !== 'yard' && <button type="button" className="fuel-scene__text-button" aria-pressed={view.plan} disabled={!!view.error} onClick={() => controller.current?.togglePlan()}><Grid2X2 size={13} />평면</button>}
           {(mode === 'berth' || yard > 1) && <button type="button" className="fuel-scene__text-button" aria-pressed={view.roof} disabled={!!view.error} onClick={() => controller.current?.toggleRoof()}><Layers size={13} />지붕 투시</button>}
-          {(mode !== 'berth' || selectedLotId) && <button type="button" aria-label="선택 더미 확대" disabled={!selectedLotId || !!view.error} onClick={() => controller.current?.focusSelected()}><Focus size={14} /></button>}
+          {(mode !== 'berth' || selectedLotId) && <button type="button" aria-label="선택 원탄 확대" disabled={!selectedLotId || !!view.error} onClick={() => controller.current?.focusSelected()}><Focus size={14} /></button>}
         </div>
         {mode !== 'berth' && <label className="fuel-scene__lot-picker" htmlFor={selectId}><span>원탄</span>
-          <select id={selectId} aria-label="더미 선택" value={lots.some(lot => lot.id === selectedLotId) ? selectedLotId ?? '' : ''} onChange={event => props.onSelectLot(event.target.value || null)}>
+          <select id={selectId} aria-label="원탄 선택" value={lots.some(lot => lot.id === selectedLotId) ? selectedLotId ?? '' : ''} onChange={event => props.onSelectLot(event.target.value || null)}>
             <option value="">선택 없음</option>
             {lots.map(lot => <option key={lot.id} value={lot.id}>{lot.pile ? `Pile ${lot.pile}` : `${lot.shed}${lot.cell}`} · {props.baselineDetails?.[lot.id]?.coal ?? lot.coal}{(props.baselineStock?.[lot.id] ?? lot.tons) === 0 ? ' · 소진' : ''}</option>)}
           </select>

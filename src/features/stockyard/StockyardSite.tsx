@@ -204,7 +204,7 @@ export function StockyardSite({
           <div className="site-plants" role="group" aria-label="당진 발전소 처별 발전·상탄 계획">
             <div className="site-plants-caption"><strong>당진 발전소</strong><span>{feedDate} · {feedSource} · KST · 일평균 · 실시간 계측 미연계</span></div>
             <p className="site-unload-note">하역 기본 {n(DEFAULT_UNLOAD_TPD)} t/일 (약 {n(DEFAULT_UNLOAD_TPD / 24, 1)} t/h) · 가정 · 선박 잔량·접안시간 반영 · 저탄 라인 1,000~1,200 t/h 상한 (하역기 능력보다 작음)
-              <span className="site-reach-legend"><span className="site-reach is-ok">부두</span> 하역 가능 <span className="site-reach is-no">부두</span> 하역 불가 · Pile = 더미 5개 묶음</span></p>
+              <span className="site-reach-legend"><span className="site-reach is-ok">부두</span> 하역 가능 <span className="site-reach is-no">부두</span> 하역 불가 · Pile = 원탄 5개 묶음</span></p>
             <div className="site-plant-grid">
               {YARDS.map((yard) => {
                 const feed = feeds.find((f) => f.yard === yard);
