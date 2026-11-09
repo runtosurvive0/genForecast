@@ -15,6 +15,9 @@ REGISTRY_COALS = ('AVRA', 'MERCURIA', 'Flame', 'Glencore', 'Glencore(무연탄)'
 CLASSES = ('high_cv', 'low_cv')
 CONFIDENCE = ('근거있음', '추정')
 FUSION_ORDER = ('fusion_it', 'fusion_st', 'fusion_ht', 'fusion_ft')
+REQUIRED_FIELDS = ('gcv_arb', 'tm_ar', 'im_adb', 'vm_adb', 'ash_adb', 'fc_adb', 'sulfur_ar',
+                   'c_db', 'h_db', 'n_db', 'o_db', 's_db', 'hgi', 'csn', *FUSION_ORDER, 'chlorine_db_ppm',
+                   'sio2', 'al2o3', 'fe2o3', 'cao', 'mgo', 'na2o', 'k2o', 'so3', 'tio2', 'ash_other')
 
 
 def _registry_bounds() -> dict[str, tuple[float, float]]:
@@ -45,6 +48,9 @@ def validate_profiles(data: dict) -> list[str]:
         errors.append(f'원장에 없는 탄종: {name}')
     for name, coal in coals.items():
         where = f'{name}'
+        if not isinstance(coal, dict):
+            errors.append(f'{where}: 탄종 정보는 객체여야 합니다.')
+            continue
         if coal.get('class') not in CLASSES:
             errors.append(f'{where}: class는 high_cv 또는 low_cv여야 합니다.')
         if coal.get('confidence') not in CONFIDENCE:
@@ -53,7 +59,13 @@ def validate_profiles(data: dict) -> list[str]:
             errors.append(f'{where}: 근거있음이면 sources가 필요합니다.')
         if not isinstance(coal.get('anthracite'), bool):
             errors.append(f'{where}: anthracite는 참/거짓이어야 합니다.')
-        fields = coal.get('fields') or {}
+        fields = coal.get('fields')
+        if not isinstance(fields, dict):
+            errors.append(f'{where}: fields는 객체여야 합니다.')
+            continue
+        for key in REQUIRED_FIELDS:
+            if key not in fields:
+                errors.append(f'{where}.{key}: 필수 성상 칸이 없습니다.')
         for key, value in fields.items():
             if key not in bounds:
                 errors.append(f'{where}.{key}: 원장 성상 칸이 아닙니다.')
@@ -76,6 +88,24 @@ def validate_profiles(data: dict) -> list[str]:
             for part in ('typ', 'min', 'max'):
                 if _number(gcv.get(part)) and not spec['gcv_arb_min'] <= gcv[part] <= spec['gcv_arb_max']:
                     errors.append(f'{where}: gcv_arb {part}가 {coal["class"]} 범위 밖입니다.')
+        errors.extend(_sulfur_errors(where, fields, spec))
+    return errors
+
+
+def _typed(fields: dict, key: str) -> dict | None:
+    value = fields.get(key)
+    return value if isinstance(value, dict) and all(_number(value.get(k)) for k in ('typ', 'min', 'max')) else None
+
+
+def _sulfur_errors(where: str, fields: dict, spec: dict) -> list[str]:
+    errors = []
+    s_ar, s_db, tm = _typed(fields, 'sulfur_ar'), _typed(fields, 's_db'), _typed(fields, 'tm_ar')
+    if s_ar and _number(spec.get('sulfur_ar_max')) and s_ar['max'] > spec['sulfur_ar_max']:
+        errors.append(f'{where}: sulfur_ar max가 등급 황분 상한 {spec["sulfur_ar_max"]}을 넘습니다.')
+    if s_ar and s_db and tm and tm['min'] < 100:
+        bound = s_ar['max'] * 100 / (100 - tm['min'])
+        if s_db['max'] > bound + 1e-9:
+            errors.append(f'{where}: s_db max가 sulfur_ar max·tm_ar min으로 환산한 {bound:.2f}를 넘습니다.')
     return errors
 
 

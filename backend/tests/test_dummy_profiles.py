@@ -93,3 +93,44 @@ def test_load_profiles_rejects_invalid_file(tmp_path):
     path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
     with pytest.raises(ValueError):
         load_profiles(path)
+
+
+def test_weakly_sourced_coals_are_estimates():
+    coals = load_profiles()['coals']
+    assert coals['Flame']['confidence'] == '추정' and coals['Flame']['sources']
+    assert coals['LXI']['confidence'] == '추정'
+
+
+def test_sulfur_bounds_are_consistent():
+    data = load_profiles()
+    for c in data['coals'].values():
+        f = c['fields']
+        assert f['sulfur_ar']['max'] <= data['classes'][c['class']]['sulfur_ar_max']
+        assert f['s_db']['max'] <= f['sulfur_ar']['max'] * 100 / (100 - f['tm_ar']['min']) + 1e-9
+
+
+def test_validate_catches_sulfur_above_class_limit():
+    assert _broken(lambda d: d['coals']['Flame']['fields']['sulfur_ar'].update({'max': 0.95}))
+
+
+def test_validate_catches_dry_sulfur_above_as_received_bound():
+    assert _broken(lambda d: d['coals']['Flame']['fields']['s_db'].update({'max': 0.95}))
+
+
+def test_validate_requires_all_common_fields():
+    from midterm.dummy_data.profiles import REQUIRED_FIELDS
+    assert len(REQUIRED_FIELDS) == 29
+    assert _broken(lambda d: d['coals']['LXI']['fields'].pop('fe2o3'))
+
+
+def test_validate_reports_non_dict_coal_instead_of_raising():
+    errors = _broken(lambda d: d['coals'].update({'LXI': 'bad'}))
+    assert any('LXI' in e for e in errors)
+
+
+def test_anthracite_hgi_and_kaltim_labels():
+    coals = load_profiles()['coals']
+    hgi = coals['Glencore(무연탄)']['fields']['hgi']
+    assert hgi['typ'] == 45 and 35 <= hgi['min'] and hgi['max'] <= 55
+    kaltim = coals['KCH(Kaltim)']
+    assert '6000' not in kaltim['origin'] + kaltim['grade']

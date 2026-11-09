@@ -86,7 +86,7 @@
         "s_db": {
           "typ": 0.39,
           "min": 0.28,
-          "max": 0.54
+          "max": 0.51
         },
         "hgi": {
           "typ": 58,
@@ -245,7 +245,7 @@
         "s_db": {
           "typ": 0.5,
           "min": 0.36,
-          "max": 0.71
+          "max": 0.68
         },
         "hgi": {
           "typ": 54,
@@ -339,11 +339,11 @@
       "grade": "6200 GAR급 역청탄",
       "class": "high_cv",
       "anthracite": false,
-      "confidence": "근거있음",
+      "confidence": "추정",
       "sources": [
         "https://koreascience.kr/article/JAKO201334460142117.pdf"
       ],
-      "note": "korea-import-ranges 분류(고열, GAR 약 6,200; JAKO201334460142117 Table 10 'Flame(SA)' 6,212)를 따름. coal-specs의 인니 5,000 GAR 가정은 폐기하고 고열 역청탄(TM 8~15, 회분 7~17, 황분 0.8 이하)에 맞춰 공업·원소분석을 다시 정함. 다른 공개 자료는 Flame탄을 아역청탄 계열로 기술해 상충이 있음(트레이더가 여러 등급 공급 추정). 발열량 외 성상은 추정.",
+      "note": "korea-import-ranges 분류(고열, GAR 약 6,200; JAKO201334460142117 Table 10 'Flame(SA)' 6,212)를 따름. coal-specs의 인니 5,000 GAR 가정은 폐기하고 고열 역청탄(TM 8~15, 회분 7~17, 황분 0.8 이하)에 맞춰 공업·원소분석을 다시 정함. 다른 공개 자료는 Flame탄을 아역청탄 계열로 기술해 상충이 있음(트레이더가 여러 등급 공급 추정). 발열량 외 성상은 추정. 근거는 발열량 표 하나뿐이라 confidence는 추정.",
       "fields": {
         "gcv_arb": {
           "typ": 6200,
@@ -382,8 +382,8 @@
         },
         "c_db": {
           "typ": 71.5,
-          "min": 69.0,
-          "max": 74.0
+          "min": 69.8,
+          "max": 72.8
         },
         "h_db": {
           "typ": 4.3,
@@ -403,7 +403,7 @@
         "s_db": {
           "typ": 0.67,
           "min": 0.5,
-          "max": 0.89
+          "max": 0.86
         },
         "hgi": {
           "typ": 52,
@@ -541,8 +541,8 @@
         },
         "c_db": {
           "typ": 74.0,
-          "min": 71.8,
-          "max": 76.2
+          "min": 73.2,
+          "max": 74.9
         },
         "h_db": {
           "typ": 4.5,
@@ -562,7 +562,7 @@
         "s_db": {
           "typ": 0.57,
           "min": 0.43,
-          "max": 0.71
+          "max": 0.69
         },
         "hgi": {
           "typ": 50,
@@ -660,7 +660,7 @@
       "sources": [
         "https://thuanhai.com.vn/news/market-news/vietnam-coal-overview-and-outstanding-features.html"
       ],
-      "note": "무연탄: 고정탄소가 높고 휘발분이 10% 미만이라 일반 혼탄(역청·아역청) 대상과 연소 성격이 다름. 혼탄 계산에 그대로 섞지 말 것. korea-import-ranges 가정 GAR 6,800(추정, 공개 근거 없음)은 고열 등급 상한 6,500을 넘으므로 등급 범위 안인 6,450으로 두고 회분을 16%로 올려 발열량과 맞춤.",
+      "note": "무연탄: 고정탄소가 높고 휘발분이 10% 미만이라 일반 혼탄(역청·아역청) 대상과 연소 성격이 다름. 혼탄 계산에 그대로 섞지 말 것. korea-import-ranges 가정 GAR 6,800(추정, 공개 근거 없음)은 고열 등급 상한 6,500을 넘으므로 등급 범위 안인 6,450으로 두고 회분을 16%로 올려 발열량과 맞춤. HGI는 coal-specs 70 대신 무연탄 일반값(분쇄가 어려움, 35~55 수준)인 45로 둠(추정).",
       "fields": {
         "gcv_arb": {
           "typ": 6450,
@@ -699,8 +699,8 @@
         },
         "c_db": {
           "typ": 77.5,
-          "min": 75.0,
-          "max": 80.0
+          "min": 76.9,
+          "max": 78.1
         },
         "h_db": {
           "typ": 2.2,
@@ -720,12 +720,12 @@
         "s_db": {
           "typ": 0.51,
           "min": 0.38,
-          "max": 0.64
+          "max": 0.62
         },
         "hgi": {
-          "typ": 70,
-          "min": 62,
-          "max": 78
+          "typ": 45,
+          "min": 35,
+          "max": 55
         },
         "csn": {
           "typ": 0,
@@ -857,8 +857,8 @@
         },
         "c_db": {
           "typ": 73.5,
-          "min": 71.0,
-          "max": 76.0
+          "min": 72.4,
+          "max": 74.6
         },
         "h_db": {
           "typ": 4.5,
@@ -878,7 +878,7 @@
         "s_db": {
           "typ": 0.47,
           "min": 0.35,
-          "max": 0.58
+          "max": 0.57
         },
         "hgi": {
           "typ": 48,
@@ -968,7 +968,7 @@
       }
     },
     "KCH(Kaltim)": {
-      "origin": "인도네시아 Kaltim Prima Coal (Pinang 6000 GAR 추정)",
+      "origin": "인도네시아 Kaltim Prima Coal (Pinang 6200 GAR급 가정)",
       "grade": "Pinang 6200 GAR급",
       "class": "high_cv",
       "anthracite": false,
@@ -1038,7 +1038,7 @@
         "s_db": {
           "typ": 0.58,
           "min": 0.46,
-          "max": 0.76
+          "max": 0.74
         },
         "hgi": {
           "typ": 47,
@@ -1196,7 +1196,7 @@
         "s_db": {
           "typ": 0.22,
           "min": 0.16,
-          "max": 0.27
+          "max": 0.26
         },
         "hgi": {
           "typ": 50,
@@ -1354,7 +1354,7 @@
         "s_db": {
           "typ": 0.63,
           "min": 0.47,
-          "max": 0.78
+          "max": 0.74
         },
         "hgi": {
           "typ": 55,
@@ -1448,12 +1448,12 @@
       "grade": "Indonesian 4200 GAR급(GAM 광산 범위)",
       "class": "low_cv",
       "anthracite": false,
-      "confidence": "근거있음",
+      "confidence": "추정",
       "sources": [
         "https://www.gem.wiki/Ganda_Alam_Makmur_(GAM)_coal_mine",
         "https://www.idxchannel.com/economics/tentukan-harga-acuan-pemerintah-bagi-batu-bara-jadi-empat-kategori/all"
       ],
-      "note": "korea-import-ranges 분류(저열, GAR 약 4,200; GAM 광산 3,500~4,800)를 따름. coal-specs 4,400에서 내리면서 TM 32→34, 황분 0.25→0.22, 탄소 69→68로 맞춤. 세부 성상은 HBA II·저열량 동반 성상 기반 추정.",
+      "note": "korea-import-ranges 분류(저열, GAR 약 4,200; GAM 광산 3,500~4,800)를 따름. coal-specs 4,400에서 내리면서 TM 32→34, 황분 0.25→0.22, 탄소 69→68로 맞춤. 세부 성상은 HBA II·저열량 동반 성상 기반 추정. LXI를 GAM 광산 탄으로 연결한 것 자체가 추정이라 confidence는 추정.",
       "fields": {
         "gcv_arb": {
           "typ": 4200,
@@ -1513,7 +1513,7 @@
         "s_db": {
           "typ": 0.33,
           "min": 0.23,
-          "max": 0.48
+          "max": 0.42
         },
         "hgi": {
           "typ": 60,
