@@ -1,18 +1,10 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './auth-fixture';
 
-// assistant-section-ui.spec.ts와 같은 방식: 격리된 테스트 서버(8097) + test-admin 로그인 + page.route 가로채기.
+// assistant-section-ui.spec.ts와 같은 방식: auth-fixture 세션 + page.route 가로채기(실서버 로그인 제한 회피).
 async function loginAndOpen(page: Page, path: string, width = 1920) {
-  await page.context().route('**/api/**', async (route) => {
-    const url = new URL(route.request().url());
-    url.port = '8097';
-    const response = await route.fetch({ url: url.href });
-    await route.fulfill({ response });
-  });
   await page.setViewportSize({ width, height: 1080 });
   await page.goto(path);
-  await page.getByLabel('아이디', { exact: true }).fill('test-admin');
-  await page.getByLabel('비밀번호', { exact: true }).fill('only-for-isolated-ui-tests-2026');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page.getByRole('button', { name: '운영 질문하기' })).toBeVisible();
 }
 

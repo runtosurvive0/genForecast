@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './auth-fixture';
 import { createRequire } from 'node:module';
 import { planningFixture } from './planning-fixture';
 
@@ -6,19 +7,10 @@ const require = createRequire(import.meta.url);
 const { createEngine } = require('../scripts/fuel-demo/demo-engine.cjs');
 const { loadCatalog } = require('../scripts/fuel-demo/demo-catalog.cjs');
 
-// assistant-ui.spec.ts와 같은 방식: 격리된 테스트 서버(8097)로 /api를 보내고 test-admin으로 로그인한다.
+// assistant-ui.spec.ts와 같은 방식: auth-fixture의 승인된 세션을 쓰고 필요한 /api 응답만 page.route로 준다(실서버 로그인 제한 회피).
 async function loginAndOpen(page: Page, path: string) {
-  await page.context().route('**/api/**', async (route) => {
-    const url = new URL(route.request().url());
-    url.port = '8097';
-    const response = await route.fetch({ url: url.href });
-    await route.fulfill({ response });
-  });
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto(path);
-  await page.getByLabel('아이디', { exact: true }).fill('test-admin');
-  await page.getByLabel('비밀번호', { exact: true }).fill('only-for-isolated-ui-tests-2026');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page.getByRole('button', { name: '운영 질문하기' })).toBeVisible();
 }
 
