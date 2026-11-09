@@ -51,7 +51,10 @@ Claude는 ZGX에 쓰지 않는다. 아래 명령은 사용자가 ZGX 셸에 직�
    DB="$(systemctl show -p Environment --value genforecast-backend.service | tr ' ' '\n' | sed -n 's/^MIDTERM_PLANNING_DB=//p')"
    echo "$DB"
    ls -l "$DB"
+   if [ -n "$DB" ] && [ -f "$DB" ]; then echo "대상 DB 확인: $DB"; else echo "DB 경로를 확인하세요. 아래 명령을 실행하지 마세요."; fi
    ```
+
+   마지막 줄이 `대상 DB 확인:`이 아니면 2단계로 넘어가지 않는다. 대화형 셸 창이 닫히지 않도록 `exit` 대신 `if` 문으로 확인만 한다.
 
 2. 서비스와 같은 코드·DB로 실행한다. 백엔드 서비스는 계속 켜 둔 채 실행해도 된다(백업은 SQLite 온라인 백업이고, 원장 저장은 revision 충돌을 검사한다).
 
@@ -83,14 +86,20 @@ Claude는 ZGX에 쓰지 않는다. 아래 명령은 사용자가 ZGX 셸에 직�
   - 남아 있는 사람 값이 쓰는 기준 칸(`cv`가 남으면 `cv_basis`, 회분·황분 등이 남으면 `analysis_basis`)도 비우지 않는다.
   - 이렇게 남긴 칸은 계속 더미로 표시(`mixed`, `dummy_fields`)하고 결과 JSON `kept_required`에 적는다.
 - 더미 행 아래에 지우지 않는 하위 행(사람이 고친 더미 화물 등)이 남으면 그 상위 더미 행도 지우지 않고 `kept_parents`에 적는다. 하위 행 때문에 삭제가 실패하지 않는다.
-- 기준재고: 최신 판의 각 적치 파일에서 `dummy_fields`에 적힌 칸을 더미 적재 전 값(같은 기준일의 이전 판)으로 되돌리고 `dummy_fields`를 지운 새 판을 저장한다. 바뀐 것이 없으면 저장하지 않는다.
+- 기준재고: 최신 판의 각 적치 파일에서 `dummy_fields`에 적힌 칸 가운데 **값이 적재기(`dummy-seed`)가 마지막으로 쓴 값과 같은 칸만** 더미 적재 전 값(같은 기준일의 이전 판)으로 되돌리고 `dummy_fields`를 지운 새 판을 저장한다. 값이 다른 칸은 사람이 고친 값이므로 남기고 결과 JSON `kept_baseline`에 적는다. 바뀐 것이 없으면 저장하지 않는다.
+  - 적치 파일은 `(source_id, location, coal_name, voyage_number)`로 판끼리 대응시킨다. 한 판 안에서 이 키가 겹치면 대응할 수 없으므로 아무것도 쓰지 않고 멈춘다(원장도 바꾸지 않음).
+- 기준재고 저장 규칙(`save_baseline`, 적재기 외 저장): 같은 기준일의 직전 판(없으면 가장 최신 판)과 비교해, 더미 표시된 칸 중 값이 바뀐 칸은 `dummy_fields`에서 뺀다. 직전 판에 없던 더미 표시를 사람이 추가해 보내면 무시한다. 키가 겹쳐 대응할 수 없는 적치는 더미 표시를 지운다(사람이 고친 값이 지워지는 것보다 더미 표시를 잃는 쪽이 안전).
 - 회수한 행·칸은 원장 이력(`voyage_registry_audit`, origin `dummy-data`)에 남는다.
 
 ## 백업에서 되돌리기(마지막 수단)
 
 `unload --yes`로 해결되지 않을 때만 쓴다. 백업 이후의 모든 원장·재고 변경도 함께 사라진다.
 
+먼저 "ZGX에서 실행"의 1단계를 다시 실행해 `$DB`가 서비스 DB 경로인지 확인한다. 같은 확인 줄이 `대상 DB 확인:`을 출력할 때만 아래를 실행한다.
+
 ```bash
+if [ -n "$DB" ] && [ -f "$DB" ]; then echo "대상 DB 확인: $DB"; else echo "DB 경로를 확인하세요. 아래 명령을 실행하지 마세요."; fi
+# 위 줄이 "대상 DB 확인:"을 출력했을 때만 이어서 실행한다.
 sudo systemctl stop genforecast-backend.service
 /home/puyo/genforecast/current/.venv/bin/python -c "import sqlite3,sys; s=sqlite3.connect(sys.argv[1]); d=sqlite3.connect(sys.argv[2]); s.backup(d); d.close(); s.close()" \
   ~/.config/genforecast/backups/dummy-YYYYmmdd-HHMMSS/planning.sqlite3 "$DB"

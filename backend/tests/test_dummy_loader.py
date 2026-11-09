@@ -220,3 +220,90 @@ def test_cli_requires_yes(tmp_db, capsys):
 
     assert main(['check', '--db', str(tmp_db)]) == 0
     assert _json_line(capsys.readouterr().out)['create'] == {'voyages': 0, 'cargo': 0, 'assays': 0}
+
+
+def _put_baseline(path, lots, actor):
+    """Store a baseline revision directly, bypassing save_baseline's dummy-mark rules."""
+    with sqlite3.connect(path) as db:
+        revision = db.execute('SELECT revision FROM yard_baseline_meta WHERE id=1').fetchone()[0] + 1
+        as_of = db.execute('SELECT as_of FROM yard_baselines ORDER BY revision DESC LIMIT 1').fetchone()[0]
+        db.execute('INSERT INTO yard_baselines(revision,as_of,actor,recorded_at,payload) VALUES(?,?,?,?,?)',
+                   (revision, as_of, actor, '2026-11-10T00:00:00+00:00', json.dumps(lots, ensure_ascii=False)))
+        db.execute('UPDATE yard_baseline_meta SET revision=? WHERE id=1', (revision,))
+    db.close()
+
+
+def test_unload_keeps_human_baseline_edit_even_if_still_marked(tmp_db):
+    original = read_baseline(tmp_db)['lots']
+    loader.load(tmp_db)
+    lots = read_baseline(tmp_db)['lots']
+    assert 'temperature_c' in lots[0]['dummy_fields']
+    lots[0]['temperature_c'] = 59.5  # human value, dummy mark left in place on purpose
+    _put_baseline(tmp_db, lots, 'tester')
+    result = loader.unload(tmp_db)
+    got = read_baseline(tmp_db)['lots']
+    assert got[0]['temperature_c'] == 59.5
+    assert got[0].get('age_days') == original[0].get('age_days')
+    assert 'dummy_fields' not in got[0]
+    assert got[1:] == original[1:]
+    assert result['kept_baseline'] == [{'source_id': original[0]['source_id'], 'location': original[0]['location'],
+                                        'coal_name': original[0]['coal_name'],
+                                        'voyage_number': original[0]['voyage_number'], 'fields': ['temperature_c']}]
+
+
+def test_unload_keeps_human_baseline_edit_saved_normally(tmp_db):
+    original = read_baseline(tmp_db)['lots']
+    loader.load(tmp_db)
+    current = read_baseline(tmp_db)
+    lots = current['lots']
+    lots[1]['temperature_c'] = 33.3
+    save_baseline({'as_of': current['as_of'], 'lots': lots}, current['revision'], 'operator', tmp_db)
+    result = loader.unload(tmp_db)
+    got = read_baseline(tmp_db)['lots']
+    assert got[1]['temperature_c'] == 33.3 and 'dummy_fields' not in got[1]
+    assert got[0] == original[0]
+    assert result['kept_baseline'] == []
+
+
+def test_unload_stops_on_duplicate_lot_keys(tmp_db):
+    loader.load(tmp_db)
+    lots = read_baseline(tmp_db)['lots']
+    _put_baseline(tmp_db, [*lots, dict(lots[0])], 'tester')
+    registry, baseline = snapshot(tmp_db)['revision'], _baseline_revision(tmp_db)
+    with pytest.raises(ValueError, match='겹'):
+        loader.unload(tmp_db)
+    assert snapshot(tmp_db)['revision'] == registry and _baseline_revision(tmp_db) == baseline
+
+
+@pytest.mark.parametrize('broken', ['raise', 'garbage'])
+def test_backup_failure_writes_nothing(tmp_db, monkeypatch, broken):
+    loader.load(tmp_db)
+    registry, baseline = snapshot(tmp_db)['revision'], _baseline_revision(tmp_db)
+
+    def bad_copy(src, dst):
+        if broken == 'raise':
+            raise OSError('디스크 가득 참')
+        Path(dst).write_bytes(b'not a database file at all' * 10)
+    monkeypatch.setattr(loader, '_copy', bad_copy)
+    with pytest.raises(Exception):
+        loader.unload(tmp_db)
+    with pytest.raises(Exception):
+        loader.load(tmp_db, seed=7)
+    assert snapshot(tmp_db)['revision'] == registry and _baseline_revision(tmp_db) == baseline
+
+
+def test_unload_rerun_after_purge_conflict_restores(tmp_db, monkeypatch):
+    before = snapshot(tmp_db)
+    base_before = read_baseline(tmp_db)['lots']
+    loader.load(tmp_db)
+
+    def conflict(*args, **kwargs):
+        raise RegistryError('다른 변경이 먼저 저장되었습니다.', 409)
+    monkeypatch.setattr(loader, 'purge', conflict)
+    with pytest.raises(RegistryError):
+        loader.unload(tmp_db)
+    assert any(v['voyage_no'].startswith('DV-') for v in snapshot(tmp_db)['voyages'])
+    monkeypatch.undo()
+    loader.unload(tmp_db)
+    assert _rows(snapshot(tmp_db)) == _rows(before)
+    assert read_baseline(tmp_db)['lots'] == base_before

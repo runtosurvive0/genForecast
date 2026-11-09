@@ -34,6 +34,8 @@ def _unload_lines(r: dict, when: str) -> list[str]:
         lines.append(f"필수 칸이라 남긴 더미 값: {len(r['kept_required'])}행 (사람이 고친 행)")
     if r['kept_parents']:
         lines.append(f"남은 하위 행 때문에 지우지 않은 더미 행: {len(r['kept_parents'])}행")
+    if r.get('kept_baseline'):
+        lines.append(f"사람이 고친 값이라 남긴 기준재고 적치: {len(r['kept_baseline'])}건")
     return lines
 
 

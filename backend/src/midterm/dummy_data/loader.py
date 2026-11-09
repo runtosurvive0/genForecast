@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from midterm.database import connect
-from midterm.stock_baseline import read_baseline, save_baseline
+from midterm.stock_baseline import DUMMY_ACTOR, LOT_KEY, dummy_names, read_baseline, save_baseline, unique_lots
 from midterm.voyage_registry import (DUMMY_ORIGIN, KST, PURGE_ORDER, SCHEMA, RegistryError, commit, dummy_keys,
                                      purge, snapshot)
 
@@ -180,33 +180,42 @@ def _purge_dummy(path: Path, keys: dict, registry: dict) -> dict:
     return purge(keys, registry['revision'], ACTOR, DUMMY_ORIGIN, path)
 
 
-def _previous_lots(path: Path, as_of: str, revision: int) -> list[dict]:
-    """Lots of the latest same-day baseline saved before the given revision by someone other than the loader."""
-    with connect(path) as db:
-        row = db.execute("SELECT payload FROM yard_baselines WHERE as_of=? AND revision<? AND actor<>? "
-                         "ORDER BY revision DESC LIMIT 1", (as_of, revision, ACTOR)).fetchone()
-    return json.loads(row['payload']) if row else []
+def _unique(lots: list[dict], what: str) -> dict:
+    by_key, twins = unique_lots(lots)
+    if twins:
+        raise ValueError(f'{what} 기준재고에 같은 적치 키(source_id·location·coal_name·voyage_number)가 겹칩니다: '
+                         f'{sorted(map(str, twins))[:3]}. 대응할 수 없어 회수를 멈춥니다.')
+    return by_key
 
 
-def _lot_id(lot: dict) -> tuple:
-    return tuple(lot.get(k) for k in ('source_id', 'location', 'coal_name', 'voyage_number'))
-
-
-def _clear_baseline(path: Path) -> tuple[dict | None, int, int]:
+def _plan_baseline(path: Path) -> tuple[dict | None, int, list, int]:
+    """New baseline without dummy values. A marked field is removed only while it still holds the value the
+    loader wrote; a different value is a person's and stays (reported in kept_baseline)."""
     current = read_baseline(path)
-    if not current['lots'] or not any(lot.get('dummy_fields') for lot in current['lots']):
-        return None, 0, current['revision']
+    if not any(lot.get('dummy_fields') for lot in current['lots']):
+        return None, 0, [], current['revision']
     with connect(path) as db:
-        latest = db.execute('SELECT revision FROM yard_baselines WHERE as_of=? ORDER BY revision DESC LIMIT 1',
-                            (current['as_of'],)).fetchone()['revision']
-    previous = {_lot_id(lot): lot for lot in _previous_lots(path, current['as_of'], latest)}
-    lots, cleared = [], 0
-    for lot in current['lots']:
-        names = {k.strip() for k in str(lot.get('dummy_fields') or '').split(',') if k.strip()}
+        row = db.execute('SELECT payload, revision FROM yard_baselines WHERE as_of=? AND actor=? '
+                         'ORDER BY revision DESC LIMIT 1', (current['as_of'], DUMMY_ACTOR)).fetchone()
+        seeded, seed_revision = (json.loads(row['payload']), row['revision']) if row else (None, None)
+        row = None
+        if seed_revision is not None:  # the last baseline a person saved before the loader's
+            row = db.execute('SELECT payload FROM yard_baselines WHERE as_of=? AND revision<? AND actor<>? '
+                             'ORDER BY revision DESC LIMIT 1', (current['as_of'], seed_revision, DUMMY_ACTOR)).fetchone()
+        before = json.loads(row['payload']) if row else None
+    lots_now = _unique(current['lots'], '현재')
+    seed = _unique(seeded or [], '더미 적재')
+    previous = _unique(before or [], '더미 적재 전')
+    lots, cleared, kept = [], 0, []
+    for key, lot in lots_now.items():
         new = {k: v for k, v in lot.items() if k != 'dummy_fields'}
-        old = previous.get(_lot_id(lot), {})
-        for name in names:
+        old, dummy = previous.get(key, {}), seed.get(key)
+        human = []
+        for name in sorted(dummy_names(lot)):
             if name not in new:
+                continue
+            if dummy is None or dummy.get(name) != new[name]:
+                human.append(name)  # not the loader's value: keep it, it is no longer dummy
                 continue
             cleared += 1
             if name in old and old[name] in (None, ''):
@@ -215,22 +224,26 @@ def _clear_baseline(path: Path) -> tuple[dict | None, int, int]:
                 new.pop(name)
             else:
                 new[name] = None
+        if human:
+            kept.append({**dict(zip(LOT_KEY, key)), 'fields': human})
         lots.append(new)
-    return {'as_of': current['as_of'], 'lots': lots}, cleared, current['revision']
+    return {'as_of': current['as_of'], 'lots': lots}, cleared, kept, current['revision']
 
 
 def _unload(path: Path) -> dict:
+    # Plan the baseline first so an unmatchable baseline stops the unload before any write.
+    value, baseline_cleared, kept_baseline, baseline_revision = _plan_baseline(path)
     registry = snapshot(path)
     changes, kept_required, cleared = _clear_changes(registry)
     if any(changes.values()):
         registry = commit(changes, registry['revision'], ACTOR, DUMMY_ORIGIN, path)
     keys, kept_parents = _purge_keys(registry)
     registry = _purge_dummy(path, keys, registry)
-    value, baseline_cleared, baseline_revision = _clear_baseline(path)
     if value is not None:
         baseline_revision = save_baseline(value, baseline_revision, ACTOR, path)['revision']
     return {'db': str(path), 'purged': {e: len(keys[e]) for e in PURGE_ORDER}, 'cleared': cleared,
             'kept_required': kept_required, 'kept_parents': kept_parents, 'baseline_cleared': baseline_cleared,
+            'kept_baseline': kept_baseline,
             'registry_revision': registry['revision'], 'baseline_revision': baseline_revision}
 
 

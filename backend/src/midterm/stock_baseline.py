@@ -6,6 +6,46 @@ from datetime import date, datetime, timezone
 from midterm.database import connect
 from midterm.stock_inventory import LOCATIONS
 
+DUMMY_ACTOR = 'dummy-seed'
+LOT_KEY = ('source_id', 'location', 'coal_name', 'voyage_number')
+
+
+def lot_key(lot):
+    return tuple(lot.get(k) for k in LOT_KEY)
+
+
+def dummy_names(lot):
+    return {k.strip() for k in str(lot.get('dummy_fields') or '').split(',') if k.strip()}
+
+
+def unique_lots(lots):
+    """Lots by lot_key, plus the keys that occur more than once (those cannot be matched)."""
+    by_key, twins = {}, set()
+    for lot in lots:
+        key = lot_key(lot)
+        if key in by_key:
+            twins.add(key)
+        by_key[key] = lot
+    return {k: v for k, v in by_key.items() if k not in twins}, twins
+
+
+def _keep_human_edits(db, day, clean):
+    """A person may only keep or shrink the dummy marks of the previous baseline, never add to them.
+
+    A marked field whose value changed is a human value and loses its mark. Unmatchable lots lose all marks."""
+    row = (db.execute('SELECT payload FROM yard_baselines WHERE as_of=? ORDER BY revision DESC LIMIT 1', (day,)).fetchone()
+           or db.execute('SELECT payload FROM yard_baselines ORDER BY revision DESC LIMIT 1').fetchone())
+    previous, old_twins = unique_lots(json.loads(row['payload']) if row else [])
+    _, new_twins = unique_lots(clean)
+    for lot in clean:
+        key = lot_key(lot)
+        old = previous.get(key) if key not in new_twins | old_twins else None
+        names = {n for n in dummy_names(lot) & dummy_names(old or {}) if lot.get(n) == old.get(n)} if old else set()
+        if names:
+            lot['dummy_fields'] = ','.join(sorted(names))
+        else:
+            lot.pop('dummy_fields', None)
+
 
 def _init(db):
     db.executescript('''
@@ -75,6 +115,8 @@ def save_baseline(value, revision, actor, path):
         current = db.execute('SELECT revision FROM yard_baseline_meta WHERE id=1').fetchone()[0]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision != current:
             raise ValueError('재고 현황이 변경되었습니다. 다시 불러오세요')
+        if actor != DUMMY_ACTOR:
+            _keep_human_edits(db, day.isoformat(), clean)
         next_rev = current + 1
         db.execute('INSERT INTO yard_baselines(revision,as_of,actor,recorded_at,payload) VALUES(?,?,?,?,?)',
                    (next_rev, day.isoformat(), actor, datetime.now(timezone.utc).isoformat(), json.dumps(clean, ensure_ascii=False)))
