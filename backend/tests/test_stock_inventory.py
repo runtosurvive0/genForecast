@@ -132,6 +132,26 @@ def test_reconcile_restores_retired_location_without_losing_audit(tmp_path):
     assert result['reconciliations'][1]['before'][0]['location'] == 'P1'
 
 
+def test_dummy_cargo_never_becomes_real_stock(tmp_path):
+    path = tmp_path / 'db.sqlite3'
+    commit({'voyages': [{'voyage_no': 'DV1', 'status': 'completed', 'actual_unload_end': '2026-11-04 12:00',
+                         'data_origin': 'dummy'}],
+            'cargo': [{'cargo_no': 'DC1', 'voyage_no': 'DV1', 'destination_plant_id': 'dangjin',
+                       'coal_name': 'TEST', 'planned_t': 100, 'received_t': 100,
+                       'receipt_date': '2026-11-03', 'receipt_end_date': '2026-11-04', 'data_origin': 'dummy'}]},
+           0, 'dummy-seed', 'dummy-data', path)
+    with pytest.raises(ValueError, match='더미 화물은 실제 재고에 반영할 수 없습니다'):
+        assign_receipt('DC1', [{'location': 'P1', 'tonnes': 100}], 0, 'a', path)
+    assert inventory_snapshot(path)['lots'] == [] and inventory_snapshot(path)['revision'] == 0
+    with connect(path) as db:  # a lot left by an older app: it cannot be reconciled either
+        db.execute("INSERT INTO stock_inventory_lots(cargo_no,location,initial_t,remaining_t,updated_at,receipt_at,"
+                   "recorded_receipt_end) VALUES('DC1','P1',100,100,'2026-11-05T00:00:00+00:00',"
+                   "'2026-11-04T12:00:00+09:00','2026-11-04')")
+    with pytest.raises(ValueError, match='더미 화물은 실제 재고에 반영할 수 없습니다'):
+        reconcile_receipt('DC1', [{'location': 'P2', 'tonnes': 100, 'remaining_t': 100}], '정정', 0, 1, 'a', path)
+    assert [r['location'] for r in inventory_snapshot(path)['lots']] == ['P1']
+
+
 def test_reconcile_after_source_amount_or_time_changes_reconfirms_current_values(tmp_path):
     path = tmp_path / 'db.sqlite3'; prepare(path)
     assign_receipt('C1', [{'location':'P1','tonnes':100}], 0, 'a', path)

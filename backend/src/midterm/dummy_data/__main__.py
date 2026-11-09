@@ -32,6 +32,9 @@ def _unload_lines(r: dict, when: str) -> list[str]:
              f"{when} 원장 revision {r['registry_revision']} · 기준재고 revision {r['baseline_revision']}"]
     if r['kept_required']:
         lines.append(f"필수 칸이라 남긴 더미 값: {len(r['kept_required'])}행 (사람이 고친 행)")
+    if r.get('kept_edited'):
+        lines.append(f"이전 버전 앱 등에서 사람이 고쳐 통째로 남긴 더미 행: {len(r['kept_edited'])}행 "
+                     '(어느 칸을 고쳤는지 알 수 없어 더미 칸도 그대로 둠)')
     if r['kept_parents']:
         lines.append(f"남은 하위 행 때문에 지우지 않은 더미 행: {len(r['kept_parents'])}행")
     if r.get('kept_baseline'):

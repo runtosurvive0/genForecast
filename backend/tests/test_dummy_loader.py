@@ -198,6 +198,84 @@ def test_purge_guard_rejects_non_dummy_keys(tmp_db):
     assert snapshot(tmp_db)['revision'] == snap['revision']
 
 
+def _old_code_edit(path, entity, key, field, value, audit=False):
+    """Mimic an edit by the app before the dummy markers: values and updated_by change, markers stay."""
+    spec = SCHEMA[entity]
+    with sqlite3.connect(path) as db:
+        db.execute(f"UPDATE voyage_registry_{entity} SET {field}=?, updated_by='old-user' WHERE {spec['key']}=?",
+                   (value, key))
+        if audit:  # the old app audits without the marker fields
+            db.row_factory = sqlite3.Row
+            row = dict(db.execute(f"SELECT * FROM voyage_registry_{entity} WHERE {spec['key']}=?", (key,)).fetchone())
+            after = {k: v for k, v in row.items()
+                     if k not in ('data_origin', 'dummy_fields', 'updated_at', 'updated_by')}
+            db.execute('INSERT INTO voyage_registry_audit(revision,entity,record_key,actor,origin,at,before_json,after_json) '
+                       'VALUES(?,?,?,?,?,?,?,?)', (99, entity, key, 'old-user', 'manual', '2026-11-10T00:00:00+09:00',
+                                                   None, json.dumps(after, ensure_ascii=False)))
+    db.close()
+
+
+def test_unload_keeps_rows_edited_by_old_code(tmp_db):
+    loader.load(tmp_db)
+    loaded = snapshot(tmp_db)
+    real_cargo = next(c for c in loaded['cargo'] if c['data_origin'] == 'mixed'
+                      and 'cv' in c['dummy_fields'].split(',') and not c['cargo_no'].startswith('DC-'))
+    _old_code_edit(tmp_db, 'voyages', 'DV-26-1-002', 'notes', '이전 앱 메모')
+    _old_code_edit(tmp_db, 'cargo', real_cargo['cargo_no'], 'cv', 5555, audit=True)
+    result = loader.unload(tmp_db)
+
+    after = snapshot(tmp_db)
+    voyages = {v['voyage_no']: v for v in after['voyages']}
+    cargo = {c['cargo_no']: c for c in after['cargo']}
+    kept_voyage = voyages['DV-26-1-002']  # whole row stays, dummy values included
+    assert kept_voyage['notes'] == '이전 앱 메모' and kept_voyage['data_origin'] == 'dummy'
+    assert kept_voyage['berth_id'] is not None and kept_voyage['updated_by'] == 'old-user'
+    kept_cargo = cargo[real_cargo['cargo_no']]  # no dummy field is blanked: which one the person changed is unknown
+    assert kept_cargo['cv'] == 5555 and kept_cargo['data_origin'] == 'mixed'
+    assert kept_cargo['dummy_fields'] == real_cargo['dummy_fields']
+    assert all(kept_cargo[k] == real_cargo[k] for k in real_cargo['dummy_fields'].split(',') if k != 'cv')
+    assert 'DC-26-1-002' not in cargo and 'DV-26-1-003' not in voyages  # untouched dummy rows still go
+    edited = {(k['entity'], k['key']) for k in result['kept_edited']}
+    assert edited == {('voyages', 'DV-26-1-002'), ('cargo', real_cargo['cargo_no'])}
+    assert all(k['fields'] for k in result['kept_edited'])
+
+    with pytest.raises(RegistryError, match='사람'):  # the defence line refuses it too
+        loader._purge_dummy(tmp_db, {'voyages': ['DV-26-1-002']}, after)
+    again = loader.unload(tmp_db)
+    assert snapshot(tmp_db)['revision'] == after['revision']
+    assert {(k['entity'], k['key']) for k in again['kept_edited']} == edited
+
+
+def test_unload_trusts_its_own_cleared_rows(tmp_db):
+    loader.load(tmp_db)
+    loaded = snapshot(tmp_db)
+    commit({'voyages': [{'voyage_no': 'DV-26-1-002', 'notes': '사람 메모'}]}, loaded['revision'], 'tester', 'manual', tmp_db)
+    first = loader.unload(tmp_db)
+    assert first['kept_edited'] == []
+    kept = {v['voyage_no']: v for v in snapshot(tmp_db)['voyages']}['DV-26-1-002']
+    assert kept['updated_by'] == 'dummy-seed' and kept['data_origin'] == 'mixed'  # left by unload itself
+    again = loader.unload(tmp_db)
+    assert again['kept_edited'] == []
+    assert {'entity': 'voyages', 'key': 'DV-26-1-002', 'fields': ['status']} in again['kept_required']
+
+
+def test_unload_stops_before_writing_when_dummy_cargo_is_in_stock(tmp_db):
+    from midterm.stock_inventory import inventory_snapshot
+    loader.load(tmp_db)
+    inventory_snapshot(tmp_db)  # creates the inventory tables
+    with sqlite3.connect(tmp_db) as db:
+        db.execute("INSERT INTO stock_inventory_lots(cargo_no,location,initial_t,remaining_t,updated_at) "
+                   "VALUES('DC-26-1-002','P1',100,100,'2026-11-10T00:00:00+00:00')")
+    db.close()
+    registry, baseline = snapshot(tmp_db)['revision'], _baseline_revision(tmp_db)
+    with pytest.raises(ValueError, match='DC-26-1-002'):
+        loader.unload(tmp_db)
+    with pytest.raises(ValueError, match='재고'):
+        loader.preview_unload(tmp_db)
+    assert snapshot(tmp_db)['revision'] == registry and _baseline_revision(tmp_db) == baseline
+    assert any(c['cargo_no'] == 'DC-26-1-002' for c in snapshot(tmp_db)['cargo'])
+
+
 def _json_line(out):
     return json.loads(out.strip().splitlines()[-1])
 

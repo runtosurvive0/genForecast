@@ -122,14 +122,48 @@ def load(path: Path, *, seed: int = DEFAULT_SEED, backup_root: Path | None = Non
             'registry_revision': after['revision'], 'baseline_revision': baseline_revision}
 
 
-def _clear_changes(registry: dict) -> tuple[dict, list, dict]:
+def _edited_elsewhere(path: Path, registry: dict) -> set[tuple[str, str]]:
+    """Dummy/mixed rows last written by someone other than the loader in a way the markers do not account for.
+
+    The current app updates data_origin/dummy_fields on every human edit and audits the full row with them, so a
+    row whose latest audit entry is by its updated_by and equals the stored row is trusted. A row changed by an
+    older app (which keeps the markers and audits without them) or behind the registry's back is not: which of its
+    dummy fields a person changed is unknown, so unload keeps the whole row and reports it."""
+    candidates = {(entity, row[SCHEMA[entity]['key']]): row for entity in ENTITIES for row in registry[entity]
+                  if row.get('data_origin') in ('dummy', 'mixed') and row.get('updated_by') != ACTOR}
+    if not candidates:
+        return set()
+    with connect(path) as db:
+        latest = {(r['entity'], r['record_key']): (r['actor'], r['after_json']) for r in db.execute(
+            'SELECT entity, record_key, actor, after_json FROM voyage_registry_audit WHERE id IN '
+            '(SELECT MAX(id) FROM voyage_registry_audit GROUP BY entity, record_key)')}
+    edited = set()
+    for (entity, key), row in candidates.items():
+        actor, after_json = latest.get((entity, key), (None, None))
+        try:
+            after = json.loads(after_json) if after_json else None
+        except ValueError:
+            after = None
+        trusted = (isinstance(after, dict) and actor == row.get('updated_by') and 'data_origin' in after
+                   and all(after.get(f['key']) == row.get(f['key']) for f in SCHEMA[entity]['fields']))
+        if not trusted:
+            edited.add((entity, key))
+    return edited
+
+
+def _kept_edited(registry: dict, edited: set) -> list:
+    return [{'entity': entity, 'key': row[SCHEMA[entity]['key']], 'fields': sorted(dummy_keys(row, entity))}
+            for entity in ENTITIES for row in registry[entity] if (entity, row[SCHEMA[entity]['key']]) in edited]
+
+
+def _clear_changes(registry: dict, edited: set = frozenset()) -> tuple[dict, list, dict]:
     """Blank the dummy fields of mixed rows; keep required fields and bases still in use."""
     changes, kept, cleared = {e: [] for e in ENTITIES}, [], {'rows': 0, 'fields': 0}
     for entity in ENTITIES:
         key_field = SCHEMA[entity]['key']
         required = KEEP[entity] | {f['key'] for f in SCHEMA[entity]['fields'] if f['required']}
         for row in registry[entity]:
-            if row.get('data_origin') != 'mixed':
+            if row.get('data_origin') != 'mixed' or (entity, row[key_field]) in edited:
                 continue
             dummies = dummy_keys(row, entity)
             keep = dummies & required
@@ -149,8 +183,10 @@ def _clear_changes(registry: dict) -> tuple[dict, list, dict]:
     return changes, kept, cleared
 
 
-def _purge_keys(registry: dict) -> tuple[dict, list]:
-    """Whole-dummy rows to delete, children first; a parent with a remaining child stays."""
+def _purge_keys(registry: dict, edited: set = frozenset()) -> tuple[dict, list]:
+    """Whole-dummy rows to delete, children first; a parent with a remaining child stays.
+
+    Rows in edited stay too (reported as kept_edited, not here)."""
     keys, kept = {}, []
     remaining_parents: dict[str, set] = {'cargo': set(), 'voyages': set()}
     for entity in PURGE_ORDER:
@@ -158,10 +194,11 @@ def _purge_keys(registry: dict) -> tuple[dict, list]:
         keys[entity] = []
         for row in registry[entity]:
             key = row[key_field]
-            if row.get('data_origin') == 'dummy' and key not in remaining_parents.get(entity, set()):
+            dummy = row.get('data_origin') == 'dummy' and (entity, key) not in edited
+            if dummy and key not in remaining_parents.get(entity, set()):
                 keys[entity].append(key)
                 continue
-            if row.get('data_origin') == 'dummy':
+            if dummy:
                 kept.append({'entity': entity, 'key': key})
             if entity in PARENT:
                 parent, ref = PARENT[entity]
@@ -172,12 +209,29 @@ def _purge_keys(registry: dict) -> tuple[dict, list]:
 def _purge_dummy(path: Path, keys: dict, registry: dict) -> dict:
     """Defence line: every key must still be a whole-dummy row of this registry revision."""
     rows = {e: {row[SCHEMA[e]['key']]: row for row in registry[e]} for e in PURGE_ORDER}
+    edited = _edited_elsewhere(path, registry)
     for entity, entity_keys in keys.items():
         for key in entity_keys:
             row = rows.get(entity, {}).get(key)
             if row is None or row.get('data_origin') != 'dummy':
                 raise RegistryError(f"{SCHEMA[entity]['label']} {key}: 더미 행이 아니어서 삭제하지 않습니다.")
+            if (entity, key) in edited:
+                raise RegistryError(f"{SCHEMA[entity]['label']} {key}: 사람이 고친 더미 행이어서 삭제하지 않습니다.")
     return purge(keys, registry['revision'], ACTOR, DUMMY_ORIGIN, path)
+
+
+def _dummy_cargo_in_stock(path: Path) -> None:
+    """Stop before any write when a whole-dummy cargo is referenced by the real stock inventory."""
+    with connect(path) as db:
+        tables = {r['name'] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {'stock_inventory_lots', 'voyage_registry_cargo'} <= tables:
+            return
+        found = [r['cargo_no'] for r in db.execute(
+            "SELECT DISTINCT l.cargo_no FROM stock_inventory_lots l JOIN voyage_registry_cargo c "
+            "ON c.cargo_no=l.cargo_no WHERE c.data_origin='dummy' ORDER BY l.cargo_no")]
+    if found:
+        raise ValueError('실제 재고(stock_inventory_lots)에 반영된 더미 화물이 있어 회수를 멈춥니다: '
+                         f"{', '.join(found)}. 재고 반영을 먼저 정리한 뒤 다시 실행하세요. 원장과 기준재고는 바꾸지 않았습니다.")
 
 
 def _unique(lots: list[dict], what: str) -> dict:
@@ -247,25 +301,30 @@ def _plan_baseline(path: Path) -> tuple[list[dict], int, list]:
 
 
 def _unload(path: Path) -> dict:
-    # Plan the baseline first so an unmatchable baseline stops the unload before any write.
+    # Check the stock inventory and plan the baseline first so either stops the unload before any write.
+    _dummy_cargo_in_stock(path)
     plans, baseline_cleared, kept_baseline = _plan_baseline(path)
     baseline_revision = read_baseline(path)['revision']
     registry = snapshot(path)
-    changes, kept_required, cleared = _clear_changes(registry)
+    edited = _edited_elsewhere(path, registry)
+    kept_edited = _kept_edited(registry, edited)
+    changes, kept_required, cleared = _clear_changes(registry, edited)
     if any(changes.values()):
         registry = commit(changes, registry['revision'], ACTOR, DUMMY_ORIGIN, path)
-    keys, kept_parents = _purge_keys(registry)
+    keys, kept_parents = _purge_keys(registry, edited)
     registry = _purge_dummy(path, keys, registry)
     for value in plans:  # oldest day first, so the latest day stays the latest
         baseline_revision = save_baseline(value, baseline_revision, ACTOR, path)['revision']
     return {'db': str(path), 'purged': {e: len(keys[e]) for e in PURGE_ORDER}, 'cleared': cleared,
-            'kept_required': kept_required, 'kept_parents': kept_parents, 'baseline_cleared': baseline_cleared,
+            'kept_required': kept_required, 'kept_parents': kept_parents, 'kept_edited': kept_edited,
+            'baseline_cleared': baseline_cleared,
             'kept_baseline': kept_baseline, 'baseline_days': [p['as_of'] for p in plans],
             'registry_revision': registry['revision'], 'baseline_revision': baseline_revision}
 
 
 def unload(path: Path, *, backup_root: Path | None = None) -> dict:
     path = _require(path)
+    _dummy_cargo_in_stock(path)  # before the backup too: nothing to back up for a run that cannot proceed
     saved = backup(path, backup_root)
     return {**_unload(path), 'backup': str(saved)}
 

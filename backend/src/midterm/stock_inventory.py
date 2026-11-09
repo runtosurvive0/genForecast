@@ -48,6 +48,15 @@ def _revision(db, expected):
     return revision + 1
 
 
+DUMMY_CARGO = '더미 화물은 실제 재고에 반영할 수 없습니다'
+
+
+def _reject_dummy(item):
+    """Cargo made whole by the dummy-data loader never becomes real stock (unload could not remove it then)."""
+    if item and item['data_origin'] == 'dummy':
+        raise ValueError(DUMMY_CARGO)
+
+
 def _number(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
         raise ValueError('물량은 0 이상의 숫자로 입력하세요')
@@ -114,6 +123,7 @@ def assign_receipt(cargo_no, allocations, revision, actor, path):
         next_rev = _revision(db, revision)
         item = db.execute('''SELECT c.*, v.actual_unload_end FROM voyage_registry_cargo c
                              JOIN voyage_registry_voyages v ON c.voyage_no=v.voyage_no WHERE c.cargo_no=?''', (cargo_no,)).fetchone()
+        _reject_dummy(item)
         if not item or item['destination_plant_id'] != 'dangjin' or item['received_t'] is None or not item['receipt_end_date'] or not item['actual_unload_end']:
             raise ValueError('당진 화물의 입하량, 입고 종료일과 실제 하역완료 시각이 필요합니다')
         if (datetime.fromisoformat(item['actual_unload_end']).astimezone(timezone.utc) > datetime.now(timezone.utc) or
@@ -175,6 +185,7 @@ def reconcile_receipt(cargo_no, allocations, reason, revision, registry_revision
             raise ValueError('항차 원장이 변경되었습니다. 다시 불러오세요')
         item = db.execute('''SELECT c.*,v.actual_unload_end FROM voyage_registry_cargo c
                              JOIN voyage_registry_voyages v ON c.voyage_no=v.voyage_no WHERE c.cargo_no=?''', (cargo_no,)).fetchone()
+        _reject_dummy(item)
         if not item or item['destination_plant_id'] != 'dangjin' or item['received_t'] is None or not item['receipt_end_date'] or not item['actual_unload_end']:
             raise ValueError('당진 화물의 입하량, 입고 종료일과 실제 하역완료 시각이 필요합니다')
         if (datetime.fromisoformat(item['actual_unload_end']).astimezone(timezone.utc) > datetime.now(timezone.utc) or
