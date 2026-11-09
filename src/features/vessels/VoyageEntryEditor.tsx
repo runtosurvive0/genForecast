@@ -10,6 +10,7 @@ import type {
   Field,
   Preview,
 } from "./VoyageRegistry";
+import { visibleFields } from "./voyage-dummy";
 
 const groups = [
   {
@@ -69,7 +70,7 @@ const cargoGroups = [
 ];
 function clean(schema: Schema, entity: Entity, row: Row): Row {
   return Object.fromEntries(
-    schema[entity].fields.map((f) => [f.key, row[f.key] ?? null]),
+    visibleFields(schema[entity].fields).map((f) => [f.key, row[f.key] ?? null]),
   );
 }
 export function VoyageEntryEditor({

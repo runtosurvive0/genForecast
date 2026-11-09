@@ -853,3 +853,20 @@
     padding: 20px;
   }
 }
+/* 원장 안에서만 쓰는 더미 표시. 경고 계열 색(--amber)으로 라이트·다크 모두 대비를 확보한다. */
+.vr-dummy-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--amber) 55%, transparent);
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 17px;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: help;
+}

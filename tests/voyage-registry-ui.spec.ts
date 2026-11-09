@@ -584,3 +584,101 @@ test("배선 메모와 항차번호 없이도 계획을 저장한다", async ({ 
   expect(created.voyage_number).toBeNull();
   expect(created.notes).toBeNull();
 });
+
+const DUMMY_VOYAGE = 'V-DUMMY-UI-TEST';
+const MIXED_CARGO = 'C-MIXED-UI-TEST';
+async function serveDummyRecords(page: Page, audit: unknown[] = []) {
+  await page.route('**/api/voyage-registry/records', async (route) => {
+    const url = new URL(route.request().url());
+    url.port = '8097';
+    const response = await route.fetch({ url: url.href });
+    const records = await response.json();
+    records.voyages = [...records.voyages, {
+      voyage_no: DUMMY_VOYAGE, voyage_number: '26-1-901', classification: 'actual', status: 'completed',
+      notes: '더미 표시 시험', origin_port: 'Newcastle', destination_port: '당진', ship_code: null,
+      data_origin: 'dummy', dummy_fields: null, updated_at: '2026-11-10T09:00:00',
+    }];
+    records.cargo = [...records.cargo, {
+      cargo_no: MIXED_CARGO, voyage_no: DUMMY_VOYAGE, coal_name: 'MIXED UI COAL', destination_plant_id: 'dangjin',
+      planned_t: 50000, received_t: 49800, cv: 6000, cv_basis: 'arb', sulfur_pct: 0.5, analysis_basis: 'arb',
+      data_origin: 'mixed', dummy_fields: 'cv,sulfur_pct', updated_at: '2026-11-10T09:00:00',
+    }];
+    records.assays = [...records.assays, {
+      assay_id: 'A-DUMMY-UI-TEST', cargo_no: MIXED_CARGO, stage: 'unloading', result_status: 'confirmed',
+      analysis_date: '2026-11-09', gcv_arb: 5900, tm_ar: 12, sulfur_ar: 0.45, lab: '더미(공개 일반값)',
+      data_origin: 'dummy', dummy_fields: null, updated_at: '2026-11-10T09:00:00',
+    }];
+    if (audit.length) records.audit = audit;
+    await route.fulfill({ response, json: records });
+  });
+  await page.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(page.locator('.vr-table-scroll')).toContainText('26-1-901');
+}
+
+test('원장 표와 상세에 더미 표시가 보인다', async ({ page }) => {
+  await serveDummyRecords(page);
+  const table = page.locator('.vr-table-scroll');
+  await expect(table.locator('.vr-dummy-badge')).toHaveCount(1);
+  await expect(table.locator('tr', { hasText: '26-1-901' }).locator('.vr-dummy-badge')).toHaveAttribute('title', '더미 자료(공개 일반값으로 생성)');
+  await page.getByRole('tab', { name: /^화물 원장/ }).click();
+  await page.getByLabel('원장 검색', { exact: true }).fill('MIXED UI COAL');
+  await page.getByRole('button', { name: 'MIXED UI COAL 상세 보기', exact: true }).click();
+  await expect(table.locator('.vr-dummy-badge')).toHaveCount(1);
+  const detail = page.locator('.vr-detail dl');
+  const item = (label: string) => detail.locator('div').filter({ has: page.getByText(label, { exact: true }) });
+  await expect(item('열량(kcal/kg)').locator('.vr-dummy-badge')).toHaveAttribute('title', '빈칸을 더미로 채운 값');
+  await expect(item('황분(%)').locator('.vr-dummy-badge')).toHaveCount(1);
+  await expect(item('입하량(t)').locator('.vr-dummy-badge')).toHaveCount(0);
+  await expect(detail).not.toContainText('더미 구분');
+  await expect(page.locator('.vr-quality .vr-dummy-badge').first()).toBeVisible();
+});
+
+test('편집기에 더미 구분 칸이 없다', async ({ page }) => {
+  for (const [tab, button] of [[/^화물 원장/, '화물 등록'], [/^성상/, '성상분석 등록']] as const) {
+    await page.getByRole('tab', { name: tab }).click();
+    await page.getByRole('button', { name: button, exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('form')).toBeVisible();
+    await expect(dialog.getByText('더미 구분')).toHaveCount(0);
+    await expect(dialog.getByText('더미 칸')).toHaveCount(0);
+    await page.getByRole('button', { name: '입력 닫기' }).click();
+  }
+  await page.getByRole('tab', { name: /^배선 원장/ }).click();
+  await page.getByRole('button', { name: '배선 등록', exact: true }).click();
+  await expect(page.locator('.ve-workspace')).toBeVisible();
+  await expect(page.locator('.ve-workspace').getByText('더미 구분')).toHaveCount(0);
+  await expect(page.locator('.ve-workspace').getByText('더미 칸')).toHaveCount(0);
+});
+
+test('다크 모드와 390px에서 배지가 보이고 가로 넘침이 없다', async ({ page }) => {
+  await serveDummyRecords(page);
+  await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
+  const badge = page.locator('.vr-table-scroll .vr-dummy-badge').first();
+  await expect(badge).toBeVisible();
+  const colors = await badge.evaluate((el) => { const s = getComputedStyle(el); return [s.color, s.backgroundColor]; });
+  expect(colors[0]).not.toBe(colors[1]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await badge.scrollIntoViewIfNeeded();
+  await expect(badge).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+});
+
+test('변경 이력에 삭제 기록과 더미 적재가 예외 없이 보인다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await serveDummyRecords(page, [
+    { id: 900002, entity: 'cargo', record_key: MIXED_CARGO, origin: 'dummy-data', at: '2026-11-10T10:00:00', actor: 'dummy-seed', revision: 902,
+      before_json: JSON.stringify({ cargo_no: MIXED_CARGO, coal_name: 'MIXED UI COAL', cv: 6000 }), after_json: 'null' },
+    { id: 900001, entity: 'voyages', record_key: DUMMY_VOYAGE, origin: 'dummy-data', at: '2026-11-10T09:00:00', actor: 'dummy-seed', revision: 901,
+      before_json: null, after_json: JSON.stringify({ voyage_no: DUMMY_VOYAGE, voyage_number: '26-1-901', data_origin: 'dummy' }) },
+  ]);
+  await page.getByRole('button', { name: '최근 변경 이력', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('summary').first()).toContainText('더미 적재');
+  await expect(dialog.locator('summary').first()).toContainText('삭제');
+  await expect(dialog.locator('summary').nth(1)).toContainText('더미 적재');
+  await expect(dialog.locator('summary').nth(1)).not.toContainText('직접 입력');
+  await dialog.locator('summary').first().click();
+  await expect(dialog.locator('details').first()).toContainText('MIXED UI COAL');
+  expect(errors).toEqual([]);
+});

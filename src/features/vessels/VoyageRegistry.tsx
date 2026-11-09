@@ -22,6 +22,15 @@ import "./voyage-registry.css";
 import { VoyageEntryEditor } from "./VoyageEntryEditor";
 import type { TrackingVessel } from "@/domain/vessel-workflow";
 import { InventoryWorkspace } from "@/components/inventory/InventoryWorkspace";
+import {
+  DUMMY_FIELD_TITLE,
+  DUMMY_ROW_TITLE,
+  auditOriginLabel,
+  dummyFieldKeys,
+  isDummyRow,
+  parseAuditRow,
+  visibleFields,
+} from "./voyage-dummy";
 
 export type Entity = "ships" | "voyages" | "cargo" | "assays";
 export type Row = Record<string, string | number | null>;
@@ -36,6 +45,8 @@ export interface Field {
   max?: number;
   digits?: number;
   group?: string;
+  /** 서버가 관리하는 칸(더미 구분 등). 편집기·상세 목록에 보이지 않는다. */
+  system?: boolean;
 }
 export type Schema = Record<
   Entity,
@@ -150,6 +161,16 @@ function display(value: Row[string], field?: Field): string {
     ? value.toLocaleString("ko-KR", { maximumFractionDigits: 3 })
     : value;
 }
+function DummyBadge({ field = false }: { field?: boolean }) {
+  return (
+    <span
+      className="vr-dummy-badge"
+      title={field ? DUMMY_FIELD_TITLE : DUMMY_ROW_TITLE}
+    >
+      더미
+    </span>
+  );
+}
 function message(error: unknown) {
   return error instanceof Error ? error.message : "요청을 처리하지 못했습니다.";
 }
@@ -176,7 +197,15 @@ async function fileRequest(
   return value;
 }
 
-function QualitySummary({ data, cargoId }: { data: Records; cargoId: string }) {
+function QualitySummary({
+  data,
+  cargoId,
+  fields,
+}: {
+  data: Records;
+  cargoId: string;
+  fields: Field[];
+}) {
   const selected = data.quality_selection?.[cargoId];
   const analyses = data.assays
     .filter((a) => a.cargo_no === cargoId)
@@ -229,7 +258,14 @@ function QualitySummary({ data, cargoId }: { data: Records; cargoId: string }) {
                   const a = analyses.find(
                     (a) => a.stage === stage && a.result_status === "confirmed",
                   );
-                  return <td key={stage}>{display(a?.[key] ?? null)}</td>;
+                  return (
+                    <td key={stage}>
+                      {display(a?.[key] ?? null)}
+                      {a && dummyFieldKeys(a, fields, "assay_id").has(key) && (
+                        <DummyBadge field />
+                      )}
+                    </td>
+                  );
                 })}
               </tr>
             ))}
@@ -374,7 +410,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
       return;
     }
     const draft = Object.fromEntries(
-      schema[entity].fields.map((f) => [
+      visibleFields(schema[entity].fields).map((f) => [
         f.key,
         existing?.[f.key] ??
           (f.key === schema[entity].key
@@ -817,6 +853,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                             }
                           >
                             {i === 0 ? (
+                              <>
                               <button
                                 className="vr-record-link"
                                 aria-label={`${fieldFor(key)?.reference ? referenceLabel(fieldFor(key)!.reference!, row[key]) : row[key] || row.plan_name || "번호 미정"} 상세 보기`}
@@ -837,6 +874,8 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                                       fieldFor(key),
                                     )}
                               </button>
+                              {isDummyRow(row) && <DummyBadge />}
+                              </>
                             ) : fieldFor(key)?.reference ? (
                               referenceLabel(
                                 fieldFor(key)!.reference!,
@@ -902,11 +941,18 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                 {selectedRow ? (
                   <>
                     <p className="vr-detail-caption">
-                      수기 입력 · {spec!.label} 원장
+                      {selectedRow.data_origin === "dummy"
+                        ? "더미 자료"
+                        : selectedRow.data_origin === "mixed"
+                          ? "수기 입력 · 일부 더미"
+                          : "수기 입력"}{" "}
+                      · {spec!.label} 원장
+                      {isDummyRow(selectedRow) && <DummyBadge />}
                     </p>
                     {(entity === "cargo" || entity === "assays") && (
                       <QualitySummary
                         data={data}
+                        fields={schema.assays.fields}
                         cargoId={String(
                           entity === "cargo"
                             ? selectedRow.cargo_no
@@ -915,7 +961,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                       />
                     )}
                     <dl>
-                      {spec!.fields
+                      {visibleFields(spec!.fields)
                         .filter(
                           (f) =>
                             f.key !== spec!.key &&
@@ -947,6 +993,9 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                                 </button>
                               ) : (
                                 display(selectedRow[f.key], f)
+                              )}
+                              {dummyFieldKeys(selectedRow, spec!.fields, spec!.key).has(f.key) && (
+                                <DummyBadge field />
                               )}
                             </dd>
                           </div>
@@ -1073,7 +1122,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                   }}
                   className="vr-form"
                 >
-                  {schema![editing.entity].fields
+                  {visibleFields(schema![editing.entity].fields)
                     .filter(
                       (f) =>
                         f.key !== schema![editing.entity].key &&
@@ -1210,7 +1259,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                                 <p>이 배선에 이미 등록된 화물입니다. 선택하면 입력된 정보를 이어서 수정합니다.</p>
                                 {data!.cargo.filter(c => c.voyage_no === editing.draft.voyage_no).map(c => (
                                   <button key={String(c.cargo_no)} type="button" disabled={busy} onClick={() => {
-                                    const draft = Object.fromEntries(schema!.cargo.fields.map(field => [field.key, c[field.key] ?? ""]));
+                                    const draft = Object.fromEntries(visibleFields(schema!.cargo.fields).map(field => [field.key, c[field.key] ?? ""]));
                                     setEditing({ entity: "cargo", key: String(c.cargo_no), draft, revision: editing.revision });
                                   }}>
                                     {String(c.coal_name || "탄종 미입력")} · 기존 화물 수정
@@ -1385,41 +1434,44 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
             </header>
             <div className="vr-dialog-scroll">
               {data?.audit.length ? (
-                data.audit.map((a) => (
-                  <details className="vr-change" key={a.id}>
-                    <summary>
-                      {a.at.slice(0, 16).replace("T", " ")} ·{" "}
-                      {schema?.[a.entity].label} {a.record_key} ·{" "}
-                      {a.origin === "excel" ? "엑셀" : "직접 입력"}
-                    </summary>
-                    <p className="vr-detail-caption">
-                      v{a.revision} · {a.actor}
-                    </p>
-                    <dl>
-                      {schema?.[a.entity].fields
-                        .filter(
-                          (f) =>
-                            JSON.parse(a.before_json ?? "{}")[f.key] !==
-                            JSON.parse(a.after_json)[f.key],
-                        )
-                        .map((f) => (
-                          <div key={f.key}>
-                            <dt>{f.label}</dt>
-                            <dd>
-                              <del>
-                                {display(
-                                  JSON.parse(a.before_json ?? "{}")[f.key],
-                                  f,
-                                )}
-                              </del>
-                              <ArrowRight size={12} />
-                              {display(JSON.parse(a.after_json)[f.key], f)}
-                            </dd>
-                          </div>
-                        ))}
-                    </dl>
-                  </details>
-                ))
+                data.audit.map((a) => {
+                  const before = parseAuditRow(a.before_json) ?? {};
+                  const after = parseAuditRow(a.after_json);
+                  return (
+                    <details className="vr-change" key={a.id}>
+                      <summary>
+                        {a.at.slice(0, 16).replace("T", " ")} ·{" "}
+                        {schema?.[a.entity]?.label} {a.record_key} ·{" "}
+                        {auditOriginLabel(a.origin)}
+                        {after === null && " · 삭제"}
+                      </summary>
+                      <p className="vr-detail-caption">
+                        v{a.revision} · {a.actor}
+                        {after === null && " · 아래는 삭제 전 값입니다."}
+                      </p>
+                      <dl>
+                        {schema?.[a.entity]?.fields
+                          .filter((f) =>
+                            after === null
+                              ? before[f.key] != null
+                              : before[f.key] !== after[f.key],
+                          )
+                          .map((f) => (
+                            <div key={f.key}>
+                              <dt>{f.label}</dt>
+                              <dd>
+                                <del>{display(before[f.key] ?? null, f)}</del>
+                                <ArrowRight size={12} />
+                                {after === null
+                                  ? "삭제"
+                                  : display(after[f.key] ?? null, f)}
+                              </dd>
+                            </div>
+                          ))}
+                      </dl>
+                    </details>
+                  );
+                })
               ) : (
                 <p>아직 저장된 변경이 없습니다.</p>
               )}
