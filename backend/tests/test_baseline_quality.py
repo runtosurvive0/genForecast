@@ -52,3 +52,8 @@ def test_no_assay():
     assert out['reason'] == '성분 분석 없음'
     assert out['assay'] is None
     assert out['cargo_no'] == 'C1'
+
+
+def test_no_cargo_of_same_coal_reason():
+    out = match_lot_quality({**ROW, "coal_name": "B탄"}, register())
+    assert out == {"assay": None, "cargo_no": None, "reason": "같은 탄종 화물 없음"}
