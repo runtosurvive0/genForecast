@@ -284,8 +284,11 @@ def generate(snapshot: dict, baseline: dict, *, seed: int = DEFAULT_SEED,
         departure = voyage.get('actual_departure') or voyage.get('planned_departure')
         unload_end = voyage.get('actual_unload_end')
         if completed:
-            cargo.update(receipt_date=(voyage.get('actual_berth') or voyage.get('planned_berth'))[:10],
-                         receipt_end_date=unload_end[:10])
+            berth = voyage.get('actual_berth') or voyage.get('planned_berth')
+            if not berth or not unload_end:
+                raise ValueError(f'항차 {number}({voyage_key}): 하역완료 항차인데 접안 시각(실적·예정)이나 하역완료 시각이 '
+                                 '없어 입고일을 정할 수 없습니다. 원장에서 접안 시각과 상태를 확인한 뒤 다시 실행하세요.')
+            cargo.update(receipt_date=berth[:10], receipt_end_date=unload_end[:10])
         if cargo_entry:
             bl = cargo_entry[1].get('bl_t')
             if bl is not None:

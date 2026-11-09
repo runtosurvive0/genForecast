@@ -19,7 +19,7 @@
     ],
     "voyages": [
       {"voyage_no": "V-test-26-1-001", "ship_code": "S-test-01", "classification": "actual", "voyage_number": "26-1-001",
-       "berth_id": "BD-1", "status": "completed", "actual_unload_end": "2026-01-16T00:00:00+09:00"},
+       "berth_id": "BD-1", "status": "completed", "actual_unload_end": "2026-01-19T15:00:00+09:00"},
       {"voyage_no": "V-test-26-1-038", "ship_code": "S-test-02", "classification": "actual", "voyage_number": "26-1-038",
        "berth_id": "BD-1", "yard": "1", "status": "arrived", "actual_arrival": "2026-10-30T06:00:00+09:00"},
       {"voyage_no": "V-test-26-1-039", "ship_code": "S-test-03", "classification": "actual", "voyage_number": "26-1-039",

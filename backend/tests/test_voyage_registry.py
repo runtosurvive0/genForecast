@@ -253,7 +253,10 @@ def test_excel_template_excludes_system_fields(tmp_path):
 
 def test_workbooks_exported_before_new_columns_still_parse(tmp_path):
     path = tmp_path / 'old-excel.sqlite3'
-    commit(dummy_base(), 0, 'user', 'manual', path)
+    base = dummy_base()
+    base['voyages'][0].update(laytime_hours=72, demurrage_usd_per_day=25000)
+    base['assays'][0]['fe2o3'] = 8.5
+    commit(base, 0, 'user', 'manual', path)
     data = snapshot(path)
     for business, removals in ((False, {'항차': ['허용정박시간(h)', '체선료(USD/일)'], '성상분석': ['Fe2O3']}),
                                (True, {'배선등록': ['허용정박시간(h)', '체선료(USD/일)'], '성상분석': ['Fe2O3 (%wt)']})):
@@ -264,4 +267,12 @@ def test_workbooks_exported_before_new_columns_still_parse(tmp_path):
                 sheet.delete_cols([c.value for c in sheet[1]].index(label) + 1)
         output = io.BytesIO(); book.save(output)
         rows, _ = parse_workbook(output.getvalue())
-        assert preview(rows, path)['errors'] == []
+        result = preview(rows, path)
+        assert result['errors'] == []
+        # Columns missing from the old workbook keep the stored values instead of being blanked.
+        assert result['changes'] == []
+        commit(rows, data['revision'], 'user', 'excel', path)
+        saved = snapshot(path)
+        assert saved['voyages'][0]['laytime_hours'] == 72
+        assert saved['voyages'][0]['demurrage_usd_per_day'] == 25000
+        assert saved['assays'][0]['fe2o3'] == 8.5

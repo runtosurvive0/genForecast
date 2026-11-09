@@ -128,12 +128,20 @@ def test_real_completed_voyage_gets_planned_times_cargo_and_two_assays(fixture):
     change = _by_key(plan.changes['voyages'], 'voyages')['V-test-26-1-001']
     assert {f'planned_{t}' for t in TIMES} <= set(change)
     assert not {'status', 'actual_unload_end'} & set(change)
-    assert change['planned_unload_end'] <= '2026-01-16T00:00:00+09:00'
+    assert change['planned_unload_end'] <= '2026-01-19T15:00:00+09:00'
     cargo = _by_key(plan.changes['cargo'], 'cargo')['DC-26-1-001']
     assert cargo['voyage_no'] == 'V-test-26-1-001' and cargo['data_origin'] == 'dummy'
-    assert cargo['receipt_end_date'] == '2026-01-16'
+    assert cargo['receipt_end_date'] == '2026-01-19'
     ids = sorted(a['assay_id'] for a in plan.changes['assays'] if a['cargo_no'] == 'DC-26-1-001')
     assert ids == ['DA-26-1-001-L', 'DA-26-1-001-U']
+
+
+def test_unloaded_voyage_without_berth_time_is_a_clear_error(fixture):
+    snap = copy.deepcopy(fixture.snapshot)
+    voyage = _by_key(snap['voyages'], 'voyages')['V-test-26-1-001']
+    voyage.update(status='berthed', actual_berth=None, planned_berth=None)  # unload end but no berth time at all
+    with pytest.raises(ValueError, match='26-1-001.*접안'):
+        generate(snap, fixture.baseline)
 
 
 def test_coal_assignment_keeps_known_coals_and_caps_anthracite(fixture):
