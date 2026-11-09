@@ -10,7 +10,7 @@ const devPort = localEnv.MIDTERM_DEV_PORT || "5173";
 const baseURL = `http://127.0.0.1:${devPort}`;
 export default defineConfig({
   testDir: "./tests",
-  testMatch: ["ui.spec.ts", "auth-ui.spec.ts", "fleet-map-ui.spec.ts"],
+  testMatch: ["ui.spec.ts", "auth-ui.spec.ts", "fleet-map-ui.spec.ts", "integration-ui.spec.ts", "forecast-input-ui.spec.ts", "voyage-registry-ui.spec.ts", "shared-voyage-ui.spec.ts", "supply-inputs-ui.spec.ts"],
   fullyParallel: false,
   workers: 1,
   timeout: 30000,

@@ -40,6 +40,20 @@
   gap: 20px;
   min-width: 0;
 }
+.planning-input { min-width: 0; }
+.planning-input-base { max-width: 620px; }
+.planning-input form { display: grid; gap: 16px; margin-top: 18px; }
+.planning-input-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 14px; }
+.planning-input-note, .planning-input small { color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
+.planning-input-note { margin: 10px 0; }
+.planning-input details { padding: 14px 0; border-top: 1px solid var(--border); }
+.planning-input summary { cursor: pointer; font-weight: 600; }
+.planning-input details > .planning-input-grid, .planning-input details > label { margin-top: 14px; }
+.planning-input h3 { margin: 16px 0 10px; font-size: 13px; }
+.planning-input-months { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 10px; margin-top: 12px; }
+.planning-input-outage { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)) auto; align-items: end; gap: 8px; margin: 10px 0; }
+.planning-input-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 700px) { .planning-input-months { grid-template-columns: repeat(3,minmax(0,1fr)); } .planning-input-outage { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 .milp-upload-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

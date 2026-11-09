@@ -43,7 +43,6 @@ export interface VesselMapProps {
   theme: "light" | "dark";
   weatherPoints?: WeatherPoint[];
   weatherOverlay?: WeatherOverlay;
-  weatherBusy?: boolean;
   weatherToolbar?: ReactNode;
   weatherTimeline?: ReactNode;
   showVesselPanel?: boolean;
@@ -60,7 +59,6 @@ export function VesselMap({
   theme,
   weatherPoints,
   weatherOverlay,
-  weatherBusy,
   weatherToolbar,
   weatherTimeline,
   showVesselPanel = true,
@@ -128,7 +126,6 @@ export function VesselMap({
               theme={theme}
               weatherPoints={weatherPoints}
               weatherOverlay={weatherOverlay}
-              weatherBusy={weatherBusy}
               weatherToolbar={weatherToolbar}
               navigationRoutes={navigationRoutes}
             />
@@ -157,7 +154,6 @@ export function VesselMap({
             theme={theme}
             weatherPoints={weatherPoints}
             weatherOverlay={weatherOverlay}
-            weatherBusy={weatherBusy}
             weatherToolbar={weatherToolbar}
             navigationRoutes={navigationRoutes}
             fleetDiscovery={fleetDiscovery}

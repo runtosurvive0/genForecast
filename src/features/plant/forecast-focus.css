@@ -1,0 +1,76 @@
+/* 발전·수급 전망: 포인트색 데이터 팔레트(ECharts용 hex는 overview-palette.ts와 같은 값) */
+.midterm-page { --gf-ov-c1: #2447c5; --gf-ov-c2: #8aa3ec; --gf-ov-c3: #14245f; --gf-ov-muted: #a3adbd; }
+.dark .midterm-page { --gf-ov-c1: #6b94ff; --gf-ov-c2: #a9beff; --gf-ov-c3: #4f76e6; --gf-ov-muted: #5d6574; }
+
+.gf-forecast-focus { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 12px; min-width: 0; }
+.gf-forecast-main { display: grid; gap: 12px; min-width: 0; }
+.gf-forecast-chart, .gf-forecast-watch, .gf-forecast-units { min-width: 0; padding: 14px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.gf-forecast-chart > header, .gf-forecast-watch > header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.gf-forecast-focus h2 { margin: 0; color: var(--foreground); font-size: 14px; font-weight: 600; }
+.gf-forecast-focus header p, .gf-forecast-watch header span { margin: 4px 0 0; color: var(--muted-foreground); font-size: 11px; }
+.gf-forecast-link { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 0; background: none; color: var(--primary); font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.gf-forecast-link:focus-visible, .gf-forecast-date input:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.gf-forecast-no-data { display: grid; place-items: center; min-height: 220px; color: var(--muted-foreground); font-size: 13px; }
+
+/* shadcn 주 차트 */
+.gf-forecast-chart [data-slot="chart"].gf-ov-chart { aspect-ratio: auto; height: 198px; margin: 6px 0 2px; font-size: 11px; cursor: pointer; }
+.gf-ov-chart .recharts-wrapper:focus, .gf-ov-chart .recharts-surface:focus, .gf-ov-chart g[tabindex="-1"]:focus { outline: none; }
+.gf-ov-chart .recharts-cartesian-grid line { stroke: var(--border); stroke-opacity: .7; }
+.gf-ov-chart .gf-ov-ref-zero line, .gf-ov-chart line.gf-ov-ref-zero { stroke: var(--muted-foreground); stroke-opacity: .5; }
+.gf-ov-chart .gf-ov-ref-day line, .gf-ov-chart line.gf-ov-ref-day { stroke: var(--foreground); stroke-opacity: .55; }
+.gf-ov-legend { justify-content: flex-end; padding: 0 0 6px; font-size: 11px; }
+.gf-ov-tip { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 130px; }
+.gf-ov-tip i { width: 8px; height: 8px; border-radius: 2px; }
+.gf-ov-tip span { color: var(--muted-foreground); }
+.gf-ov-tip b { margin-left: auto; font-weight: 550; font-variant-numeric: tabular-nums; color: var(--foreground); }
+
+/* 얇은 날짜 슬라이더와 선택일 값 */
+.gf-forecast-date { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; font-size: 11px; color: var(--muted-foreground); }
+.gf-forecast-date label { display: flex; align-items: baseline; gap: 8px; }
+.gf-forecast-date strong { color: var(--foreground); font-size: 13px; font-variant-numeric: tabular-nums; }
+.gf-forecast-date input { width: 100%; height: 14px; margin: 0; accent-color: var(--gf-ov-c1); }
+.gf-forecast-day-values { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.gf-forecast-day-values span, .gf-forecast-day-values strong { display: block; }
+.gf-forecast-day-values span { color: var(--muted-foreground); font-size: 11px; }
+.gf-forecast-day-values strong { margin-top: 3px; color: var(--foreground); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* 오른쪽 확인할 변화 열 */
+.gf-forecast-watch { position: sticky; top: 86px; display: flex; flex-direction: column; max-height: calc(100vh - 110px); overflow: auto; }
+.gf-forecast-watch-item { display: flex; gap: 11px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.gf-forecast-watch-item > svg { flex: none; color: var(--primary); }
+.gf-forecast-watch-item strong, .gf-forecast-watch-issues strong { font-size: 13px; color: var(--foreground); }
+.gf-forecast-watch-item p, .gf-forecast-watch-issues p { margin: 5px 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+.gf-forecast-watch-issues { padding-top: 12px; }
+.gf-forecast-note { margin: 12px 0 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+.gf-forecast-watch .gf-forecast-purchase { width: 100%; margin-top: 14px; border-radius: 20px; background: var(--action, var(--primary)); }
+
+/* 호기별 발전계획 막대: 1~4 / 5~8 / 9~10호기 묶음별 파랑 3단계 */
+.gf-forecast-units header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.gf-forecast-units h2 { margin: 0; font-size: 14px; color: var(--foreground); }
+.gf-forecast-units header span { color: var(--muted-foreground); font-size: 11px; }
+.gf-unit-bars { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.gf-unit-bar { display: grid; gap: 2px; min-width: 0; }
+.gf-unit-bar-track { position: relative; display: block; height: 46px; margin-bottom: 4px; border-radius: 6px; background: color-mix(in srgb, var(--muted-foreground) 10%, transparent); overflow: hidden; }
+.gf-unit-bar-track i { position: absolute; inset: auto 0 0; border-radius: 6px 6px 0 0; background: var(--gf-ov-c1); }
+.gf-unit-bar[data-tone="2"] .gf-unit-bar-track i { background: var(--gf-ov-c2); }
+.gf-unit-bar[data-tone="3"] .gf-unit-bar-track i { background: var(--gf-ov-c3); }
+.gf-unit-bar-name, .gf-unit-bar > small { color: var(--muted-foreground); font-size: 11px; }
+.gf-unit-bar strong { color: var(--foreground); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.gf-unit-bar strong small { font-size: 10px; font-weight: 400; }
+
+/* 1줄: 제목 오른쪽의 데이터 모드 전환 */
+.page-heading > .gf-overview-mode.context-bar { flex: none; margin: 0 0 0 auto; padding: 6px 8px 6px 12px; gap: 12px; }
+.page-heading .gf-overview-mode .horizon-control button { border-radius: 20px; }
+.midterm-page:has(.gf-forecast-focus) { gap: 12px; }
+@media (max-width: 900px) { .page-heading > .gf-overview-mode.context-bar { margin-left: 0; flex-wrap: wrap; } }
+
+@media (min-width: 1200px) {
+  .main-content:has(.gf-forecast-focus) .page-heading { margin-bottom: 12px; }
+  .main-content:has(.gf-forecast-focus) .gf-forecast-heading { display: none; }
+  .main-content:has(.gf-forecast-focus) .gf-forecast-summary > div { padding: 10px 16px; }
+  .main-content:has(.gf-forecast-focus) .gf-forecast-summary strong { font-size: 23px; margin: 3px 0; }
+}
+@media (max-width: 1250px) { .gf-forecast-watch { position: static; max-height: none; overflow: visible; } }
+@media (max-width: 1100px) { .gf-forecast-focus { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .gf-unit-bars { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 10px; } }
+@media (max-width: 600px) { .gf-forecast-chart, .gf-forecast-watch, .gf-forecast-units { padding: 14px; } .gf-forecast-day-values { grid-template-columns: repeat(2, minmax(0, 1fr)); } .gf-forecast-date { grid-template-columns: 1fr; gap: 6px; } .gf-unit-bars { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

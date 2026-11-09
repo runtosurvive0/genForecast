@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Eye, EyeOff, Moon, Sun } from 'lucide-react';
+import { Anchor, ArrowRight, Eye, EyeOff, Factory, Layers3, Moon, Ship, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ProcessingOrb } from '@/components/ProcessingOrb';
 import { AccountProvider, checkedPrivateWorkspace, type PrivateWorkspace } from '@/lib/account-context';
 import { authJson, bindAccount, clearAccountRequests, type Session } from '@/lib/auth-client';
 import './auth.css';
+import { Gen4castBrand } from '@/components/operations-shell/Gen4castBrand';
 
 export function PasswordChange({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -86,10 +87,32 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return <AccountProvider key={`${session.user.id}:${session.user.version}`} user={session.user} initial={workspace} logout={logout}>{children}</AccountProvider>;
   const switchTheme = () => { const next = document.documentElement.classList.contains('dark') ? 'light' : 'dark'; setTheme(next); document.documentElement.classList.toggle('dark', next === 'dark'); try { localStorage.setItem('ewp-theme', next); } catch {} };
   return <main className="gf-auth-page">
-    <div className="gf-auth-top"><span>genForecast</span><Button variant="ghost" size="icon" aria-label={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'} onClick={switchTheme}>{theme === 'dark' ? <Sun /> : <Moon />}</Button></div>
+    <header className="gf-auth-top">
+      <Gen4castBrand onClick={()=>document.getElementById("auth-title")?.focus()}/>
+      <div className="gf-auth-top-actions"><span>ENERGY SUPPLY WORKSPACE</span><Button variant="ghost" size="icon" aria-label={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'} onClick={switchTheme}>{theme === 'dark' ? <Sun /> : <Moon />}</Button></div>
+    </header>
+    <div className="gf-auth-layout">
+      <section className="gf-auth-intro" aria-labelledby="auth-intro-title">
+        <div className="gf-auth-intro-copy">
+          <span className="gf-auth-kicker">FROM VOYAGE TO GENERATION</span>
+          <p id="auth-intro-title" className="gf-auth-intro-title">연료의 여정에서<br />발전의 계획까지.</p>
+          <p>선박의 도착부터 저탄과 발전계획까지,<br />연결된 정보를 하나의 흐름으로 살펴보세요.</p>
+        </div>
+        <div className="gf-auth-diagram">
+          <div className="gf-auth-diagram-heading"><div><span>THE SUPPLY FLOW</span><span className="gf-auth-diagram-title">연료 수급의 흐름</span></div><ArrowRight size={20} aria-hidden="true" /></div>
+          <ol className="gf-auth-flow" aria-label="연료 수급 업무 흐름">
+            <li><span className="gf-auth-flow-icon"><Ship size={27} aria-hidden="true" /></span><strong>선박 추적</strong><small>위치·도착 전망</small></li>
+            <li><span className="gf-auth-flow-icon"><Anchor size={27} aria-hidden="true" /></span><strong>접안·하역</strong><small>입하 일정</small></li>
+            <li><span className="gf-auth-flow-icon"><Layers3 size={27} aria-hidden="true" /></span><strong>저탄장</strong><small>탄종·재고 현황</small></li>
+            <li><span className="gf-auth-flow-icon"><Factory size={27} aria-hidden="true" /></span><strong>발전계획</strong><small>연료·발전 전망</small></li>
+          </ol>
+          <p>데이터와 계획을 연결해 다음 판단을 준비합니다.</p>
+        </div>
+        <div className="gf-auth-intro-foot"><span>VESSEL</span><span>INVENTORY</span><span>GENERATION</span></div>
+      </section>
     <section className="gf-auth-card" aria-labelledby="auth-title">
       <span className="gf-auth-eyebrow">발전 운영 · 선박 추적</span>
-      <h1 id="auth-title">팀의 다음 항해를 함께 준비하세요</h1>
+      <h1 id="auth-title" tabIndex={-1}>팀의 다음 항해를 함께 준비하세요</h1>
       <p>관리자가 승인한 계정으로 접속합니다. 관심 선박은 계정별로 관리합니다.</p>
       {checking ? <ProcessingOrb theme={theme} state="connecting" label="계정 확인 중" size={32} /> : session.scope === 'pending' ? <div className="gf-auth-pending">
         <h2>관리자 승인 대기 중</h2><p>{session.user?.displayName}님의 가입 신청을 접수했습니다. 승인 후 다시 로그인해 주세요.</p>
@@ -123,5 +146,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       {setup && <aside className="gf-auth-setup">최초 관리자 설정이 필요합니다. 서버에서 <code>python -m midterm admin init</code>을 실행해 주세요.</aside>}
       <small>비밀번호를 잊었다면 서버 관리자에게 복구를 요청해 주세요.</small>
     </section>
+    </div>
+    <footer className="gf-auth-footer"><span>gen4cast</span><span>선박 · 연료 · 발전 운영 워크스페이스</span></footer>
   </main>;
 }

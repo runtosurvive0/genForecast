@@ -6,6 +6,7 @@ import {
   TooltipComponent,
   LegendComponent,
   AriaComponent,
+  MarkLineComponent,
 } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 use([
@@ -17,6 +18,7 @@ use([
   TooltipComponent,
   LegendComponent,
   AriaComponent,
+  MarkLineComponent,
   SVGRenderer,
 ]);
 export function TowerChart({
@@ -37,9 +39,9 @@ export function TowerChart({
     const chart = init(ref.current, undefined, { renderer: "svg" });
     chart.setOption({
       animation: false,
-      color: ["#7181db", "#49a28f", "#c08e52", "#85919e"],
+      color: [getComputedStyle(ref.current).getPropertyValue("--data-blue").trim(), "#49a28f", "#c08e52", "#85919e"],
       textStyle: {
-        fontFamily: "Inter, Pretendard, sans-serif",
+        fontFamily: "Pretendard, sans-serif",
         color: dark ? "#a5a7b1" : "#646874",
         fontSize: 11,
       },

@@ -21,6 +21,7 @@ export function YardForecast({
   transfersActive,
   onSelectGroup,
   planning,
+  selectedDay,
   db = false,
 }: {
   theme: string;
@@ -33,6 +34,7 @@ export function YardForecast({
   transfersActive: boolean;
   onSelectGroup: (group: GroupForecast["group"]) => void;
   planning?: PlanningSnapshot | null;
+  selectedDay?: string;
   db?: boolean;
 }) {
   const [mode, setMode] = useState<"groups" | "total">(groups.length > 1 ? "groups" : "total");
@@ -45,6 +47,7 @@ export function YardForecast({
   })) ?? []) : forecast.daily;
   const round = (value: number | null | undefined) => value == null ? null : Math.round(value);
   const view = groups.length > 1 ? mode : "total";
+  const selected = selectedDay ? daily.find((item) => item.date === selectedDay) : undefined;
   return (
     <Section
       title="재고 전망"
@@ -62,6 +65,12 @@ export function YardForecast({
         ) : undefined
       }
     >
+      {selected && <section className="stockyard-selected-day" aria-label="선택 날짜 수급">
+        <strong>{selected.date} · 선택 범위</strong>
+        <span>일말 재고 <b>{selected.stockTons == null ? "미확정" : `${n(selected.stockTons)} t`}</b></span>
+        <span>입하 배분 <b>{selected.inboundTons == null ? "미확정" : `${n(selected.inboundTons)} t`}</b></span>
+        <span>예상 사용 <b>{selected.fuelUseTons == null ? "미확정" : `${n(selected.fuelUseTons)} t`}</b></span>
+      </section>}
       {view === "groups" ? (
         <TowerChart
           theme={theme}

@@ -1,0 +1,45 @@
+.forecast-input-panel { display:grid; gap:18px; min-width:0; }
+.planning-input-fields { display:grid; gap:16px; padding:0; margin:0; border:0; min-width:0; }
+.planning-input-inherited { display:flex; flex-wrap:wrap; gap:14px 28px; padding:16px 0; border-top:1px solid var(--border); }
+.planning-input-inherited span { display:grid; gap:5px; font-size:12px; color:var(--muted-foreground); }
+.planning-input-inherited b { color:var(--foreground); font-weight:500; }
+.forecast-input-panel .planning-input { padding:24px; border:1px solid var(--border); border-radius:12px; background:var(--card); }
+.forecast-input-panel .planning-input h2 { font-size:18px; margin:0; }
+.forecast-input-panel .planning-input header p { font-size:13px; color:var(--muted-foreground); line-height:1.6; margin:8px 0 20px; }
+.forecast-input-panel .planning-input-actions { justify-content:flex-end; border-top:1px solid var(--border); padding-top:18px; }
+.forecast-execution:empty { display:none; }
+.forecast-execution { padding:0 4px; font-size:13px; line-height:1.6; }
+.forecast-execution progress { display:block; max-width:480px; accent-color:var(--data-blue); margin:10px 0; }
+.forecast-input-empty { padding:28px; background:var(--card); border-radius:12px; }
+.forecast-history { border-top:1px solid var(--border); padding:16px 4px; font-size:13px; }
+.forecast-history summary { cursor:pointer; }
+.forecast-history ul { list-style:none; margin:10px 0; padding:0; }
+.forecast-history li { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--border); }
+.forecast-history small { display:block; color:var(--muted-foreground); margin-top:5px; overflow-wrap:anywhere; }
+
+.forecast-input-panel .planning-input-fields { grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:32px; row-gap:12px; }
+.forecast-input-panel .planning-input-fields > .planning-input-grid { grid-column:1; grid-row:1; }
+.forecast-input-panel .planning-input-fields > .planning-input-note { grid-column:1; grid-row:2; }
+.forecast-input-panel .planning-input-fields > details,
+.forecast-input-panel .planning-input-actions { grid-column:1 / -1; }
+.forecast-input-panel .planning-input details { padding:14px 0; font-size:14px; }
+.forecast-input-panel .planning-input label { font-size:14px; line-height:1.5; min-width:0; }
+.forecast-input-panel .planning-input :is(input, select) { min-height:44px; font-size:14px; width:100%; min-width:0; }
+.forecast-input-panel .planning-input-note { margin:2px 0; font-size:13px; }
+.forecast-input-panel .planning-input-inherited { grid-column:2; grid-row:1 / 3; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 24px; padding:0 0 0 32px; border-top:0; border-left:1px solid var(--border); align-content:start; }
+.forecast-input-panel .planning-input-inherited span { font-size:13px; }
+.forecast-input-panel .planning-input-inherited b { font-size:16px; }
+.forecast-input-panel .planning-input-base { max-width:none; }
+.forecast-input-panel .planning-input form { margin-top:24px; }
+.forecast-input-panel .planning-input-actions button { min-height:42px; font-size:14px; }
+@media(max-width:1200px) {
+  .forecast-input-panel .planning-input-fields { grid-template-columns:minmax(0,1fr); }
+  .forecast-input-panel .planning-input-inherited { grid-column:1; grid-row:3; padding:18px 0; border-left:0; border-top:1px solid var(--border); }
+  .forecast-input-panel .planning-input-months { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .forecast-input-panel .planning-input-outage { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:600px) {
+  .forecast-input-panel .planning-input { padding:18px; }
+  .forecast-input-panel .planning-input-actions { justify-content:stretch; }
+  .forecast-input-panel .planning-input-actions button { flex:1 1 160px; }
+}

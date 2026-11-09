@@ -83,6 +83,7 @@ export function OnlineVesselCanvas(
   const [minZoom, setMinZoom] = useState(0);
   const [ready, setReady] = useState(false);
   const [drawing, setDrawing] = useState(true);
+  const cameraInteraction = useRef(false);
   const [styleLoading, setStyleLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
@@ -164,7 +165,7 @@ export function OnlineVesselCanvas(
             ),
             bearing: 0,
             pitch: 0,
-          });
+          }, { userCamera: true });
         const syncZoom = () => {
           const z = map.getZoom();
           const p = morphProgress(z, providerReady.current);
@@ -188,11 +189,14 @@ export function OnlineVesselCanvas(
           syncZoom();
         });
         const isProvider = (id: string) => !id.startsWith("vessel-");
-        // Geography, labels, dots and route sources share one loading indicator.
-        // A single source finishing must not hide it while others still render.
-        map.on("dataloading", () => setDrawing(true));
+        // AIS and weather also render frames. Only a user camera change can
+        // start the drawing indicator after the initial map is ready.
+        map.on("movestart", (event) => {
+          if (event.originalEvent || ("userCamera" in event && event.userCamera === true))
+            cameraInteraction.current = true;
+        });
         map.on("render", () => {
-          if (!map.loaded()) setDrawing(true);
+          if (cameraInteraction.current && !map.loaded()) setDrawing(true);
         });
         // Keep already-rendered tiles and the blend during normal tile requests.
         map.on("idle", () => {
@@ -201,6 +205,7 @@ export function OnlineVesselCanvas(
           );
           if (!sources.every((id) => map.isSourceLoaded(id))) return;
           providerReady.current = true;
+          cameraInteraction.current = false;
           window.clearTimeout(timeout);
           setReady(true);
           setDrawing(false);
@@ -208,6 +213,7 @@ export function OnlineVesselCanvas(
           syncZoom();
         });
         map.on("error", () => {
+          cameraInteraction.current = false;
           setDrawing(false);
           if (!providerReady.current) {
             latest.current.onUnavailable(
@@ -575,6 +581,7 @@ export function OnlineVesselCanvas(
     const map = mapRef.current;
     if (!map || next === viewRef.current) return;
     const atOverview = map.getZoom() < 3;
+    cameraInteraction.current = true;
     viewRef.current = next;
     setView(next);
     const initial = overviewZoom(
@@ -626,7 +633,7 @@ export function OnlineVesselCanvas(
         active={ready && props.theme === "dark" && view === "globe"}
       />
       <MapDrawingOrb
-        busy={isDrawing || !!props.weatherBusy}
+        busy={isDrawing}
         theme={props.theme}
       />
       <div className="vessel-map-toolbar" role="toolbar" aria-label="지도 도구">
@@ -639,7 +646,7 @@ export function OnlineVesselCanvas(
             onClick={() =>
               mapRef.current?.zoomTo(Math.min(MAX_ZOOM, zoom + 1), {
                 duration: 220,
-              })
+              }, { userCamera: true })
             }
           >
             <Plus />
@@ -650,7 +657,7 @@ export function OnlineVesselCanvas(
             onClick={() =>
               mapRef.current?.zoomTo(Math.max(minZoom, zoom - 1), {
                 duration: 220,
-              })
+              }, { userCamera: true })
             }
           >
             <Minus />

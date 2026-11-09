@@ -1,0 +1,93 @@
+/* 운영 현황판: 포인트색 데이터 팔레트(수급 예측·시뮬레이션과 같은 값) */
+.gf-os-page { --gf-os-c1: #2447c5; --gf-os-c2: #8aa3ec; --gf-os-c3: #14245f; --gf-os-muted: #a3adbd;
+  display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; min-width: 0; }
+.dark .gf-os-page { --gf-os-c1: #6b94ff; --gf-os-c2: #a9beff; --gf-os-c3: #4f76e6; --gf-os-muted: #5d6574; }
+
+.gf-os-panel { display: flex; flex-direction: column; min-width: 0; padding: 14px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.gf-os-panel > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.gf-os-panel h2 { margin: 0; color: var(--foreground); font-size: 14px; font-weight: 600; }
+.gf-os-panel > header > span { color: var(--muted-foreground); font-size: 11px; }
+.gf-os-panel > header b { color: var(--foreground); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.gf-os-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 18px 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
+.gf-os-link { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; margin-top: auto; padding: 6px 0 0; border: 0; background: none; color: var(--primary); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.gf-os-empty .gf-os-link { margin: 0; padding: 0; }
+.gf-os-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* 발전소 출력: 막대 높이 = 정격 비례 틀, 채움 = 정격 대비 현재 출력. 운전 중은 한 색, 정지·미확인은 회색 */
+.gf-os-unit-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 10px; }
+.gf-os-unit { display: grid; align-content: start; gap: 2px; min-width: 0; }
+.gf-os-unit-frame { display: flex; align-items: flex-end; height: 168px; margin-bottom: 4px; }
+.gf-os-unit-track { position: relative; display: block; width: 100%; border-radius: 6px; background: color-mix(in srgb, var(--muted-foreground) 10%, transparent); overflow: hidden; }
+.gf-os-unit-track i { position: absolute; inset: auto 0 0; border-radius: 6px 6px 0 0; background: var(--gf-os-c1); }
+.gf-os-unit:not([data-status="running"]) .gf-os-unit-track i { background: var(--gf-os-muted); }
+.gf-os-unit-name, .gf-os-unit > small { color: var(--muted-foreground); font-size: 11px; }
+.gf-os-unit > small { display: grid; line-height: 1.4; }
+.gf-os-unit > small span { white-space: nowrap; }
+.gf-os-unit strong { color: var(--foreground); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gf-os-unit strong small { font-size: 11px; font-weight: 400; }
+.gf-os-unit[data-status="fault"] > small { color: var(--destructive); }
+
+/* 금일 수요전망 */
+.gf-os-demand-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.gf-os-demand-stats span, .gf-os-demand-stats strong { display: block; }
+.gf-os-demand-stats span { color: var(--muted-foreground); font-size: 11px; }
+.gf-os-demand-stats strong { margin-top: 2px; color: var(--foreground); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.gf-os-demand-stats strong small { font-size: 11px; font-weight: 400; }
+.gf-os-demand [data-slot="chart"].gf-os-chart { aspect-ratio: auto; height: 196px; margin-top: 8px; font-size: 11px; }
+.gf-os-chart .recharts-cartesian-grid line { stroke: var(--border); stroke-opacity: .7; }
+.gf-os-chart .gf-os-now line, .gf-os-chart line.gf-os-now { stroke: var(--foreground); stroke-opacity: .55; }
+.gf-os-chart .gf-os-now-label { fill: var(--muted-foreground); font-size: 11px; }
+.gf-os-chart .recharts-wrapper:focus, .gf-os-chart .recharts-surface:focus, .gf-os-chart g[tabindex="-1"]:focus { outline: none; }
+.gf-os-tip { display: flex; flex: 1; gap: 8px; min-width: 120px; }
+.gf-os-tip span { color: var(--muted-foreground); }
+.gf-os-tip b { margin-left: auto; font-weight: 550; font-variant-numeric: tabular-nums; }
+
+/* 저탄 현황 */
+.gf-os-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.gf-os-grade > div { display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; justify-items: start; gap: 2px 8px; }
+.gf-os-grade i { width: 9px; height: 9px; border-radius: 2px; background: var(--gf-os-c1); }
+.gf-os-grade [data-grade="low"] i { background: var(--gf-os-c2); }
+.gf-os-grade span { color: var(--muted-foreground); font-size: 12px; }
+.gf-os-grade strong { grid-column: 1 / 3; grid-row: 2; color: var(--foreground); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.gf-os-grade small { grid-column: 3; grid-row: 2; color: var(--muted-foreground); font-size: 12px; font-variant-numeric: tabular-nums; }
+.gf-os-yards { display: grid; gap: 16px; padding: 16px 0 8px; }
+.gf-os-yard { display: grid; grid-template-columns: 64px minmax(0, 1fr) 96px; grid-template-rows: auto auto; align-items: center; gap: 2px 10px; }
+.gf-os-yard > span:first-child { grid-row: 1 / 3; color: var(--foreground); font-size: 12px; }
+.gf-os-yard-bar { display: flex; height: 14px; min-width: 4px; border-radius: 4px; overflow: hidden; }
+.gf-os-yard-bar i { display: block; min-width: 0; background: var(--gf-os-c1); }
+.gf-os-yard-bar i[data-grade="low"] { background: var(--gf-os-c2); }
+.gf-os-yard strong { color: var(--foreground); font-size: 13px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.gf-os-yard small { grid-column: 2 / 4; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* 선박 현황: 접안 중 / 체선 대기 / 입항 예정 */
+.gf-os-ship-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; flex: 1; }
+.gf-os-ship-col { display: flex; flex-direction: column; min-width: 0; padding: 0 14px; border-left: 1px solid var(--border); }
+.gf-os-ship-col:first-child { padding-left: 0; border-left: 0; }
+.gf-os-ship-col:last-child { padding-right: 0; }
+.gf-os-ship-col h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; color: var(--foreground); font-size: 13px; font-weight: 600; }
+.gf-os-ship-col h3 svg { color: var(--primary); }
+.gf-os-ship-col h3 b { font-variant-numeric: tabular-nums; }
+.gf-os-ship-col h3 small { width: 100%; color: var(--muted-foreground); font-size: 11px; font-weight: 400; }
+.gf-os-ship-col ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.gf-os-ship-col li { display: grid; gap: 2px; min-width: 0; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.gf-os-ship-col li strong { display: flex; align-items: center; gap: 6px; color: var(--foreground); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.gf-os-ship-col li em { padding: 1px 6px; border-radius: 10px; background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); font-size: 11px; font-style: normal; font-weight: 500; }
+.gf-os-ship-col li span { color: var(--muted-foreground); font-size: 11px; line-height: 1.45; }
+.gf-os-more { margin: 6px 0 0; color: var(--muted-foreground); font-size: 11px; }
+
+.gf-os-next { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+.gf-os-next [data-slot="button"] { border-radius: 20px; font-size: 12px; }
+
+@media (max-width: 1200px) { .gf-os-page { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .gf-os-unit-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 10px; } .gf-os-unit-frame { height: 80px; } }
+@media (max-width: 700px) {
+  .gf-os-ship-cols { grid-template-columns: 1fr; gap: 14px; }
+  .gf-os-ship-col { padding: 14px 0 0; border-left: 0; border-top: 1px solid var(--border); }
+  .gf-os-ship-col:first-child { padding-top: 0; border-top: 0; }
+}
+@media (max-width: 600px) {
+  .gf-os-panel { padding: 14px; }
+  .gf-os-unit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gf-os-demand-stats, .gf-os-grade { grid-template-columns: 1fr; }
+  .gf-os-yard { grid-template-columns: 56px minmax(0, 1fr) 84px; }
+}

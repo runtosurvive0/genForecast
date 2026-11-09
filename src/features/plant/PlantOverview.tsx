@@ -94,7 +94,7 @@ export function PlantOverview({
       <div className="tower-context">
         <span>
           <i />
-          SYNTHETIC DATA · 기준 {fmtDate(BASE_TIME, true)}
+          시연 데이터 · 기준 {fmtDate(BASE_TIME, true)}
         </span>
         <div>
           <Button variant="outline" size="sm" onClick={onSchedule}>

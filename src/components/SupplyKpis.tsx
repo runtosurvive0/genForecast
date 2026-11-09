@@ -44,7 +44,7 @@ export function SupplyKpis({
       value: k.stock,
       unit: "t",
       note:
-        k.stock === null ? "기준재고 미등록" : "조회 시작시각 · DB 수급 원장",
+        k.stock === null ? "기준재고 미등록" : s.classification === 'functional_demo' ? "조회 시작시각 · 계산 기준" : "조회 시작시각 · DB 수급 원장",
       target: { section: "inventory" } as SupplyTarget,
     },
     {
@@ -54,8 +54,8 @@ export function SupplyKpis({
       unit: "일",
       digits: 1,
       note: minimum
-        ? `${minimum.day} · 처별 전망 중 최소값`
-        : "처별 전망 중 최소값",
+        ? `${minimum.day} · 저탄장별 전망 중 최소값`
+        : "저탄장별 전망 중 최소값",
       target: { section: "forecast", ...minimum } as SupplyTarget,
     },
     {
@@ -63,7 +63,7 @@ export function SupplyKpis({
       icon: Anchor,
       value: k.unloading_remaining,
       unit: "t",
-      note: `조회 시작시각 · ${fmt(k.active_vessels)}척 하역 중`,
+      note: `조회 시작시각 · ${fmt(k.active_vessels)}척 ${s.classification === 'functional_demo' ? '계산상 하역' : '하역 중'}`,
       target: { section: "unloading" } as SupplyTarget,
     },
     {
@@ -71,7 +71,7 @@ export function SupplyKpis({
       icon: Ship,
       value: k.arrivals,
       unit: "t",
-      note: `DB 등록 선박 ${fmt(k.arrival_count)}척 · 화물량 기준`,
+      note: `${s.classification === 'functional_demo' ? '계산에 포함된 선박' : 'DB 등록 선박'} ${fmt(k.arrival_count)}척 · 화물량 기준`,
       target: { section: "arrivals" } as SupplyTarget,
     },
     {
@@ -105,7 +105,7 @@ export function SupplyKpis({
         <p>
           {k.risk === "unknown"
             ? "재고·계획 자료와 최신성 확인 필요"
-            : "조회기간의 DB 재고전망 기준"}
+            : s.classification === 'functional_demo' ? "조회기간의 입력 기준 재고전망" : "조회기간의 DB 재고전망 기준"}
         </p>
       </button>
       {cards.map((card) => {

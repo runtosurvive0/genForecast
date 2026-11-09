@@ -11,11 +11,13 @@ import { MilpUpload } from "./MilpUpload";
 export function DataPage({
   plants,
   onResult,
+  initialTab = "status",
 }: {
   plants: Plant[];
   onResult: (run: { id: string; start: string; end: string }) => void;
+  initialTab?: "status" | "upload";
 }) {
-  const [tab, setTab] = useState<"status" | "upload">("status");
+  const [tab, setTab] = useState<"status" | "upload">(initialTab);
   const ids = plants.map((p) => p.id);
   const piles = stockpiles.filter((p) => ids.includes(p.plant_id));
   const cargo = voyages.filter((v) => ids.includes(v.destination_plant_id));
@@ -58,7 +60,7 @@ export function DataPage({
           aria-selected={tab === "upload"}
           onClick={() => setTab("upload")}
         >
-          MILP 업로드
+          전망 입력·계산
         </button>
       </div>
       {tab === "upload" ? (
@@ -70,7 +72,7 @@ export function DataPage({
             note="표본 데이터 점검 · MILP 입력·실행 DB는 업로드 탭에서 관리합니다"
             action={
               <Button variant="outline" size="sm" onClick={download}>
-                더미데이터 내려받기
+                시연 데이터 내려받기
               </Button>
             }
           >
@@ -88,20 +90,20 @@ export function DataPage({
                   {[
                     [
                       "재고·탄질·Pile",
-                      "로컬 더미 " + piles.length + "건",
+                      "로컬 시연 자료 " + piles.length + "건",
                       "DEMO",
                       "재고 DB / SQLAlchemy",
                     ],
                     [
                       "선박·화물",
-                      "로컬 더미 " + cargo.length + "건",
+                      "로컬 시연 자료 " + cargo.length + "건",
                       "DEMO",
                       "AISstream 서버 프록시",
                     ],
                     ["온도·CO", "없음", "미연결", "저탄장 센서"],
                     [
                       "수요·공급 모델",
-                      "브라우저 합성데이터 학습",
+                      "브라우저 시연 데이터 학습",
                       "LOCAL",
                       "FastAPI / Python 모델 서비스",
                     ],
@@ -157,7 +159,7 @@ export function DataPage({
               서비스는 날짜·호기별 발전량을 같은 재고 엔진에 전달할 수 있습니다.
             </p>
             <p className="tower-prose">
-              MILP 업로드 탭에서 입력과 실행 결과를 프로젝트 DB에 저장합니다.
+              전망 입력·계산 탭에서 입력과 실행 결과를 프로젝트 DB에 저장합니다.
               내부망 발전 실적과 AIS 입항·체선 자료는 정규화 API 경계를
               제공하며, 실제 수집 시스템 연결·인증·운영자료 검증은 후속
               작업입니다.

@@ -41,7 +41,7 @@ export function VesselEtaDetail({
       <p className="vessel-data-context">
         {voyage ? voyageState[voyage.state] : "항차 미연결"} ·{" "}
         {vessel.source === "demo"
-          ? "합성 표본 · 실제 운영 정보 아님"
+          ? "시연 자료 · 실제 운영 정보 아님"
           : vessel.source === "digitraffic"
             ? "Digitraffic · 핀란드"
             : vessel.ais

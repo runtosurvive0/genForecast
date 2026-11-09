@@ -28,6 +28,70 @@ test('Open Waters observations show attribution and retain provenance after inte
   expect(saved.vessels.find((v: any) => v.mmsi === ship.mmsi)?.ais.position.feed).toBe('openwaters');
 });
 
+test('vessel cards share berth detection and search has a single focus indicator', async ({ page }) => {
+  const at=new Date().toISOString(), mmsi='477165300', lon=126.50632, lat=37.06657;
+  const ship={id:'ais-'+mmsi,name:'TEST BERTH CARGO',mmsi,imo:'',source:'aisstream',
+    ais:{updatedAt:at,destination:'DANGJIN',shipType:70,navStatus:5,
+      position:{longitude:lon,latitude:lat,observedAt:at,sogKn:0,cogDeg:0}}};
+  await page.addInitScript((vessel) => {
+    localStorage.setItem('genforecast.vessel-workspace.v1',JSON.stringify({version:1,watchlist:[vessel.id],vessels:[vessel],voyages:[]}));
+  },ship);
+  await page.route('**/api/vessels/map?**',route=>route.fulfill({json:{type:'FeatureCollection',visibleCount:1,fetchedAt:at,lastReceivedAt:at,
+    features:[{type:'Feature',id:mmsi,geometry:{type:'Point',coordinates:[lon,lat]},properties:{kind:'vessel',mmsi,name:ship.name,fresh:true,count:1}}]}}));
+  await page.route('**/api/vessels/map/'+mmsi,route=>route.fulfill({json:ship}));
+  await page.route('**/api/voyage-registry/records',route=>route.fulfill({json:{ships:[],voyages:[],cargo:[],quality_selection:{}}}));
+  await openEta(page);
+  await expect(page.locator('.gf-voyage-card').filter({hasText:ship.name})).toContainText('2부두 · AIS 접안 추정');
+  await expect(page.locator('.gf-voyage-card.selected')).toContainText('마지막 AIS 관측 · KST');
+  await expect(page.locator('.gf-voyage-card.selected')).not.toContainText('기본 ETA');
+  await expect(page.getByLabel('선택 선박 도착 전망')).toContainText('실제 입항·접안 시각 미확인');
+  await expect(page.getByLabel('선택 선박 도착 전망')).toContainText('도착 시각 아님');
+  await expect(page.getByLabel('선택 선박 도착 전망').locator('.vessel-arrival-source')).not.toContainText('마지막 관측');
+  const cargo = page.getByRole('region', { name: '공용 배선 및 화물' });
+  await expect(cargo).toContainText('연결된 배선이 없습니다');
+  await expect(page.locator('.gf-voyages-timeline')).toHaveCount(0);
+  await expect(page.locator('.gf-voyages-cargo-totals')).toHaveCount(0);
+  const search=page.getByRole('textbox',{name:'관심 선박 빠른 검색'});
+  await search.focus();
+  await expect(search).toHaveCSS('outline-style','none');
+  await expect(page.locator('.gf-voyages-quick-search')).toHaveCSS('outline-style','solid');
+});
+
+test('pending berth and cargo data use skeletons until requests finish', async ({ page }) => {
+  const at=new Date().toISOString(), mmsi='477165300', lon=126.50632, lat=37.06657;
+  const ship={id:'ais-'+mmsi,name:'LOADING BERTH TEST',mmsi,imo:'',source:'aisstream',ais:{updatedAt:at,destination:'DANGJIN',shipType:70,navStatus:5,position:{longitude:lon,latitude:lat,observedAt:at,sogKn:0,cogDeg:0}}};
+  await page.addInitScript(vessel => localStorage.setItem('genforecast.vessel-workspace.v1',JSON.stringify({version:1,watchlist:[vessel.id],vessels:[vessel],voyages:[]})),ship);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/voyage-registry/records', async route => { await gate; await route.fulfill({json:{ships:[],voyages:[],cargo:[],quality_selection:{}}}); });
+  await page.route('**/api/vessels/map?**', async route => { await gate; await route.fulfill({json:{type:'FeatureCollection',visibleCount:1,fetchedAt:at,lastReceivedAt:at,features:[{type:'Feature',id:mmsi,geometry:{type:'Point',coordinates:[lon,lat]},properties:{kind:'vessel',mmsi,name:ship.name,fresh:true,count:1}}]}}); });
+  await page.route('**/api/vessels/map/'+mmsi,route=>route.fulfill({json:ship}));
+  await openEta(page);
+  const card=page.locator('.gf-voyage-card.selected');
+  await expect(card.locator('.gf-voyage-skeleton').first()).toBeVisible();
+  await expect(card).not.toContainText('ETA 미확정');
+  await expect(card.locator('.gf-voyage-card-facts')).not.toContainText('미확인');
+  release();
+  await expect(card).toContainText('2부두 · AIS 접안 추정');
+  await expect(card.locator('.gf-voyage-card-facts')).toContainText('미확인');
+  await expect(card.locator('.gf-voyage-skeleton')).toHaveCount(0);
+});
+
+test('berth card shows a uniquely matched registered berth time instead of ETA', async ({ page }) => {
+  const at = new Date().toISOString(), actual = new Date(Date.now() - 7200000).toISOString();
+  const mmsi = '477165300', lon = 126.50632, lat = 37.06657;
+  const ship = {id:'ais-'+mmsi,name:'BERTH ACTUAL TEST',mmsi,imo:'',source:'aisstream',ais:{updatedAt:at,destination:'DANGJIN',shipType:70,navStatus:5,position:{longitude:lon,latitude:lat,observedAt:at,sogKn:0,cogDeg:0}}};
+  await page.addInitScript(vessel => localStorage.setItem('genforecast.vessel-workspace.v1',JSON.stringify({version:1,watchlist:[vessel.id],vessels:[vessel],voyages:[]})),ship);
+  await page.route('**/api/vessels/map?**',route=>route.fulfill({json:{type:'FeatureCollection',visibleCount:1,fetchedAt:at,lastReceivedAt:at,features:[{type:'Feature',id:mmsi,geometry:{type:'Point',coordinates:[lon,lat]},properties:{kind:'vessel',mmsi,name:ship.name,fresh:true,count:1}}]}}));
+  await page.route('**/api/vessels/map/'+mmsi,route=>route.fulfill({json:ship}));
+  await page.route('**/api/voyage-registry/records',route=>route.fulfill({json:{ships:[{ship_code:'S1',mmsi}],voyages:[{voyage_no:'V1',ship_code:'S1',status:'berthed',actual_berth:actual,destination_port:'당진'}],cargo:[],quality_selection:{}}}));
+  await openEta(page);
+  const card=page.locator('.gf-voyage-card.selected');
+  await expect(card).toContainText('등록 접안 · KST');
+  await expect(page.getByLabel('선택 선박 도착 전망')).toContainText('공용 항차 원장에 등록된 시각');
+  await expect(page.getByLabel('선택 선박 도착 전망')).toContainText('관측 시각 · 도착 시각 아님');
+});
+
 test('AIS catalog tolerates transfer beyond twelve seconds and still renders received vessels', async ({ page }) => {
   const at = new Date().toISOString();
   await page.route('**/api/vessels/catalog?*', async route => {
@@ -70,8 +134,8 @@ test("MILP upload stores inputs, starts calculation and opens the matching DB re
     return r.fulfill({ json: { total_tonnes: 640000 } });
   });
   await page.goto("/?source=synthetic");
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "데이터/관리자", exact: true }).click();
-  await page.getByRole("tab", { name: "MILP 업로드", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "데이터 워크스페이스", exact: true }).click();
+  await page.getByRole("tab", { name: "전망 입력·계산", exact: true }).click();
   await page.getByLabel("시나리오 JSON", { exact: true }).setInputFiles({ name: "scenario.json", mimeType: "application/json", buffer: Buffer.from("{}") });
   await page.getByLabel("월별 열량단가", { exact: true }).setInputFiles({ name: "prices.csv", mimeType: "text/csv", buffer: Buffer.from("unit,1월\n당진1,30000") });
   await page.getByRole("button", { name: "검증 및 DB 저장", exact: true }).click();
@@ -92,88 +156,119 @@ test("MILP upload stores inputs, starts calculation and opens the matching DB re
 
 async function openEta(page: import("@playwright/test").Page) {
   await page.goto("/?source=synthetic");
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "항차·화물", exact: true }).click();
 }
 
-test("yard conveyors show division MILP feeds and transfer belts sit between adjacent stockyards", async ({ page }) => {
-  await page.route("**/api/**", route => {
+test('interest cards reorder by drag and keyboard and persist without changing selection', async ({ page }) => {
+  await openEta(page);
+  const cards = page.locator('.vessel-watchlist .gf-voyage-card-wrap');
+  await expect(cards).toHaveCount(4);
+  const original = await cards.evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.vesselId));
+  await cards.nth(1).locator('.shipment-card').click();
+  const selected = await page.locator('.shipment-card[aria-pressed="true"]').locator('strong').first().innerText();
+  const targetBox = await cards.nth(2).boundingBox();
+  await cards.nth(0).dragTo(cards.nth(2), { targetPosition: { x: 50, y: targetBox!.height - 10 } });
+  const moved = [original[1], original[2], original[0], original[3]];
+  await expect.poll(async () => (await readSavedWorkspace(page)).watchlist).toEqual(moved);
+  await expect(page.locator('.shipment-card[aria-pressed="true"] strong').first()).toHaveText(selected);
+  const thirdHandle = page.locator('.vessel-watchlist .gf-voyage-card-drag').nth(2);
+  await thirdHandle.focus();
+  await thirdHandle.press('ArrowUp');
+  const keyboardOrder = [original[1], original[0], original[2], original[3]];
+  await expect.poll(async () => (await readSavedWorkspace(page)).watchlist).toEqual(keyboardOrder);
+  await expect(page.locator('.gf-voyage-card-drag:focus')).toHaveCount(1);
+  await page.reload();
+  await expect.poll(async () => await cards.evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.vesselId))).toEqual(keyboardOrder);
+  const names = await cards.locator('.shipment-card strong:first-child').allTextContents();
+  const query = [...'abcdefghijklmnopqrstuvwxyz'].find(ch => {
+    const matching = names.filter(name => name.toLowerCase().includes(ch)).length;
+    return matching >= 2 && matching < names.length;
+  });
+  expect(query).toBeTruthy();
+  await page.getByRole('textbox', { name: '관심 선박 빠른 검색' }).fill(query!);
+  const visible = await cards.evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.vesselId));
+  await cards.last().locator('.gf-voyage-card-drag').press('ArrowUp');
+  const expectedVisible = [...visible];
+  [expectedVisible[expectedVisible.length - 2], expectedVisible[expectedVisible.length - 1]] = [expectedVisible[expectedVisible.length - 1], expectedVisible[expectedVisible.length - 2]];
+  let nextVisible = 0;
+  const filteredOrder = keyboardOrder.map(id => visible.includes(id) ? expectedVisible[nextVisible++] : id);
+  await expect.poll(async () => (await readSavedWorkspace(page)).watchlist).toEqual(filteredOrder);
+});
+
+test('drag preview animates before saving and cancellation restores the order', async ({ page }) => {
+  await openEta(page);
+  const cards = page.locator('.vessel-watchlist .gf-voyage-card-wrap');
+  await expect(cards).toHaveCount(4);
+  const original = await cards.evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.vesselId));
+  const source = cards.first();
+  const target = cards.nth(2);
+  const targetBox = await target.boundingBox();
+  const transfer = await page.evaluateHandle(() => new DataTransfer());
+  await source.dispatchEvent('dragstart', { dataTransfer: transfer });
+  await target.dispatchEvent('dragover', { dataTransfer: transfer, clientY: targetBox!.y + targetBox!.height - 5 });
+  await expect.poll(() => cards.evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.vesselId))).toEqual([original[1], original[2], original[0], original[3]]);
+  expect(await cards.evaluateAll(nodes => nodes.some(node => node.getAnimations().some(animation => animation.playState === 'running')))).toBe(true);
+  expect((await readSavedWorkspace(page)).watchlist).toEqual(original);
+  await page.locator(`.gf-voyage-card-wrap[data-vessel-id="${original[0]}"]`).dispatchEvent('dragend', { dataTransfer: transfer });
+  await expect.poll(() => cards.evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.vesselId))).toEqual(original);
+  expect((await readSavedWorkspace(page)).watchlist).toEqual(original);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForTimeout(300);
+  const box = await cards.nth(2).boundingBox();
+  await cards.first().dispatchEvent('dragstart', { dataTransfer: transfer });
+  await cards.nth(2).dispatchEvent('dragover', { dataTransfer: transfer, clientY: box!.y + box!.height - 5 });
+  await expect.poll(() => cards.evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.vesselId))).toEqual([original[1], original[2], original[0], original[3]]);
+  expect(await cards.evaluateAll(nodes => nodes.some(node => node.getAnimations().some(animation => animation.playState === 'running')))).toBe(false);
+  await page.locator(`.gf-voyage-card-wrap[data-vessel-id="${original[0]}"]`).dispatchEvent('dragend', { dataTransfer: transfer });
+});
+
+test('dropping after a moving card preview commits the displayed order', async ({page}) => {
+  await openEta(page);
+  const cards=page.locator('.vessel-watchlist .gf-voyage-card-wrap');
+  await expect(cards).toHaveCount(4);
+  const original=await cards.evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.vesselId));
+  const source=cards.first(), target=cards.nth(2), box=await target.boundingBox();
+  const transfer=await page.evaluateHandle(()=>new DataTransfer());
+  await source.dispatchEvent('dragstart',{dataTransfer:transfer});
+  await target.dispatchEvent('dragover',{dataTransfer:transfer,clientY:box!.y+box!.height-5});
+  const shown=[original[1],original[2],original[0],original[3]];
+  await expect.poll(()=>cards.evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.vesselId))).toEqual(shown);
+  await cards.first().dispatchEvent('drop',{dataTransfer:transfer,clientY:0});
+  await expect.poll(async()=>(await readSavedWorkspace(page)).watchlist).toEqual(shown);
+});
+
+test("yard feeds follow the selected MILP date and receiving routes respect berth reachability", async ({ page }) => {
+  await page.route("**/api/runs", route => route.fulfill({ json: [{ id: "feed-plan", name: "상탄 계획", period: "2027-01-01 ~ 2027-12-31" }] }));
+  await page.route("**/api/planning/runs/**/snapshot?*", route => {
     const url = new URL(route.request().url());
-    if (/^\/api\/(auth|me|admin)\//.test(url.pathname)) return route.fallback();
-    if (url.pathname === "/api/runs") return route.fulfill({ json: [{ id: "feed-plan", name: "상탄 계획", period: "2027-01-01 ~ 2027-12-31" }] });
-    if (!url.pathname.startsWith("/api/planning/runs/")) return route.fulfill({ json: { vessels: [], transfers: [] } });
     const start = url.searchParams.get("start")!;
     const factor = start === "2027-02-01" ? 2 : 1;
     const snapshot = suppliedPlanningFixture("feed-plan", start, Number(url.searchParams.get("horizon")));
-    snapshot.daily[0].unit_generation_mwh = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`dj-${i + 1}`, (i + 1) * 1000 * factor]));
+    snapshot.classification = "operational";
+    snapshot.daily[0].unit_generation_mwh = Object.fromEntries(Array.from({length:10}, (_, i) => [`dj-${i + 1}`, (i + 1) * 1000 * factor]));
     ["g14", "g58", "g910"].forEach((id, i) => { snapshot.inventory.daily[0].groups[id].burn = (i + 1) * 2400 * factor; });
-    snapshot.vessels = [{ id: 1, name: "Pacific Horizon", cargo: 80000, incoming_cv: 5900,
-      arrival_at: "2026-12-31T20:00:00+09:00", berth_at: "2027-01-01T00:00:00+09:00",
-      unload_end: "2027-01-12T10:17:08+09:00", berth_id: "BD-1", run_id: "feed-plan", classification: "simulation",
-      remaining: factor === 1 ? 80000 : 0, state: factor === 1 ? "하역중" : "완료",
-      unloading_rate_tpd: factor === 1 ? 7000 : 0, today_receipts: factor === 1 ? 7000 : 0 }];
-    snapshot.inventory.daily[0].groups.g14.receipts = factor === 1 ? 7000 : 0;
-    return route.fulfill({ json: snapshot });
+    return route.fulfill({json:snapshot});
   });
-  await page.goto("/");
-  await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-01-01");
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "저탄장 현황", exact: true }).click();
-  const site = page.getByRole("region", { name: "당진 항만 · 저탄장 현황" });
-  await expect(site.locator(".site-plant")).toHaveCount(3);
-  await expect(site.locator('[data-feed-yard="P1"] [data-feed-value="generation"]')).toContainText("10,000");
-  await expect(site.locator('[data-feed-yard="P2"] [data-feed-value="generation"]')).toContainText("26,000");
-  await expect(site.locator('[data-feed-yard="P3"] [data-feed-value="hourly"]')).toContainText("300");
-  await expect(site.locator(".site-belt-chip")).toHaveCount(3);
-  await expect(site.locator('[data-unload-berth="BD-1"] [data-unload-value="rate"]')).toHaveText("7,000 t/일");
-  await expect(site.locator('[data-unload-berth="BD-1"] [data-unload-value="receipts"]')).toHaveText("7,000 t");
-  await expect(site.locator('[data-unload-berth="BD-2"] [data-unload-value="rate"]')).toHaveText("0 t/일");
-  for (const [i, id] of ["P1", "P2", "P3"].entries()) {
-    const conveyor = site.locator(`[data-conveyor-yard="${id}"]`);
-    await expect(conveyor).toContainText(`${i + 1}발전처 상탄 컨베이어`);
-    await expect(conveyor.locator("strong")).toHaveText(`${(i + 1) * 100}.0 t/h`);
-    const plant = await site.locator(`[data-feed-yard="${id}"]`).boundingBox();
-    const belt = await conveyor.boundingBox();
-    const yard = await site.locator(`.yard-block[data-yard="${id}"]`).boundingBox();
-    expect(plant!.y + plant!.height).toBeLessThan(belt!.y);
-    expect(belt!.y + belt!.height).toBeLessThan(yard!.y);
-    expect(Math.abs(belt!.x + belt!.width / 2 - yard!.x - yard!.width / 2)).toBeLessThan(1);
-  }
-  expect(await site.locator("[data-transfer-route]").evaluateAll(elements => elements.map(el => el.getAttribute("data-transfer-route")))).toEqual(["P1-P2", "P2-P3"]);
-  for (const [from, to] of [["P1", "P2"], ["P2", "P3"]]) {
-    const left = await site.locator(`.yard-block[data-yard="${from}"]`).boundingBox();
-    const right = await site.locator(`.yard-block[data-yard="${to}"]`).boundingBox();
-    const belt = await site.locator(`[data-transfer-route="${from}-${to}"]`).boundingBox();
-    expect(belt!.x).toBeGreaterThanOrEqual(left!.x + left!.width);
-    expect(belt!.x + belt!.width).toBeLessThanOrEqual(right!.x);
-    expect(belt!.y).toBe(left!.y);
-  }
-  await site.locator(".site-scene").screenshot({ path: ".tooling-tmp/yard-conveyors-light.png" });
-  await site.locator('[data-feed-yard="P3"]').click();
-  await expect(site.locator('.yard-block[data-yard="P3"]')).toHaveClass(/is-selected/);
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "발전소 종합", exact: true }).click();
+  await page.goto("/#simulation");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "수급 원장", exact: true }).click();
+  const feeds = page.getByRole("region", {name:"호기군별 발전과 연료 계획"});
+  await expect(feeds).toContainText("2027-01-01");
+  await expect(feeds.getByRole('article').nth(0)).toContainText("10,000 MWh");
+  await expect(feeds.getByRole('article').nth(1)).toContainText("26,000 MWh");
+  await expect(feeds.getByRole('article').nth(2)).toContainText("300 t/h");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "통합 시뮬레이션", exact: true }).click();
   await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
   await expect(page.locator(".midterm-source")).toContainText("2027-02-01");
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "저탄장 현황", exact: true }).click();
-  await expect(site.locator(".site-plants-caption")).toContainText("2027-02-01");
-  await expect(site.locator('[data-feed-yard="P3"] [data-feed-value="hourly"]')).toContainText("600");
-  await expect(site.locator('[data-conveyor-yard="P3"] strong')).toHaveText("600.0 t/h");
-  await expect(site.locator('[data-unload-berth="BD-1"] [data-unload-value="rate"]')).toHaveText("0 t/일");
-  await expect(site.locator('[data-unload-berth="BD-1"] [data-unload-value="receipts"]')).toHaveText("0 t");
-  await expect(site.locator('.harbor-ship.is-moored')).toHaveCount(0);
-  await page.getByRole("button", { name: "다크 모드로 전환", exact: true }).click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(site.locator(".site-plant")).toHaveCount(3);
-  await expect(site.locator('.site-conveyor')).toHaveCount(3);
-  for (const conveyor of await site.locator('.site-conveyor').all()) await expect(conveyor).toBeVisible();
-  expect(await site.locator(".site-scene").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-  for (const [from, to] of [["P1", "P2"], ["P2", "P3"]]) {
-    const above = await site.locator(`.yard-block[data-yard="${from}"]`).boundingBox();
-    const below = await site.locator(`.yard-block[data-yard="${to}"]`).boundingBox();
-    const belt = await site.locator(`[data-transfer-route="${from}-${to}"]`).boundingBox();
-    expect(belt!.y).toBeGreaterThan(above!.y + above!.height);
-    expect(belt!.y + belt!.height).toBeLessThan(below!.y);
-  }
-  await expect(site.locator(".site-belt-chip strong")).toHaveText(["200.0 t/h", "400.0 t/h", "600.0 t/h"]);
-  await site.locator(".site-scene").screenshot({ path: ".tooling-tmp/yard-conveyors-dark-mobile.png" });
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "수급 원장", exact: true }).click();
+  await expect(feeds).toContainText("2027-02-01");
+  await expect(feeds.getByRole('article').nth(2)).toContainText("600 t/h");
+  await page.getByRole("navigation", {name:"주 메뉴"}).getByRole("button",{name:"접안·하역",exact:true}).click();
+  const receiving = page.getByRole('region',{name:'반입 가능 구역'});
+  await expect(receiving.getByRole('button',{name:'Pile 7',exact:true})).toBeDisabled();
+  await expect(receiving.getByRole('button',{name:'Pile 2',exact:true})).toBeEnabled();
+  await page.locator('.gf-ob-dock').nth(1).click();
+  await expect(receiving.getByRole('button',{name:'Pile 3',exact:true})).toBeDisabled();
+  await expect(receiving.getByRole('button',{name:'Pile 5',exact:true})).toBeEnabled();
 });
 
 async function openVesselData(page: import("@playwright/test").Page, tab = "AIS 관측") {
@@ -200,7 +295,7 @@ test("vessel shell separates observation times from the sample simulation baseli
   await openEta(page);
   await expect(page.locator('.sidebar-note')).toContainText('선박별 출처·관측시각 확인');
   await expect(page.locator('.sidebar-note')).not.toContainText('2026.10.06');
-  await expect(page.locator('.demo-label')).toHaveText('선박별 데이터');
+  await expect(page.locator('.gf-rail-source')).toHaveText('재고 기준 2026-11-04');
   await expect(page.locator('.page-footer')).toContainText('선박별 관측·예보 기준');
   await expect(page.locator('.page-footer')).not.toContainText('기준시각 고정');
   await page.locator('.page-footer button').click();
@@ -212,9 +307,9 @@ test("vessel shell separates observation times from the sample simulation baseli
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '다크 모드로 전환', exact: true }).click();
   await page.screenshot({ path: '.tooling-tmp/vessel-time-basis-dark.png', fullPage: true });
-  await page.getByRole('button', { name: '저탄장 현황', exact: true }).click();
-  await expect(page.locator('.sidebar-note')).toContainText('시연 기준 2026.10.06 09:00 KST');
-  await expect(page.locator('.context-right')).toContainText('시연 기준');
+  await page.getByRole('button', { name: '수급 원장', exact: true }).click();
+  await expect(page.locator('.sidebar-note')).toContainText('계획·재고·운전 정보');
+  await expect(page.locator('.context-right')).toContainText('기준시각 미확인');
 });
 
 test("AIS destination option resolves global ports and clears obsolete routes on destination changes", async ({ page }) => {
@@ -278,7 +373,7 @@ test("AIS destination option resolves global ports and clears obsolete routes on
   await controls.screenshot({ path: ".tooling-tmp/ais-destination-mobile.png" });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "항차·화물", exact: true }).click();
   await expect(selector).toHaveValue("ais");
   await expect(controls).toContainText("하나의 항만으로 확인할 수 없습니다");
   await selector.selectOption("dangjin");
@@ -342,7 +437,7 @@ test("GFW response from another vessel is rejected and switching ships clears ol
   await expect(panel).toContainText("응답을 확인");
 });
 
-test("map drawing orb waits for all map sources rather than only dots", async ({ page }) => {
+test("map drawing orb stays quiet on refresh and waits for pending sources after a user zoom", async ({ page }) => {
   await page.route("https://tiles.openfreemap.org/styles/*", route => route.fulfill({ json: mapStyleFixture }));
   let finish: () => void = () => {};
   await page.route('**/test-delayed-map-land.json', async route => {
@@ -351,12 +446,18 @@ test("map drawing orb waits for all map sources rather than only dots", async ({
   });
   await page.goto('/?source=synthetic');
   await captureOnlineMap(page);
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(page.locator('.vessel-map-online')).toHaveAttribute('data-map-ready', 'true');
   const orb = page.locator('.vessel-map-drawing');
   await expect(orb).toHaveCount(0);
   // A real worker-backed geography update, after dots are already cached.
+  const pending = page.waitForRequest('**/test-delayed-map-land.json');
   await page.evaluate(() => { void (window as any).testVesselMap.getSource('land').setData('/test-delayed-map-land.json'); });
+  await pending;
+  // Hold the background request beyond the orb's 250 ms display delay.
+  await page.waitForTimeout(500);
+  await expect(orb).toHaveCount(0);
+  await page.getByRole('button', { name: '지도 확대', exact: true }).click();
   await expect(orb).toBeVisible();
   // Finishing another source must not hide the indicator while land is pending.
   await page.evaluate(() => {
@@ -379,7 +480,7 @@ test("map drawing orb follows loading, completion and fallback without blocking 
   });
   await page.goto("/?source=synthetic");
   await captureOnlineMap(page);
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "항차·화물", exact: true }).click();
   const orb = page.locator('.vessel-map-drawing');
   await expect(orb).toContainText('지도 그리는 중');
   await expect(orb.locator('canvas')).toHaveCount(1);
@@ -406,7 +507,7 @@ test("map drawing orb follows loading, completion and fallback without blocking 
   await expect(page.locator('.vessel-map-status')).toContainText('테마');
   // A fresh map failing during its first load must also remove the animation.
   await page.reload();
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(orb).toBeVisible();
   finish(true);
   await expect(page.locator('.vessel-map-svg')).toBeVisible();
@@ -429,7 +530,7 @@ for (const online of [false, true]) test(`actual vessel remains attached to rout
     coordinates: [[125.57373, 34.152727], [126, 36]], distanceNm: 100, startOffsetNm: 58.24, endOffsetNm: 11 } }); });
   await page.goto("/?source=synthetic");
   if (online) await captureOnlineMap(page);
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "항차·화물", exact: true }).click();
   if (online) await expect(page.locator('.vessel-map-online')).toHaveAttribute('data-map-ready', 'true');
   await page.getByLabel('예상 항로 목적항').selectOption('dangjin');
   await expect(page.locator('.vessel-route-summary')).toContainText('100 nm');
@@ -491,7 +592,7 @@ for (const online of [false, true]) test(`directional vessel symbols keep labels
   if (online) await page.route("https://tiles.openfreemap.org/styles/*", route => route.fulfill({ json: mapStyleFixture }));
   await page.goto("/?source=synthetic");
   if (online) await captureOnlineMap(page);
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "항차·화물", exact: true }).click();
   if (online) await expect(page.locator(".vessel-map-online")).toHaveAttribute("data-map-ready", "true");
   const selected = page.locator('.vessel-map-marker[aria-pressed="true"]');
   await expect(selected).toHaveAttribute("aria-label", /90.0° · COG/);
@@ -555,7 +656,8 @@ test("real vessel maps confirmed estimated routes and collected gaps without inv
   await expect(page.locator(".vessel-route-summary")).toContainText("135 nm");
   const expectedEta = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(Date.parse(at) + 135 / 12 * 3600000));
   await expect(page.locator(".vessel-eta-primary")).toHaveText(expectedEta);
-  await expect(page.locator('.shipment-card')).not.toContainText(expectedEta);
+  await expect(page.locator('.shipment-card .gf-voyage-card-footer')).toContainText(expectedEta);
+  await expect(page.locator('.gf-voyages-timeline [data-known="true"]')).toHaveCount(0);
   await expect(page.locator('.vessel-eta-reason')).toContainText('기상 미반영');
   const criteria = page.locator('.vessel-route-explanation');
   await expect(criteria).not.toHaveAttribute('open', '');
@@ -693,7 +795,7 @@ test("online real routes retain dash styling and camera across refresh and theme
   await page.route("**/api/vessels/route?*", route => route.fulfill({ json: { kind: "estimated", provider: "searoute", destinationId: "dangjin", origin: [125, 35], coordinates: [[125, 35], [125.5, 36], [126.4, 36.9]], distanceNm: 135, startOffsetNm: 0, endOffsetNm: 3 } }));
   await page.goto("/?source=synthetic");
   await captureOnlineMap(page);
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "항차·화물", exact: true }).click();
   await expect(page.locator(".vessel-map-online")).toHaveAttribute("data-map-ready", "true");
   await page.getByLabel("예상 항로 목적항").selectOption("dangjin");
   await expect(page.locator(".vessel-route-summary")).toContainText("135 nm");
@@ -748,14 +850,14 @@ test("vessel controls match the scope selector and horizon button sizes", async 
     provider: "aisstream", status: "not_configured", capacity: 20000, vessels: [],
   } }));
   await openEta(page);
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '저탄장 현황', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '수급 원장', exact: true }).click();
   const measure = (locator: import('@playwright/test').Locator) => locator.evaluate(el => {
     const css = getComputedStyle(el);
     return { height: el.getBoundingClientRect().height, radius: css.borderRadius, font: css.fontSize };
   });
   const regular = await measure(page.getByRole('combobox', { name: '발전본부 선택' }));
   const segmented = await measure(page.getByRole('button', { name: '30일', exact: true }));
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   for (const name of ['업데이트 확인', '관심 선박 구성', '관심 목록 더보기', '항로·계산 설정']) {
     expect(await measure(page.getByRole('button', { name, exact: true })), name).toEqual(regular);
   }
@@ -900,6 +1002,69 @@ test("AIS activity aligns with tabs after loading and stops when reception is st
   await page.clock.runFor(100);
   expect(await canvas.evaluate(el => (el as HTMLCanvasElement).toDataURL())).toBe(frame);
   await page.screenshot({ path: ".tooling-tmp/ais-header-mobile-dark.png" });
+});
+
+test("interest removal stays muted until hover or keyboard focus and matches the icon size", async ({ page }) => {
+  await openEta(page);
+  const remove = page.getByRole('button', { name: 'Ocean Frontier 관심 선박 해제' });
+  const icon = remove.locator('svg');
+  const minus = icon.locator('path');
+  await page.mouse.move(0, 0);
+  await expect(icon).toHaveCSS('background-color', 'rgb(139, 152, 168)');
+  await expect(minus).toHaveCSS('opacity', '0');
+  await expect.poll(() => remove.evaluate(el => getComputedStyle(el, '::after').opacity)).toBe('1');
+  const hitbox = await remove.boundingBox();
+  const picture = await icon.boundingBox();
+  expect(hitbox!.width).toBeLessThanOrEqual(picture!.width + 2);
+  expect(hitbox!.height).toBeLessThanOrEqual(picture!.height + 2);
+  await remove.hover();
+  await expect(icon).toHaveCSS('background-color', 'rgb(214, 77, 89)');
+  await expect(minus).toHaveCSS('opacity', '1');
+  await expect.poll(() => remove.evaluate(el => getComputedStyle(el, '::after').opacity)).toBe('0');
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Tab');
+  await remove.focus();
+  await expect(icon).toHaveCSS('background-color', 'rgb(214, 77, 89)');
+  await expect(minus).toHaveCSS('opacity', '1');
+});
+
+test('route card shows matched shared cargo and does not invent trip progress', async ({ page }) => {
+  const at = new Date().toISOString();
+  const ship = { id: 'ais-477165300', name: 'MATCHED CARGO', mmsi: '477165300', imo: '', source: 'aisstream',
+    ais: { updatedAt: at, destination: '', shipType: 70, navStatus: 0, position: { latitude: 35, longitude: 125, observedAt: at, sogKn: 12, cogDeg: 90 } } };
+  await page.addInitScript(vessel => localStorage.setItem('genforecast.vessel-workspace.v1', JSON.stringify({ version: 1, vessels: [vessel], voyages: [], watchlist: [vessel.id] })), ship);
+  await page.route('**/api/voyage-registry/records', route => route.fulfill({ json: {
+    revision: 1, audit: [], ships: [{ ship_code: 'S1', mmsi: ship.mmsi }],
+    voyages: [{ voyage_no: 'V1', ship_code: 'S1', status: 'unloading' }],
+    cargo: [{ cargo_no: 'C1', voyage_no: 'V1', coal_name: 'Glencore' }], assays: [],
+    quality_selection: { C1: { gcv_arb: 5500 } },
+  } }));
+  await openEta(page);
+  const card = page.locator('.shipment-card').filter({ hasText: ship.name });
+  await expect(card).toContainText('Glencore');
+  await expect(card).toContainText('5,500');
+  await expect(card).toContainText('위치 확인 필요');
+});
+
+test("compact interest cards expand on selection and remove without changing voyage data", async ({ page }) => {
+  await page.setViewportSize({width:1245,height:884});
+  await openEta(page);
+  const cards=page.locator('.vessel-watchlist .shipment-card');
+  const first=cards.first(), second=cards.nth(1);
+  await expect(first).toHaveAttribute('aria-pressed','true');
+  await expect(second).toHaveAttribute('aria-pressed','false');
+  await expect.poll(async()=>second.evaluate(el=>el.getBoundingClientRect().height)).toBeLessThan(await first.evaluate(el=>el.getBoundingClientRect().height));
+  await second.click();
+  await expect(second).toHaveAttribute('aria-pressed','true');
+  await expect.poll(async()=>await second.evaluate(el=>el.getBoundingClientRect().height)-await first.evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThan(0);
+  const destination=second.locator('.gf-voyage-card-route-ends > span:last-child b');
+  await expect(destination).toHaveCSS('white-space','nowrap');
+  const before=await readSavedWorkspace(page);
+  const remove=page.getByRole('button',{name:'Ocean Frontier 관심 선박 해제'});
+  await remove.click();
+  await expect(page.locator('.vessel-watchlist .shipment-card').filter({hasText:'Ocean Frontier'})).toHaveCount(0);
+  await expect.poll(async()=>(await readSavedWorkspace(page)).watchlist.length).toBe(before.watchlist.length-1);
+  expect((await readSavedWorkspace(page)).voyages).toEqual(before.voyages);
 });
 
 test("watchlist manager opens first, removes reversibly and keeps additions open", async ({ page }) => {
@@ -1169,7 +1334,7 @@ test("AIS discovery filters, sorts, survives errors, and persists provenance wit
   await expect(page.locator(".vessel-eta-detail")).toContainText("35.00000, 125.00000");
   await expect(page.locator(".vessel-eta-primary")).toHaveText("ETA 계산 전");
   await page.reload();
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "항차·화물", exact: true }).click();
   await page.locator(".shipment-card").filter({ hasText: "ALPHA CARGO" }).click();
   await expect(page.locator(".vessel-eta-detail")).toContainText("9.0 kn");
   fail = false;
@@ -1270,7 +1435,7 @@ test("legacy port preferences and voyage edits are preserved while new choices u
   await expect(page.getByLabel('예상 항로 목적항').locator('option[value="boryeong"]')).toHaveCount(0);
 });
 
-test("vessel decision layout puts arrival above the map and groups raw data and settings", async ({ page }) => {
+test("vessel decision layout puts arrival below the map and groups raw data and settings", async ({ page }) => {
   const at = new Date().toISOString();
   const ship = { id: 'layout-test', name: 'LAYOUT BULK', source: 'aisstream', mmsi: '440201101', imo: '',
     ais: { updatedAt: at, shipType: 70, navStatus: 0, destination: 'KR PUS', position: { latitude: 35, longitude: 125, observedAt: at, sogKn: 12, cogDeg: 90 } } };
@@ -1281,7 +1446,7 @@ test("vessel decision layout puts arrival above the map and groups raw data and 
   const arrival = page.locator('.vessel-arrival-panel');
   await expect(arrival).toBeVisible();
   const a = await arrival.boundingBox(), m = await page.locator('.vessel-map-canvas').boundingBox();
-  expect(a!.y + a!.height).toBeLessThanOrEqual(m!.y);
+  expect(m!.y + m!.height).toBeLessThanOrEqual(a!.y);
   expect(Math.abs(a!.x - m!.x)).toBeLessThan(2);
   await expect(page.getByLabel('예상 항로 목적항').locator('option')).toHaveText(['목적항 선택', 'AIS 목적지 기준', '당진 발전소 항만', '동해 발전소 항만']);
   await expect(page.getByLabel('수집 항적 기간')).toHaveCount(0);
@@ -1319,8 +1484,9 @@ test("vessel decision layout puts arrival above the map and groups raw data and 
   await expect(dialog.getByLabel('수집 항적 기간')).toHaveValue('168');
 });
 
-test("compact watchlist keeps metrics in the selected arrival panel including zero and missing speed", async ({ page }) => {
+test("route cards keep observation speed in the selected arrival panel including zero and missing speed", async ({ page }) => {
   const at = new Date().toISOString();
+  await page.route('**/api/voyage-registry/records', route => route.fulfill({json:{ships:[],voyages:[],cargo:[],quality_selection:{}}}));
   const ships = [12.4, 0, null].map((sogKn, i) => ({ id: `speed-${i}`, name: `SPEED BULK ${i}`, source: 'aisstream', mmsi: String(440201100 + i), imo: '',
     ais: { updatedAt: at, shipType: 70, navStatus: 0, destination: '', position: { latitude: 35, longitude: 125, observedAt: at, sogKn, cogDeg: 90 } } }));
   await page.addInitScript(values => {
@@ -1332,7 +1498,8 @@ test("compact watchlist keeps metrics in the selected arrival panel including ze
   await expect(page.locator('.vessel-selection-header')).toHaveCount(0);
   await expect(page.locator('.vessel-workspace-title')).toHaveText('관심 선박3척');
   for (const [i, speed] of ['12.4 kn', '0.0 kn', '미수신'].entries()) {
-    await expect(cards.nth(i)).not.toContainText(/kn|ETA|기상/);
+    await expect(cards.nth(i)).not.toContainText(/kn|기상/);
+    await expect(cards.nth(i)).toContainText('탄종미확인');
     await cards.nth(i).click();
     await expect(page.locator('.vessel-arrival-panel')).toHaveAttribute('data-vessel-id', ships[i].id);
     await expect(page.locator('.vessel-arrival-facts > div').first()).toContainText(speed);
@@ -1341,7 +1508,7 @@ test("compact watchlist keeps metrics in the selected arrival panel including ze
     if (dark) await page.getByRole('button', { name: '다크 모드로 전환' }).click();
     const appearance = await page.evaluate(() => {
       const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
-      return { listBorder: style('.vessel-watchlist-panel').borderRightWidth, listBackground: style('.vessel-watchlist-panel').backgroundColor,
+      return { listBorder: style('.vessel-watchlist-panel').borderRightWidth, listBackground: style('.shipment-card').backgroundColor,
         pageBackground: style('.tower-page').backgroundColor, routeBorder: style('.vessel-route-overview').borderBottomWidth,
         detailBorder: style('.vessel-arrival-panel').borderTopWidth };
     });
@@ -1450,7 +1617,7 @@ test("weekly passage forecast switches cached ranges and greys the remaining rou
   await page.route('**/api/vessels/cyclones', route => route.fulfill({ json: { status: 'ready', fetchedAt: at, reason: '', storms: [] } }));
   await page.goto('/?source=synthetic');
   await captureOnlineMap(page);
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(page.locator('.vessel-map-online')).toHaveAttribute('data-map-ready', 'true');
   await page.getByRole('button', { name: '지도 기상 레이어', exact: true }).click();
   const panel = page.getByRole('region', { name: '지도 기상 레이어 설정' });
@@ -1499,7 +1666,7 @@ test("route weather layers show visibility and timed cyclone radii without movin
   await page.route('**/api/vessels/cyclones', route => route.fulfill({ json: { status: 'ready', fetchedAt: at, reason: 'GDACS 모의 응답', storms: [{ id: '1', name: 'TEST CYCLONE', source: 'TEST ONLY', advisoryAt: at, reportUrl: 'https://www.gdacs.org/report.aspx?eventid=1', points: [0, 1].map(i => ({ longitude: 126 + i, latitude: 35, at: new Date(Date.parse(at) + i * 12 * 3600000).toISOString(), forecast: !!i, radii34Nm: [90, 80, null, 60] })) }] } }));
   await page.goto('/?source=synthetic');
   await captureOnlineMap(page);
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   const map = page.locator('.vessel-map-online');
   await expect(map).toHaveAttribute('data-map-ready', 'true');
   await page.evaluate(() => (window as any).testVesselMap.jumpTo({ center: [126, 35], zoom: 4 }));
@@ -1689,6 +1856,64 @@ for (const renderer of ["offline", "online"]) {
   });
 }
 
+test("voyage operating layout fits one desktop page and keeps selected cargo separate from AIS", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await openEta(page);
+  const cargo = page.getByRole('region', { name: '선택 선박 등록 화물' });
+  const ocean = page.locator('.shipment-card').filter({ hasText: 'Ocean Frontier' });
+  await ocean.click();
+  await expect(cargo).toContainText('시연 자료');
+  await expect(cargo).toContainText('시연 일정 기준');
+  await expect(cargo).toHaveAttribute('data-vessel-id', await page.locator('.vessel-arrival-panel').getAttribute('data-vessel-id') as string);
+  const expected = voyages.find(v => v.vessel_name === 'Ocean Frontier')!;
+  await expect(cargo).toContainText(expected.cargo_t.toLocaleString('ko-KR'));
+  await expect(cargo).toContainText(expected.calorific_value_kcal_kg.toLocaleString('ko-KR'));
+  await expect(cargo.locator('.gf-voyages-timeline li')).toHaveCount(4);
+  await expect(cargo.locator('.gf-voyages-timeline li').first()).toContainText('미확정');
+  for (const theme of ['light', 'dark']) {
+    if (theme === 'dark') await page.getByRole('button', { name: '다크 모드로 전환' }).click();
+    const map = await page.locator('.vessel-map-canvas').boundingBox();
+    const rail = await page.locator('.vessel-watchlist-panel').boundingBox();
+    expect(map!.width).toBeGreaterThan(1000);
+    expect(map!.height).toBeGreaterThan(380);
+    expect(rail!.x + rail!.width).toBeLessThan(map!.x);
+    expect(rail!.y + rail!.height).toBeLessThanOrEqual(1080);
+    await expect.poll(async () => {
+      const cardBounds = await ocean.boundingBox();
+      const footerBounds = await ocean.locator('.gf-voyage-card-footer').boundingBox();
+      return footerBounds!.y + footerBounds!.height - cardBounds!.y - cardBounds!.height;
+    }).toBeLessThanOrEqual(0.5);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true);
+    await page.screenshot({ path: `.tooling-tmp/voyages-${theme}-1920.png`, fullPage: true });
+  }
+  await page.getByRole('button', { name: '계산 근거', exact: true }).click();
+  await expect(page.locator('.vessel-data-details[open]')).toBeVisible();
+  await expect(page.getByRole('tab', { name: '계산 근거', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(cargo).toBeVisible();
+});
+
+test("voyage quick search filters cards without changing the saved watchlist", async ({ page }) => {
+  await openEta(page);
+  const cards = page.locator('.gf-voyage-card');
+  await expect(cards.first()).toBeVisible();
+  const count = await cards.count();
+  const query = page.getByRole('textbox', { name: '관심 선박 빠른 검색' });
+  await query.fill('ocean');
+  await expect(cards).toHaveCount(1);
+  await cards.click();
+  await expect(cards).toContainText('Ocean Frontier');
+  await expect(page.locator('.gf-voyages-selected')).toContainText('Ocean Frontier');
+  await query.fill('NO SUCH VESSEL');
+  await expect(cards).toHaveCount(0);
+  await expect(page.getByText('조건에 맞는 관심 선박이 없습니다.', { exact: false })).toBeVisible();
+  await query.fill('');
+  await expect(cards).toHaveCount(count);
+  await page.reload();
+  await expect(cards).toHaveCount(count);
+});
+
 test("ETA workspace has one vessel list and synchronizes it with map and arrival analysis", async ({ page }) => {
   await openEta(page);
   await expect(page.getByLabel("지도에서 선박 선택")).toHaveCount(0);
@@ -1721,21 +1946,23 @@ test("ETA workspace aligns list and map, groups actions and collapses the mobile
   await openEta(page);
   const add = page.getByRole("button", { name: "관심 선박 구성", exact: true });
   await expect(page.locator('.context-bar')).toHaveCount(0);
-  const context = await page.locator('.page-heading').boundingBox();
+  const context = await page.locator('.gf-voyages-heading').boundingBox();
   const addBox = await add.boundingBox();
-  expect(addBox!.y - (context!.y + context!.height)).toBeGreaterThanOrEqual(16);
+  expect(addBox!.y - (context!.y + context!.height)).toBeGreaterThanOrEqual(12);
   const headingBox = await page.getByRole("heading", { name: "관심 선박", exact: true }).boundingBox();
   expect(Math.abs(headingBox!.y - addBox!.y)).toBeLessThan(16);
   await expect(page.locator('.vessel-watchlist-panel').getByLabel('관심 선박 상태 필터')).toBeVisible();
   const listBox = await page.locator('.vessel-watchlist-panel').boundingBox();
   const mapColumn = await page.locator('.vessel-eta-map-column').boundingBox();
+  expect(addBox!.x).toBeGreaterThanOrEqual(listBox!.x);
+  expect(addBox!.x + addBox!.width).toBeLessThanOrEqual(listBox!.x + listBox!.width);
   expect(Math.abs(listBox!.y - mapColumn!.y)).toBeLessThan(2);
   await expect(page.locator('.shipment-card[aria-pressed=true] strong')).toContainText('Pacific Horizon');
   await expect(page.locator('.vessel-map-header')).toHaveCount(0);
   const etaBox = await page.locator('.vessel-arrival-panel').boundingBox();
   const mapBox = await page.locator('.vessel-map').boundingBox();
   expect(Math.abs(etaBox!.x - mapBox!.x)).toBeLessThan(2);
-  expect(etaBox!.y + etaBox!.height).toBeLessThanOrEqual(mapBox!.y);
+  expect(mapBox!.y + mapBox!.height).toBeLessThanOrEqual(etaBox!.y);
   await expect(page.locator('.vessel-data-details')).toHaveCount(1);
   await expect(page.locator('.vessel-data-details[open]')).toHaveCount(0);
   await openVesselData(page, '기상 상세');
@@ -1893,7 +2120,7 @@ test("ETA weather timeline preserves the camera and marks missing synthetic fore
   await page.route("https://tiles.openfreemap.org/styles/*", route => route.fulfill({ json: mapStyleFixture }));
   await page.goto('/?source=synthetic');
   await captureOnlineMap(page);
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await page.locator(".shipment-card").filter({ hasText: voyages[1].vessel_name }).click();
   const map = page.locator(".vessel-map-online");
   await expect(map).toHaveAttribute("data-map-ready", "true");
@@ -1945,7 +2172,7 @@ test("online map morphs into land, keeps compact attribution and preserves selec
   await captureOnlineMap(page);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   const map = page.locator(".vessel-map-online");
   await expect(map).toHaveAttribute("data-map-ready", "true");
@@ -2038,7 +2265,7 @@ test("mobile overview renders dots and later tile requests retain geography", as
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page
     .getByRole("navigation", { name: "모바일 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   const map = page.locator(".vessel-map-online");
   await expect(map).toHaveAttribute("data-map-ready", "true");
@@ -2094,7 +2321,7 @@ test("online overview uses one nested dot grid without overlapping crossfade pat
   await page.route("https://tiles.openfreemap.org/styles/*", route => route.fulfill({ json: mapStyleFixture }));
   await page.goto("/?source=synthetic");
   await captureOnlineMap(page);
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "선박 추적", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "항차·화물", exact: true }).click();
   await expect(page.locator(".vessel-map-online")).toHaveAttribute("data-map-ready", "true");
   let previousRadius = 0;
   for (const zoom of [-2, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3.5, 5.5]) {
@@ -2122,7 +2349,7 @@ test("globe view switches projection and dense dots retain gaps through the land
   await captureOnlineMap(page);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   const map = page.locator(".vessel-map-online");
   await expect(map).toHaveAttribute("data-map-ready", "true");
@@ -2269,7 +2496,7 @@ test("vessel markers stay on their own routes at every zoom and projection", asy
   await captureOnlineMap(page);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   await expect(page.locator(".vessel-map-online")).toHaveAttribute(
     "data-map-ready",
@@ -2329,7 +2556,7 @@ test("map toolbar stays together and the scale follows zoom without bottom paddi
   await captureOnlineMap(page);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   const map = page.locator(".vessel-map-online");
   await expect(map).toHaveAttribute("data-map-ready", "true");
@@ -2374,7 +2601,7 @@ test("dark globe stars follow dragging, return to the same sky and hide in flat 
   await captureOnlineMap(page);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   await expect(page.locator(".vessel-map-online")).toHaveAttribute(
     "data-map-ready",
@@ -2494,7 +2721,7 @@ test("failed vector tiles retry without replacing the map or camera", async ({
   await captureOnlineMap(page);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   const map = page.locator(".vessel-map-online");
   await expect(map).toHaveAttribute("data-map-ready", "true");
@@ -2583,6 +2810,7 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
     const url = new URL(route.request().url());
     if (/^\/api\/(auth|me|admin)\//.test(url.pathname)) return route.fallback();
     if (url.pathname.startsWith("/api/vessels/")) return route.fallback();
+    if (url.pathname === '/api/voyage-registry/inventory/baseline') return route.fallback();
     // 저탄장 연계(/api/supply, /api/v1)는 이 MILP 목업 대상이 아니다.
     if (url.pathname !== "/api/runs" && !url.pathname.startsWith("/api/planning/"))
       return route.fulfill({ status: 404, json: { detail: "목업 없음" } });
@@ -2600,9 +2828,13 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
             url.searchParams.get("start")!,
             Number(url.searchParams.get("horizon")),
           );
+    if (!Array.isArray(body)) body.classification = 'operational';
     await route.fulfill({ json: body });
   });
-  await page.goto("/");
+  await page.goto("/#simulation");
+  await page.getByText("연료 사용계획", { exact: true }).click();
+  await page.getByText("저탄장별 수급 상세", { exact: true }).click();
+  await page.getByText("호기별 계획정지 일정", { exact: true }).click();
   await expect(page.locator("[data-unit-id]")).toHaveCount(10);
   await expect(
     page.getByRole("heading", { name: "월별 석탄 사용 예정량" }),
@@ -2610,7 +2842,7 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
   await expect(page.locator(".fuel-supply-kpis")).toContainText("미등록");
   await expect(page.locator(".fuel-supply-kpis")).toContainText("미확정");
   await expect(
-    page.getByText("동작 확인용 MILP", { exact: true }),
+    page.locator(".midterm-source .tower-tag").filter({ hasText: "저장된 발전계획" }),
   ).toBeVisible();
   await expect(page.locator(".midterm-outage-bar")).toHaveCount(1);
   await expect(
@@ -2628,6 +2860,9 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
     "297,600",
   );
   await page.getByRole("button", { name: "7일", exact: true }).click();
+  await expect(page.locator(".midterm-source")).toContainText("2027-01-07");
+  await page.getByText("연료 사용계획", { exact: true }).click();
+  await page.getByText("월별 예정량·계획 확보일수 보기", { exact: true }).click();
   await expect(
     page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
   ).toContainText("67,200");
@@ -2636,6 +2871,8 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
   );
   await page.getByRole("button", { name: "90일", exact: true }).click();
   await expect(page.locator(".midterm-source")).toContainText("2027-03-31");
+  await page.getByText("연료 사용계획", { exact: true }).click();
+  await page.getByText("월별 예정량·계획 확보일수 보기", { exact: true }).click();
   await expect(
     page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
   ).toContainText("864,000");
@@ -2644,42 +2881,40 @@ test("MILP backend shows ten units, date-bound plans and missing inventory expli
   );
   await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
   await expect(page.locator(".midterm-source")).toContainText("2027-05-01");
+  await page.getByText("연료 사용계획", { exact: true }).click();
+  await page.getByText("월별 예정량·계획 확보일수 보기", { exact: true }).click();
+  await page.getByText("호기별 계획정지 일정", { exact: true }).click();
   await expect(page.locator(".midterm-outage-bar")).toHaveCount(0);
   await expect(page.locator(".fuel-monthly .fuel-selected-month")).toHaveCount(
     4,
   );
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "저탄장 현황", exact: true })
+    .getByRole("button", { name: "수급 원장", exact: true })
     .click();
-  // 진입 시 항상 당진 (fact-default-dangjin): 기본 60개, 전체 선택 시 72개.
-  await expect(page.locator(".yard-pile")).toHaveCount(60);
-  await page
-    .getByRole("group", { name: "발전소 선택" })
-    .getByRole("button", { name: "전체", exact: true })
-    .click();
-  await expect(page.locator(".yard-pile")).toHaveCount(72);
+  await expect(page.getByRole('region', {name:'저탄장 기준재고'})).toContainText('363,432 t');
   await expect(page.locator(".midterm-page")).toHaveCount(0);
   await expect(
     page.getByRole("group", { name: "발전소 종합 데이터 모드" }),
   ).toHaveCount(0);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   await expect(page.locator(".vessel-map-dots").first()).toBeVisible();
   await expect(page.locator(".shipment-card")).toHaveCount(4);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "예측/모델 상세", exact: true })
+    .getByRole("button", { name: "예측·모델", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "재학습 · 전망에 적용" }),
   ).toHaveCount(1);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "발전소 종합", exact: true })
+    .getByRole("button", { name: "통합 시뮬레이션", exact: true })
     .click();
+  await page.getByText("저탄장별 수급 상세", { exact: true }).click();
   await expect(page.locator("[data-unit-id]")).toHaveCount(10);
   await page.setViewportSize({ width: 320, height: 900 });
   // ECharts resizes on ResizeObserver, after the viewport change returns.
@@ -2696,6 +2931,7 @@ test("incomplete fuel plans remain unknown and DB inventory forecasts render sep
 }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.startsWith("/api/vessels/")) return route.fallback();
     if (/^\/api\/(auth|me|admin)\//.test(url.pathname)) return route.fallback();
     if (url.pathname === "/api/runs") {
       await route.fulfill({
@@ -2709,11 +2945,13 @@ test("incomplete fuel plans remain unknown and DB inventory forecasts render sep
       });
       return;
     }
+    if (!url.pathname.startsWith('/api/planning/')) return route.fallback();
     const snapshot = planningFixture(
       "연료 검증",
       url.searchParams.get("start")!,
       Number(url.searchParams.get("horizon")),
     );
+    snapshot.classification = 'operational';
     snapshot.daily[2].fuel_tonnes = null;
     snapshot.units[0].fuel_tonnes = null;
     snapshot.monthly.forEach((month) => {
@@ -2742,7 +2980,10 @@ test("incomplete fuel plans remain unknown and DB inventory forecasts render sep
     });
     await route.fulfill({ json: snapshot });
   });
-  await page.goto("/");
+  await page.goto("/#simulation");
+  await page.getByText('연료 사용계획', {exact:true}).click();
+  await page.getByText('저탄장별 수급 상세', {exact:true}).click();
+  await page.getByText('발전량 산정 근거', {exact:true}).click();
   await expect(
     page.locator('[data-fuel-metric="기간 석탄 사용 예정량"]'),
   ).toContainText("미확정");
@@ -2763,7 +3004,7 @@ test("incomplete fuel plans remain unknown and DB inventory forecasts render sep
     page.getByText("온전한 월별 연료계획이 없습니다."),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: "처별 일말 예상 석탄 재고 톤" }),
+    page.getByRole("img", { name: "저탄장별 일말 예상 석탄 재고 톤" }),
   ).toBeVisible();
   await expect(page.locator('[data-unit-id="dj-1"]')).toContainText("미확정");
   await page.getByText("일별 계획 수치 보기", { exact: true }).click();
@@ -2784,9 +3025,14 @@ test("failed backend stays an error and synthetic demo requires explicit selecti
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("서버 연결 확인");
   await expect(page.locator(".tower-kpis")).toHaveCount(0);
-  await page.getByRole("button", { name: "합성 데모", exact: true }).click();
+  // 운영 현황에는 표본으로 가는 토글이 없다. 표본은 주소로 명시해야만 열린다.
+  await expect(page.getByRole("button", { name: "별도 조건 전망", exact: true })).toHaveCount(0);
+  await page.goto("/?source=synthetic#overview");
   await expect(page.locator(".tower-metric").first()).toContainText("739,600");
-  await expect(page.getByText("샘플 데이터", { exact: true })).toBeVisible();
+  await expect(page.getByRole('group', {name:'발전소 종합 데이터 모드'})).toContainText('실제 운영 정보 아님');
+  await page.getByRole('group', {name:'발전소 종합 데이터 모드'}).getByRole("button", { name: "운영 현황", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "운영 현황", exact: true })).toBeVisible();
+  await expect(page.getByRole('group', {name:'발전소 종합 데이터 모드'})).toHaveCount(0);
 });
 
 test("shared supply preserves the existing stockyard UI while keeping DB plan/date/period", async ({ page }) => {
@@ -2795,36 +3041,33 @@ test("shared supply preserves the existing stockyard UI while keeping DB plan/da
     if (/^\/api\/(auth|me|admin)\//.test(url.pathname)) return route.fallback();
     if (url.pathname === "/api/runs") return route.fulfill({ json: ["연계 계획", "연계 계획 B"].map((id) => ({ id, name: id, period: "2027-01-01 ~ 2027-12-31" })) });
     if (url.pathname === "/api/supply/records") return route.fulfill({ json: { vessels: [], transfers: [] } });
-    if (!url.pathname.startsWith("/api/planning/")) return route.fulfill({ status: 404, json: {} });
-    return route.fulfill({ json: suppliedPlanningFixture(decodeURIComponent(url.pathname.split("/")[4]), url.searchParams.get("start")!, Number(url.searchParams.get("horizon"))) });
+    if (!url.pathname.startsWith("/api/planning/")) return route.fallback();
+    const result = suppliedPlanningFixture(decodeURIComponent(url.pathname.split("/")[4]), url.searchParams.get("start")!, Number(url.searchParams.get("horizon")));
+    result.classification = 'operational';
+    return route.fulfill({ json: result });
   });
-  await page.goto("/");
+  await page.goto("/#simulation");
   await page.getByLabel("저장된 MILP 계산").selectOption("연계 계획 B");
   await page.getByRole("button", { name: "7일", exact: true }).click();
   await page.getByLabel("MILP 조회 시작일").fill("2027-02-01");
   await expect(page.locator(".midterm-source")).toContainText("2027-02-07");
-  await expect(page.locator('[data-fuel-metric="총 재고"]')).toContainText("290,000");
-  await page.getByRole("button", { name: "최소 재고일수 (7일) 상세 보기", exact: true }).click();
-  await expect(page.locator(".stockyard-site")).toBeVisible();
-  await expect(page.locator(".stockyard-kpi")).toHaveCount(7);
-  await expect(page.locator(".yard-pile")).toHaveCount(60);
-  await expect(page.getByRole("tablist", { name: "상세 패널" })).toBeVisible();
-  await expect(page.locator(".stockyard-ledger")).toBeVisible();
-  await expect(page.locator(".stockyard-kpi").nth(0)).toContainText("290,000");
-  await expect(page.locator(".stockyard-kpi").nth(1)).toContainText("5.0");
-  await expect(page.locator(".stockyard-kpi").nth(4)).toContainText("35,000");
-  await expect(page.locator(".stockyard-kpi").nth(4)).toContainText("60,000");
-  await expect(page.locator('.yard-block[data-yard="P2"] .yard-title')).toContainText("90,000");
-  await expect(page.locator(".stockyard-groups")).toContainText("02/04");
-  await expect(page.getByRole("group", { name: "저탄장 데이터 모드" })).toHaveCount(0);
-  await expect(page.getByLabel("MILP 조회 시작일")).toHaveCount(0);
-  await page.getByRole("button", { name: "60일", exact: true }).click();
-  await expect(page.locator(".stockyard-kpi").nth(4)).toContainText("60일");
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "발전소 종합", exact: true }).click();
+  await expect(page.locator('.gf-forecast-day-values')).toContainText('290,000');
+  await page.locator('.gf-forecast-chart').getByRole('button', {name:'수급 원장'}).click();
+  const forecast = page.getByRole('region', {name:'발전 수급 전망 상세'});
+  await expect(forecast).toContainText('2027-02-01 ~ 2027-02-07');
+  await expect(forecast.locator('tbody tr')).toHaveCount(7);
+  await expect(forecast.locator('tbody tr').first()).toContainText('130,000');
+  await expect(forecast.locator('tbody tr').first()).toContainText('90,000');
+  await expect(page.getByRole('region', {name:'저탄장 기준재고'})).toBeVisible();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "통합 시뮬레이션", exact: true }).click();
   await expect(page.getByLabel("저장된 MILP 계산")).toHaveValue("연계 계획 B");
   await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-02-01");
-  await expect(page.getByRole("button", { name: "60일", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator('[data-fuel-metric="총 재고"]')).toContainText("290,000");
+  await expect(page.getByRole("button", { name: "7일", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('.gf-forecast-day-values')).toContainText('290,000');
+  await page.getByRole('button',{name:'60일',exact:true}).click();
+  await expect(page.locator('.midterm-source')).toContainText('2027-04-01');
+  await page.locator('.gf-forecast-chart').getByRole('button', {name:'수급 원장'}).click();
+  await expect(forecast.locator('tbody tr')).toHaveCount(60);
 });
 
 test("shared supply ignores obsolete responses and keeps missing DB values inside the original yard UI", async ({ page }) => {
@@ -2837,20 +3080,22 @@ test("shared supply ignores obsolete responses and keeps missing DB values insid
     if (/^\/api\/(auth|me|admin)\//.test(url.pathname)) return route.fallback();
     if (url.pathname === "/api/runs") return route.fulfill({ json: [{ id: "연계 계획", name: "연계 계획", period: "2027-01-01 ~ 2027-12-31" }] });
     if (url.pathname === "/api/supply/records") return route.fulfill({ json: { vessels: [], transfers: [] } });
-    if (!url.pathname.startsWith("/api/planning/")) return route.fulfill({ status: 404, json: {} });
+    if (!url.pathname.startsWith("/api/planning/")) return route.fallback();
     const start = url.searchParams.get("start")!;
     if (start === "2027-01-02") {
       pending = true;
       await new Promise<void>((resolve) => { release = resolve; });
-      await route.fulfill({ json: suppliedPlanningFixture("연계 계획", start, Number(url.searchParams.get("horizon"))) }).catch(() => {});
+      const delayed = suppliedPlanningFixture("연계 계획", start, Number(url.searchParams.get("horizon"))); delayed.classification = 'operational';
+      await route.fulfill({ json: delayed }).catch(() => {});
       completed = true;
       return;
     }
     if (fail) return route.fulfill({ status: 503, json: { detail: "수급 조회 실패" } });
-    return route.fulfill({ json: suppliedPlanningFixture("연계 계획", start, Number(url.searchParams.get("horizon"))) });
+    const result = suppliedPlanningFixture("연계 계획", start, Number(url.searchParams.get("horizon"))); result.classification = 'operational';
+    return route.fulfill({ json: result });
   });
-  await page.goto("/");
-  await expect(page.locator(".fuel-supply-kpis")).toBeVisible();
+  await page.goto("/#simulation");
+  await expect(page.locator(".gf-forecast-focus")).toBeVisible();
   await page.getByLabel("MILP 조회 시작일").fill("2027-01-02");
   await expect.poll(() => pending).toBe(true);
   await page.getByLabel("MILP 조회 시작일").fill("2027-01-03");
@@ -2861,37 +3106,34 @@ test("shared supply ignores obsolete responses and keeps missing DB values insid
   fail = true;
   await page.getByLabel("MILP 조회 시작일").fill("2027-01-04");
   await expect(page.getByRole("alert")).toContainText("수급 조회 실패");
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "저탄장 현황", exact: true }).click();
-  await expect(page.locator(".stockyard-alerts")).toContainText("수급 조회 실패");
-  await expect(page.locator(".stockyard-kpi").first()).toContainText("미확정");
-  await expect(page.locator(".yard-pile")).toHaveCount(60);
-  await expect(page.locator(".stockyard-site")).toBeVisible();
-  await expect(page.locator(".stockyard-kpi").first()).not.toContainText("290,000");
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "수급 원장", exact: true }).click();
+  const forecast=page.getByRole('region',{name:'발전 수급 전망 상세'});
+  await expect(forecast).toContainText('수급 조회 실패');
+  await expect(forecast).not.toContainText('290,000');
+  await expect(page.getByRole('region',{name:'저탄장 기준재고'})).toBeVisible();
   fail = false;
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "발전소 종합", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "통합 시뮬레이션", exact: true }).click();
   await expect(page.getByLabel("MILP 조회 시작일")).toHaveValue("2027-01-04");
   await page.getByRole("button", { name: "새로고침", exact: true }).click();
   await expect(page.locator(".midterm-source")).toContainText("2027-01-04");
 });
 
-test("stockyard physical grids are 5 by 4, 5 by 4 and 10 by 2 with matching keyboard movement", async ({ page }) => {
-  await page.goto("/?source=synthetic");
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "저탄장 현황", exact: true }).click();
-  for (const [yard, columns, rows] of [["P1", 5, 4], ["P2", 5, 4], ["P3", 10, 2]] as const) {
-    const tiles = page.locator(`.yard-block[data-yard="${yard}"] .yard-pile`);
-    await expect(tiles).toHaveCount(20);
-    const positions = await tiles.evaluateAll((elements) => elements.map((el) => {
-      const box = el.getBoundingClientRect(); return { x: Math.round(box.x), y: Math.round(box.y) };
-    }));
-    expect(new Set(positions.map((p) => p.x)).size).toBe(columns);
-    expect(new Set(positions.map((p) => p.y)).size).toBe(rows);
+test("yard inventory uses the actual pile and cell records and supports keyboard navigation", async ({ page }) => {
+  await page.goto("/#yard");
+  const table=page.getByRole('region',{name:'구역별 재고 표'});
+  for (const [yard, first] of [['1저탄장','Pile 1'],['2저탄장','Pile 5'],['3저탄장','A']] as const) {
+    await page.getByRole('tab',{name:new RegExp(`^${yard}`)}).click();
+    const buttons=table.locator('.gf-oy-row-select');
+    await expect(buttons.first()).toContainText(first);
+    expect(await buttons.count()).toBeGreaterThan(1);
+    await buttons.first().focus();
+    await buttons.first().press('ArrowDown');
+    await expect(buttons.nth(1)).toBeFocused();
+    await buttons.nth(1).press('Enter');
+    await expect(buttons.nth(1)).toHaveAttribute('aria-pressed','true');
+    await buttons.nth(1).press('ArrowUp');
+    await expect(buttons.first()).toBeFocused();
   }
-  const third = page.locator('.yard-block[data-yard="P3"] .yard-pile');
-  await third.first().click();
-  await page.keyboard.press("ArrowDown");
-  await expect(third.nth(10)).toBeFocused();
-  await page.keyboard.press("ArrowUp");
-  await expect(third.first()).toBeFocused();
   await page.getByRole("button", { name: "다크 모드로 전환", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 900 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -2908,72 +3150,27 @@ test("world map accepts 200 normalized vessel positions without hard-coded shipm
   );
 });
 
-test("pile drilldown, stale AIS and model training update the operational forecast", async ({
-  page,
-}) => {
-  await page.goto("/?source=synthetic");
-  const before = await page.locator(".tower-metric").nth(7).innerText();
-  await page
-    .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "저탄장 현황", exact: true })
-    .click();
-  const da04 = page.locator(".yard-pile", { hasText: "DA-04" });
-  await da04.click();
-  await expect(da04).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    page.getByRole("heading", { name: "B-5 · 인니 저열량탄" }),
-  ).toBeVisible();
-  await expect(page.locator(".tower-details")).toContainText("미연결");
-  await expect(page.locator(".tower-details")).toContainText("당진 9호기");
-  await expect(page.locator(".tower-details")).not.toContainText("당진 1호기");
-  await expect(
-    page.getByRole("heading", { name: "주간 소진 · 혼탄 시뮬레이션" }),
-  ).toBeVisible();
-  await page
-    .getByRole("group", { name: "발전소 선택" })
-    .getByRole("button", { name: "당진", exact: true })
-    .click();
-  await expect(page.locator(".yard-pile")).toHaveCount(60);
-  await expect(page.locator(".tower-metric").first()).toContainText("381,600");
-  await expect(
-    page.getByRole("heading", { name: "재고 전망", exact: true }),
-  ).toBeVisible();
-  await expect(page.locator(".stockyard-incoming tbody tr")).toHaveCount(1);
-  await page
-    .getByRole("group", { name: "발전소 선택" })
-    .getByRole("button", { name: "전체", exact: true })
-    .click();
-  await expect(page.locator(".yard-pile")).toHaveCount(72);
-  await page
-    .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
-    .click();
-  await expect(page.locator(".shipment-card .tower-tag").first()).toHaveText(
-    "STALE",
-  );
-  await openVesselData(page);
-  await expect(page.getByText("SOG / COG", { exact: true })).toBeVisible();
-  await page
-    .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "예측/모델 상세", exact: true })
-    .click();
-  await page.getByLabel("학습 반복").selectOption("300");
-  await page.getByRole("button", { name: "재학습 · 전망에 적용" }).click();
-  await expect(page.locator(".tower-page")).toContainText(
-    "local-linear-v1/300",
-  );
-  await page
-    .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "발전소 종합", exact: true })
-    .click();
-  await expect
-    .poll(() => page.locator(".tower-metric").nth(7).innerText())
-    .not.toBe(before);
-  await page.getByRole("button", { name: "90일", exact: true }).click();
-  await expect(page.locator(".processing-strip")).not.toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "월별 수급 집계" }),
-  ).toBeVisible();
+test("baseline pile detail remains separate from disconnected sensors and the stored forecast", async ({ page }) => {
+  const snapshot=suppliedPlanningFixture('운영 계획','2027-01-01',30); snapshot.classification='operational';
+  await page.route('**/api/runs', route => route.fulfill({json:[{id:'운영 계획',name:'운영 계획',period:'2027-01-01 ~ 2027-12-31'}]}));
+  await page.route('**/api/planning/**', route => route.fulfill({json:snapshot}));
+  await page.goto('/#yard');
+  await page.getByLabel('더미 선택',{exact:true}).selectOption('P2-K1');
+  const detail=page.getByRole('region',{name:'선택 구간 상세'});
+  await expect(detail).toContainText('KCH(Kaltim)');
+  await expect(detail).toContainText('26-1-039');
+  await expect(detail).toContainText('센서 미연결');
+  await expect(detail).not.toContainText('고위험');
+  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'통합 시뮬레이션',exact:true}).click();
+  await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('운영 계획');
+  await expect(page.locator('.gf-forecast-day-values')).toContainText('290,000');
+  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'예측·모델',exact:true}).click();
+  await page.getByLabel('학습 반복').selectOption('300');
+  await page.getByRole('button',{name:'재학습 · 전망에 적용'}).click();
+  await expect(page.locator('.tower-page')).toContainText('local-linear-v1/300');
+  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'통합 시뮬레이션',exact:true}).click();
+  await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('운영 계획');
+  await expect(page.locator('.gf-forecast-day-values')).toContainText('290,000');
 });
 
 test("theme persists, scope recalculates, and planned stop details remain explicit", async ({
@@ -2983,7 +3180,7 @@ test("theme persists, scope recalculates, and planned stop details remain explic
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/?source=synthetic");
   await expect(
-    page.getByRole("heading", { name: "발전소 종합", exact: true }),
+    page.getByRole("heading", { name: "운영 개요", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".tower-metric").first()).toContainText("739,600");
   await page.getByRole("button", { name: "다크 모드로 전환" }).click();
@@ -2995,7 +3192,7 @@ test("theme persists, scope recalculates, and planned stop details remain explic
   await expect(
     page.locator(".tower-table").first().locator("tbody tr"),
   ).toHaveCount(1);
-  await page.getByRole("button", { name: "정지계획", exact: true }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("button", { name: "발전기 정지계획", exact: true }).click();
   await page.locator(".schedule-row").first().click();
   await expect(page.getByRole("dialog")).toContainText("샘플 운영 및 정비계획");
   await expect(page.getByRole("dialog")).toContainText(
@@ -3011,6 +3208,7 @@ test("scenario is applied explicitly, shows actual orb canvas and updates foreca
 }) => {
   await page.goto("/?source=synthetic");
   await page
+    .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "시나리오 분석", exact: true })
     .click();
   const before = await page.locator(".comparison-card").nth(1).innerText();
@@ -3052,16 +3250,16 @@ test("mobile navigation, all views, and dark mode stay within the viewport", asy
   await expect(page.locator(".processing-strip canvas")).toBeVisible();
   await expect(page.locator(".processing-strip")).not.toBeVisible();
   for (const label of [
-    "저탄장 현황",
-    "선박 추적",
-    "예측/모델 상세",
-    "데이터/관리자",
-    "발전소 종합",
+    "수급 원장",
+    "항차·화물",
+    "예측·모델",
+    "데이터 워크스페이스",
+    "운영 개요",
   ]) {
     await page.getByRole("button", { name: "메뉴 열기" }).click();
     await page
       .getByRole("navigation", { name: "모바일 메뉴" })
-      .getByRole("button", { name: label, exact: label !== "발전기 정지계획" })
+      .getByRole("button", { name: label, exact: true })
       .click();
     await expect(
       page.getByRole("heading", { name: label, exact: true }),
@@ -3089,9 +3287,10 @@ test("offline single HTML supports calculation without network", async ({
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(pathToFileURL(resolve("발전운영_대시보드.html")).href);
   await expect(
-    page.getByRole("heading", { name: "발전소 종합", exact: true }),
+    page.getByRole("heading", { name: "운영 개요", exact: true }),
   ).toBeVisible();
   await page
+    .getByRole("navigation", { name: "주 메뉴" })
     .getByRole("button", { name: "시나리오 분석", exact: true })
     .click();
   await page.getByRole("checkbox", { name: "입항 예정 연료 포함" }).uncheck();
@@ -3101,7 +3300,7 @@ test("offline single HTML supports calculation without network", async ({
   expect(errors).toEqual([]);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   await expect(page.locator(".vessel-map-dots").first()).toBeVisible();
   await context.close();
@@ -3112,13 +3311,13 @@ test("vessel map is independent of plant scope and keeps selection while other p
 }) => {
   await page.goto("/?source=synthetic");
   const nav = page.getByRole('navigation', { name: '주 메뉴' });
-  await nav.getByRole('button', { name: '저탄장 현황', exact: true }).click();
+  await nav.getByRole('button', { name: '수급 원장', exact: true }).click();
   await page.getByRole('combobox', { name: '발전본부 선택' }).click();
   await page.getByRole('option', { name: '하동', exact: true }).click();
   await expect(page.getByRole('combobox', { name: '발전본부 선택' })).toContainText('하동');
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   await expect(page.locator(".vessel-map-dots").first()).toBeVisible();
   await expect(page.locator('.shipment-card')).toHaveCount(4);
@@ -3137,10 +3336,10 @@ test("vessel map is independent of plant scope and keeps selection while other p
   await expect(
     page.getByRole("button", { name: "지도 축소", exact: true }),
   ).toBeDisabled();
-  await nav.getByRole('button', { name: '저탄장 현황', exact: true }).click();
+  await nav.getByRole('button', { name: '수급 원장', exact: true }).click();
   await expect(page.getByRole('combobox', { name: '발전본부 선택' })).toContainText('하동');
   await expect(page.getByRole('group', { name: '전망 기간' })).toBeVisible();
-  await nav.getByRole('button', { name: '선박 추적', exact: true }).click();
+  await nav.getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(page.locator('.vessel-map-marker')).toHaveCount(4);
   await expect(page.locator('.shipment-card')).toHaveCount(4);
   await expect(page.locator('.shipment-card[aria-pressed=true] strong')).toHaveText(name);
@@ -3152,7 +3351,7 @@ test("map zoom adds land detail while dots retain their screen size", async ({
   await page.goto("/?source=synthetic");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   const dots = page.locator(".vessel-map-dots");
   const countDots = async () =>
@@ -3205,12 +3404,12 @@ test("tablet and narrow phone retain all navigation views without page overflow"
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/?source=synthetic");
     for (const name of [
-      "저탄장 현황",
-      "선박 추적",
-      "예측/모델 상세",
-      "데이터/관리자",
+      "수급 원장",
+      "항차·화물",
+      "예측·모델",
+      "데이터 워크스페이스",
     ]) {
-      if (width <= 760) {
+      if (width <= 900) {
         await page.getByRole("button", { name: "메뉴 열기" }).click();
         await page
           .getByRole("navigation", { name: "모바일 메뉴" })
@@ -3241,7 +3440,7 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
   await page.goto("/?source=synthetic");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "선박 추적", exact: true })
+    .getByRole("button", { name: "항차·화물", exact: true })
     .click();
   const marker = page
     .locator(".vessel-map-marker")
@@ -3282,319 +3481,176 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
   await page.getByRole("button", { name: "발전 영향 보기" }).click();
   await expect(page.getByRole("dialog")).toContainText("하동");
 });
-test("dangjin site plan links harbor, yards, burn conveyor and pile history", async ({
-  page,
-}) => {
-  await page.goto("/?source=synthetic");
-  await page
-    .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "저탄장 현황", exact: true })
-    .click();
-  // 진입 시 항상 당진 (fact-default-dangjin).
-  await expect(page.locator(".yard-pile")).toHaveCount(60);
-  await expect(page.locator(".tower-metric").first()).toContainText("381,600");
-  // 앞바다·접안·저탄장·상탄이 한 약도 카드: 흐름 문구와 개별 섹션은 없다.
-  const site = page.locator(".stockyard-site");
-  await expect(
-    site.getByRole("heading", { name: "당진 항만 · 저탄장 현황" }),
-  ).toBeVisible();
-  await expect(page.getByText("연료부두", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "상탄 현황" })).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "발전처별 저탄장" }),
-  ).toHaveCount(0);
-  const headings = await page.getByRole("heading").allInnerTexts();
-  const siteAt = headings.findIndex((h) => h.includes("항만 · 저탄장"));
-  const forecastAt = headings.findIndex((h) => h.includes("재고 전망"));
-  expect(siteAt).toBeGreaterThanOrEqual(0);
-  expect(forecastAt).toBeGreaterThan(siteAt);
-  // 1440×1000에서 약도 카드가 한 화면 안에 들어간다.
-  const siteBox = await site.boundingBox();
-  expect(siteBox!.height).toBeLessThan(1000);
-  // 상탄은 발전소로 들어가는 컨베이어 위 t/h (fact-gauge-th).
-  await expect(site.locator(".site-belt.stockyard-gauge")).toContainText("t/h");
-  await expect(site.locator(".site-plants")).toContainText("당진 발전소");
-  await expect(site.locator(".site-plant")).toHaveCount(3);
-  await expect(site.locator(".site-transfer-belt")).toHaveCount(2);
-  // 부두 3개, 하역선은 안벽과 평행하게 접안, 해상 예시 대기선 1척 (더미 AIS).
-  await expect(site.locator(".harbor-berth")).toHaveCount(3);
-  const moored = site.locator(".harbor-ship.is-moored");
-  await expect(moored).toHaveCount(1);
-  const hull = await moored.locator(".ship-glyph").boundingBox();
-  expect(hull!.width).toBeGreaterThan(hull!.height * 3);
-  await expect(site.locator(".harbor-ship.is-sample")).toHaveCount(1);
-  await expect(site.locator(".harbor-ship.is-sample")).toContainText("예시");
-  await expect(site.locator(".link-chip").first()).toContainText("AIS 더미");
-  // 약도 선박 ↔ 패널 선택 동기화, 대기 카드 4종 + Freshness·추천 태그.
-  await moored.click();
-  await expect(
-    site.locator('.site-ship-list button[aria-pressed="true"]'),
-  ).toContainText("Pacific Horizon");
-  await expect(moored).toHaveAttribute("aria-pressed", "true");
-  await expect(site.locator(".site-ship-detail")).toContainText("BD-1");
-  await expect(site.locator(".site-ship-detail .tower-tag")).toHaveCount(2);
-  await expect(site.locator(".site-ship-detail")).toContainText("추천 BD-1");
-  // 옥내 (fact-indoor-badge): P2·P3 40개. Pile 1~8 = 더미 5개, 3저탄장 A·B Shed = Cell 10개.
-  await expect(
-    page.locator(".yard-pile", { hasText: "옥내" }),
-  ).toHaveCount(40);
-  await expect(site.locator(".yard-block.is-indoor")).toHaveCount(2);
-  await expect(page.locator(".zone-group")).toHaveCount(10);
-  await expect(
-    page.locator(".zone-group").first().locator(".yard-pile"),
-  ).toHaveCount(5);
-  await expect(site.locator('[data-pile-group="shed-B"] .yard-pile')).toHaveCount(10);
-  await expect(site.locator(".site-pile-name strong")).toHaveText([
-    "Pile 1", "Pile 2", "Pile 3", "Pile 4", "Pile 5", "Pile 6", "Pile 7", "Pile 8", "A Shed", "B Shed",
-  ]);
-  await expect(site.locator(".yard-pile[data-pile-id='DA-01'] .pile-label")).toHaveText("P1-01");
-  await expect(site.locator(".yard-pile[data-pile-id='DA-08'] .pile-label")).toHaveText("P1-05");
-  await expect(site.locator(".yard-pile.is-reserve .pile-label")).toHaveText(["A-10", "B-1"]);
-  // 하역 가능 부두: 1부두 → Pile 7·8 불가, 2·3부두 → Pile 3·4 불가.
-  await expect(site.locator('[data-pile-group="pile-3"] .site-reach.is-no')).toHaveText("2·3부두");
-  await expect(site.locator('[data-pile-group="pile-7"] .site-reach.is-no')).toHaveText("1부두");
-  await expect(site.locator('[data-pile-group="pile-5"] .site-reach.is-no')).toHaveCount(0);
-  await expect(site.locator('[data-unload-line="berth-1"] [data-unload-value="max"]')).toHaveText("최대 2,400 t/h");
-  await expect(site.locator('[data-unload-line="berth-23"] [data-unload-value="max"]')).toHaveText("최대 3,600 t/h");
-  await expect(site.locator('[data-unload-line="berth-23"]')).toContainText("Pile 3·4 하역 불가");
-  // Pile 이름 → 패널에 Pile 요약, 요약의 더미 목록으로 더미 선택.
-  await site.getByRole("button", { name: "Pile 2 요약 보기" }).click();
-  const summary = page.getByRole("region", { name: "Pile 2 요약" });
-  await expect(summary).toContainText("18,000 t");
-  await summary.getByRole("button", { name: "P2-03" }).click();
-  await expect(page.locator(".site-pile-title")).toHaveText("P2-03 · 인니 아역청탄");
-  await expect(site.locator('[data-pile-group="pile-2"]')).toHaveClass(/is-picked/);
-  // 하역 이력은 Pile 배지와 마우스오버로 본다. BD-1 하역분은 1발전처 Pile에만 귀속.
-  await expect(page.locator(".stockyard-history-pile")).toHaveCount(0);
-  const da05 = page.locator(".yard-pile", { hasText: "DA-05" });
-  await expect(da05.locator(".pile-badge")).toHaveText("↓1");
-  await expect(
-    page.locator(".yard-pile", { hasText: "DA-23" }).locator(".pile-badge"),
-  ).toHaveCount(0);
-  await da05.hover();
-  const tip = page.getByRole("tooltip");
-  await expect(tip).toContainText("하역 이력·예정 1건");
-  await expect(tip).toContainText("Pacific Horizon");
-  await page.mouse.move(0, 0);
-  await expect(tip).toHaveCount(0);
-  // 위험도 필터는 약도 자리를 유지하고 나머지를 흐리게.
-  await page.getByLabel("위험도 필터").selectOption("높음");
-  await expect(page.locator(".yard-pile")).toHaveCount(60);
-  await expect(page.locator(".yard-pile:not(.is-dimmed)")).toHaveCount(1);
-  await page.getByLabel("위험도 필터").selectOption("all");
-  // 처 탭: 수기 이탄 초과 경고 + 약도 처 표시 + 모의 적용·되돌리기 (fact-transfer-warn).
-  await site.locator(".yard-title").first().click();
-  await expect(site.getByRole("tab", { name: "처" })).toHaveAttribute("aria-selected", "true");
-  await expect(site.locator(".yard-block.is-selected")).toHaveCount(1);
-  await page.getByLabel("이송량 입력").fill("25000");
-  await page.getByRole("button", { name: "이탄 적용", exact: true }).click();
-  await expect(page.locator(".stockyard-transfer-result")).toContainText(
-    "가용 초과",
-  );
-  await expect(site.locator(".yard-transfer-tag")).toHaveCount(2);
-  await expect(site.locator(".site-transfer-list")).toContainText("모의 적용");
-  await expect(page.locator(".alert-chip", { hasText: "이탄 가용 초과" })).toHaveCount(1);
-  await site.getByRole("button", { name: "되돌리기" }).click();
-  await expect(site.locator(".yard-transfer-tag")).toHaveCount(0);
-  // 접안 지정 → 선박이 BD-2로 이동, 부두 점유·하역 귀속 갱신 (fact-assign-button).
-  await site.getByRole("tab", { name: "선박" }).click();
-  await page.getByLabel("Pacific Horizon 접안 부두").selectOption("BD-2");
-  await page.getByRole("button", { name: "접안 지정", exact: true }).click();
-  const busy = site.locator(".stockyard-berths .harbor-berth.is-unloading");
-  await expect(busy).toHaveCount(1);
-  await expect(busy).toContainText("BD-2");
-  await expect(busy).toContainText("Pacific Horizon");
-  await expect(
-    page.locator(".yard-pile", { hasText: "DA-23" }).locator(".pile-badge"),
-  ).toHaveText("↓1");
-  await expect(da05.locator(".pile-badge")).toHaveCount(0);
-  await expect(site.locator(".site-sim-note")).toContainText("모의 적용");
+test("berth, yard and reclaim views follow the selected actual inventory and allowed routes", async ({page}) => {
+  await page.goto('/#yard');
+  await page.getByLabel('더미 선택',{exact:true}).selectOption('P2-K1');
+  const detail=page.getByRole('region',{name:'선택 구간 상세'});
+  await expect(detail).toContainText('KCH(Kaltim)');
+  await expect(detail).toContainText('센서 미연결');
+  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'접안·하역',exact:true}).click();
+  const receiving=page.getByRole('region',{name:'반입 가능 구역'});
+  await expect(receiving.getByRole('button',{name:'Pile 7',exact:true})).toBeDisabled();
+  await receiving.getByRole('button',{name:'Pile 2',exact:true}).click();
+  const lot=await page.getByLabel('더미 선택',{exact:true}).inputValue();
+  await page.getByRole('button',{name:/Pile 2 재고 보기/}).click();
+  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await page.getByRole('button',{name:'상탄 경로 보기'}).click();
+  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByRole('heading',{level:1,name:'상탄·혼탄'})).toBeVisible();
 });
 
-test("stockyard KPIs, alerts, search, keyboard, forecast and ledger work together", async ({
-  page,
-}) => {
-  await page.goto("/?source=synthetic");
-  await page
-    .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "저탄장 현황", exact: true })
-    .click();
-  // KPI 7칸, 최저 재고일수는 처 단위.
-  await expect(page.locator(".stockyard-kpi")).toHaveCount(7);
-  await expect(page.locator(".stockyard-kpi").nth(1)).toContainText("3발전처");
-  await expect(page.locator(".yard-days")).toHaveCount(3);
-  // 알림: 처 재고 소진 예상, 고위험 더미 (화면 이름).
-  await expect(page.locator(".alert-chip", { hasText: "소진 예상" })).not.toHaveCount(0);
-  await page.locator(".alert-chip", { hasText: "B-5 고위험" }).click();
-  await expect(page.locator(".site-pile-title")).toHaveText("B-5 · 인니 저열량탄");
-  // 고위험 KPI = 위험도 필터 토글.
-  const high = page.locator(".stockyard-kpi", { hasText: "고위험" });
-  await high.click();
-  await expect(high).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByLabel("위험도 필터")).toHaveValue("높음");
-  await high.click();
-  await expect(page.getByLabel("위험도 필터")).toHaveValue("all");
-  // 더미 검색과 방향키 이동 (roving tabindex). 3저탄장은 A·B Shed 10칸 2줄.
-  await page.getByLabel("더미 검색").fill("4");
-  await page.getByLabel("더미 검색").press("Enter");
-  await expect(page.locator(".yard-pile[data-pile-id='DA-04']")).toBeFocused();
-  await page.keyboard.press("ArrowLeft");
-  await expect(page.locator(".yard-pile[data-pile-id='DA-56']")).toBeFocused();
-  await page.keyboard.press("ArrowUp");
-  await expect(page.locator(".yard-pile[data-pile-id='DA-46']")).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(page.locator(".site-pile-title")).toHaveText("A-6 · 호주 역청탄");
-  // 화면 더미 이름(P1-01)으로도 찾는다.
-  await page.getByLabel("더미 검색").fill("p1-05");
-  await page.getByLabel("더미 검색").press("Enter");
-  await expect(page.locator(".yard-pile[data-pile-id='DA-08']")).toBeFocused();
-  await page.getByLabel("더미 검색").fill("A-6");
-  await page.getByLabel("더미 검색").press("Enter");
-  await expect(page.locator(".site-pile-title")).toHaveText("A-6 · 호주 역청탄");
-  await expect(page.locator('.site-yards [tabindex="0"]')).toHaveCount(1);
-  // 원장: 20행 페이지, 혼탄 열, 원장에서 보기 → 해당 페이지에서 펼침.
-  const ledger = page.locator(".stockyard-ledger");
-  await expect(ledger.locator("tbody tr")).toHaveCount(20);
-  await expect(page.locator(".ledger-pager button[aria-current]")).toHaveText("1");
-  await expect(ledger.locator("thead")).toContainText("주간 소진");
-  await page.getByRole("button", { name: "원장에서 보기 →" }).click();
-  await expect(ledger.locator(".ledger-detail")).toHaveCount(1);
-  await expect(ledger.locator("tr.is-selected")).toContainText("DA-46");
-  await ledger.getByRole("button", { name: /^재고 · t/ }).click();
-  await expect(ledger.locator("th[aria-sort='ascending']")).toContainText("재고");
-  // 혼탄 요약은 처별 소진과 일치: 소속 호기가 없는 2발전처는 소진 없음.
-  await expect(
-    page.getByRole("heading", { name: "주간 소진 · 혼탄 시뮬레이션" }),
-  ).toBeVisible();
-  await expect(page.locator(".stockyard-top-list")).not.toContainText("DA-02");
-  // 처별 전망 표와 기간 연동.
-  await expect(page.locator(".stockyard-groups tbody tr")).toHaveCount(3);
-  await expect(page.locator(".stockyard-groups")).toContainText("소비 없음");
-  await page
-    .getByRole("group", { name: "전망 기간" })
-    .getByRole("button", { name: "60일", exact: true })
-    .click();
-  await expect(page.locator(".stockyard-kpi").nth(4)).toContainText("60일");
-  await expect(page.locator(".timeline-head")).toContainText("+60일");
+test("yard totals, actual inventory search and disconnected sensor detail remain consistent", async ({page}) => {
+  await page.goto('/#yard');
+  await expect(page.getByLabel('선택 저탄장 요약')).toContainText('109,911');
+  await expect(page.locator('.gf-oy-summary')).toContainText('36.34');
+  const search=page.getByRole('searchbox',{name:'구역별 재고 검색'});
+  const table=page.getByRole('region',{name:'구역별 재고 표'});
+  await search.fill('26-1-039');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await table.getByRole('button',{name:/Pile 2/}).click();
+  const detail=page.getByRole('region',{name:'선택 구간 상세'});
+  await expect(detail).toContainText('KCH(Kaltim)');
+  await expect(detail).toContainText('센서 미연결');
+  await expect(detail).not.toContainText('고위험');
+  await search.fill('없는탄종');
+  await expect(table).toContainText('검색 결과가 없습니다');
+  await search.fill('');
+  await page.locator('.gf-oy-inventory').getByRole('button',{name:'재고 원장',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Pile 재고 원장'})).toBeVisible();
 });
 
-test("stockyard links save transfers and unloading, take live AIS and sensors", async ({
-  page,
-}) => {
-  const posted: { url: string; body: any }[] = [];
-  const now = new Date().toISOString();
-  await page.route("**/api/supply/records", (route) =>
-    route.fulfill({
-      json: {
-        transfers: [
-          {
-            id: 11,
-            at: "2026-10-06T12:00:00+09:00",
-            from_group: "g58",
-            to_group: "g14",
-            tonnes: 1000,
-            note: "원장 기록",
-          },
-        ],
-        vessels: [
-          {
-            id: 3,
-            name: "Pacific Horizon",
-            cargo: 80000,
-            arrival_at: "2026-10-06T06:00:00+09:00",
-            points: [
-              {
-                at: "2026-10-06T10:00:00+09:00",
-                cumulative: 0,
-                rate: 2000,
-                allocations: { g14: 1, g58: 0, g910: 0 },
-              },
-            ],
-          },
-        ],
-      },
-    }),
-  );
-  await page.route("**/api/supply/transfers", async (route) => {
-    posted.push({ url: route.request().url(), body: route.request().postDataJSON() });
-    await route.fulfill({ json: { id: 12 } });
+test("supply ledger records real transfer and unloading inputs while sensors remain disconnected", async ({page}) => {
+  const writes: {path:string, body:any}[]=[];
+  await page.route('**/api/supply/records',route=>route.fulfill({json:{transfers:[{id:11,at:'2026-11-05T10:00:00+09:00',from_group:'g58',to_group:'g14',tonnes:1000,note:'원장 기록'}],vessels:[{id:3,name:'TEST SHIP',cargo:80000,arrival_at:'2026-11-01T00:00:00+09:00',classification:'planned',points:[{at:'2026-11-01T00:00:00+09:00',cumulative:0,rate:2000,allocations:{g14:1,g58:0,g910:0}}]}]}}));
+  await page.route('**/api/supply/transfers',route=>{writes.push({path:'transfer',body:route.request().postDataJSON()});return route.fulfill({json:{id:12}});});
+  await page.route('**/api/supply/vessels/3/unloading',route=>{writes.push({path:'unloading',body:route.request().postDataJSON()});return route.fulfill({json:{id:9}});});
+  await page.goto('/#fuel-ledger');
+  await page.getByText('이탄 입력',{exact:true}).click();
+  await expect(page.getByText('원장 기록',{exact:true})).toBeVisible();
+  await page.getByLabel('이탄 시각 · KST').fill('2026-11-05T10:00');
+  await page.getByLabel('이탄량 (t)').fill('5000');
+  await page.getByRole('button',{name:'이탄 저장'}).click();
+  await expect.poll(()=>writes.length).toBe(1);
+  expect(writes[0].body).toMatchObject({from_group:'g14',to_group:'g58',tonnes:5000,at:'2026-11-05T10:00:00+09:00'});
+  await page.getByText('하역 입력',{exact:true}).click();
+  await page.getByRole('combobox',{name:'선박',exact:true}).selectOption('3');
+  await page.getByLabel('기록 시각 · KST').fill('2026-11-05T11:00');
+  await page.getByLabel('누적 하역량 (t)').fill('30000');
+  await page.getByLabel('하역 속도 (t/h)').fill('2000');
+  await page.getByRole('button',{name:'하역 저장'}).click();
+  await expect.poll(()=>writes.length).toBe(2);
+  expect(writes[1].body).toMatchObject({cumulative:30000,rate:2000,allocations:{g14:1,g58:0,g910:0}});
+  await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'저탄·재고',exact:true}).click();
+  await expect(page.getByRole('region',{name:'선택 구간 상세'})).toContainText('센서 미연결');
+});
+
+// --- 부두 대기(체선) 후보 확인 ---
+function waitingFixture() {
+  const at = new Date().toISOString(), mmsi = '440123456', lon = 126.47, lat = 37.0;
+  const candidate = { mmsi, name: 'SAM WOO 47', shipType: 70, navStatus: 1, sogKn: 0.1, destination: 'KRTJI',
+    position: { latitude: lat, longitude: lon, observedAt: at }, dwellHours: 14.3, distanceKm: 6.2, stale: false,
+    reasons: ['묘박 상태'] };
+  const ship = { id: 'ais-' + mmsi, name: 'SAM WOO 47', mmsi, imo: '', source: 'aisstream',
+    ais: { updatedAt: at, destination: 'KRTJI', shipType: 70, navStatus: 1,
+      position: { longitude: lon, latitude: lat, observedAt: at, sogKn: 0.1, cogDeg: 0 } } };
+  const feed = (candidates: unknown[], confirmed: Record<string, string> = {}) =>
+    ({ updatedAt: at, lastReceivedAt: at, radiusKm: 15, candidates, confirmed });
+  return { at, mmsi, candidate, ship, feed };
+}
+
+test('waiting candidate asks with evidence and adds the vessel to interests on yes', async ({ page }) => {
+  const { mmsi, candidate, ship, feed } = waitingFixture();
+  let answers = 0;
+  let confirmed: Record<string, string> = {};
+  await page.route('**/api/vessels/waiting-candidates', r => r.fulfill({ json: feed(Object.keys(confirmed).length ? [] : [candidate], confirmed) }));
+  await page.route('**/api/vessels/map/' + mmsi, async r => { await new Promise(done => setTimeout(done, 300)); await r.fulfill({ json: ship }); });
+  await page.route(`**/api/vessels/waiting-candidates/${mmsi}/answer`, r => {
+    answers++; confirmed = { [mmsi]: '2026-11-09T03:20:00Z' };
+    return r.fulfill({ json: { ok: true, answeredAt: confirmed[mmsi] } });
   });
-  await page.route("**/api/supply/vessels/3/unloading", async (route) => {
-    const body = route.request().postDataJSON();
-    posted.push({ url: route.request().url(), body });
-    await route.fulfill({ json: { id: 9, cumulative: body.cumulative } });
+  await openEta(page);
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await expect(panel).toContainText('SAM WOO 47이 당진 부두에서 6.2km 떨어진 바다에서 14시간째 멈춰 있습니다. 부두 대기(체선) 중인 배가 맞나요?');
+  await expect(panel.locator('.vw-wait-chip')).toHaveText(['묘박', '0.1노트', '목적지 KRTJI', '화물선', '관측 0분 전']);
+  await expect(panel).not.toContainText('석탄');
+  await panel.screenshot({ path: '.tooling-tmp/waiting-panel-light.png' });
+  const yes = panel.getByRole('button', { name: '네, 관심 선박에 추가' });
+  await yes.click();
+  await yes.click({ force: true }).catch(() => {});
+  await expect(page.locator('.gf-voyage-card').filter({ hasText: 'SAM WOO 47' })).toContainText('부두 대기 확인 · 11/09 12:20');
+  expect(answers).toBe(1);
+  const saved = await readSavedWorkspace(page);
+  expect(saved.vessels.some((v: any) => v.mmsi === mmsi)).toBe(true);
+  await expect(panel).toContainText('확인할 배 없음');
+});
+
+test('waiting candidate hides on no and reports load failures without substitutes', async ({ page }) => {
+  const { mmsi, candidate, feed } = waitingFixture();
+  let fail = false, body: unknown = null;
+  await page.route('**/api/vessels/waiting-candidates', r => fail ? r.fulfill({ status: 500, json: { detail: 'down' } }) : r.fulfill({ json: feed([candidate]) }));
+  await page.route(`**/api/vessels/waiting-candidates/${mmsi}/answer`, r => { body = r.request().postDataJSON(); return r.fulfill({ json: { ok: true, answeredAt: new Date().toISOString() } }); });
+  await openEta(page);
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await panel.getByRole('button', { name: '아니요' }).click();
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
+  expect(body).toEqual({ answer: 'no' });
+  fail = true;
+  await page.evaluate(() => document.documentElement.classList.add('dark'));
+  await panel.getByRole('button', { name: '목록 새로 고침' }).click();
+  await expect(panel).toContainText('체선 후보를 불러오지 못했습니다');
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
+  await panel.screenshot({ path: '.tooling-tmp/waiting-panel-dark.png' });
+});
+
+test('waiting answer conflict refreshes the list and narrow screens do not overflow', async ({ page }) => {
+  const { mmsi, candidate, feed } = waitingFixture();
+  let reads = 0;
+  await page.route('**/api/vessels/waiting-candidates', r => { reads++; return r.fulfill({ json: feed([candidate]) }); });
+  await page.route(`**/api/vessels/waiting-candidates/${mmsi}/answer`, r => r.fulfill({ status: 409, json: { detail: '후보 상태가 바뀌었습니다.' } }));
+  await openEta(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await expect(panel).toContainText('SAM WOO 47');
+  await panel.screenshot({ path: '.tooling-tmp/waiting-panel-mobile.png' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const before = reads;
+  await panel.getByRole('button', { name: '아니요' }).click();
+  await expect(panel).toContainText('후보 상태가 바뀌었습니다. 목록을 새로 고칩니다');
+  await expect.poll(() => reads).toBeGreaterThan(before);
+});
+
+test('waiting no stays hidden when an older list arrives after the answer', async ({ page }) => {
+  const { mmsi, candidate, feed } = waitingFixture();
+  let reads = 0;
+  await page.route('**/api/vessels/waiting-candidates', async r => {
+    reads++;
+    if (reads > 1) await new Promise(done => setTimeout(done, 800));
+    await r.fulfill({ json: feed([candidate]) });
   });
-  await page.route("**/api/v1/vessels?**", (route) =>
-    route.fulfill({
-      json: [
-        {
-          vessel_id: "999000001",
-          mmsi: "999000001",
-          received_at: now,
-          latitude: 37.0,
-          longitude: 126.6,
-          sog_kn: 0,
-          cog_deg: 90,
-          source: "aisstream",
-        },
-      ],
-    }),
-  );
-  await page.route("**/api/v1/stockpiles/sensors**", (route) =>
-    route.fulfill({
-      json: {
-        readings: [
-          {
-            stockpile_id: "DA-05",
-            measured_at: now,
-            temperature_c: 61,
-            co_ppm: 55,
-            sensor_id: "DJ-P1-T05",
-          },
-        ],
-      },
-    }),
-  );
-  await page.goto("/?source=synthetic");
-  await page
-    .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("button", { name: "저탄장 현황", exact: true })
-    .click();
-  const site = page.locator(".stockyard-site");
-  // 실시간 AIS: 예시 대기선이 사라지고 최신성이 LIVE.
-  await expect(site.locator(".link-chip", { hasText: "AIS 실시간" })).toHaveClass(/is-online/);
-  await expect(site.locator(".harbor-ship.is-sample")).toHaveCount(0);
-  await expect(site.locator(".site-ship-detail")).toContainText("LIVE");
-  // 센서: DA-05 위험도에 온도·CO 반영 (12점 + 40 + 20 = 72, 높음).
-  await expect(site.locator(".link-chip", { hasText: "센서 1건" })).toBeVisible();
-  await expect(page.locator(".stockyard-kpi", { hasText: "고위험" })).toContainText("2");
-  await page.locator(".yard-pile", { hasText: "DA-05" }).hover();
-  await expect(page.getByRole("tooltip")).toContainText("61 ℃ · 55 ppm");
-  await expect(page.getByRole("tooltip")).toContainText("센서 + 적치·탄종");
-  await page.mouse.move(0, 0);
-  // 하역 원장: 등록된 선박의 누적 하역량 보정 저장.
-  await expect(site.locator(".site-ledger-link")).toContainText("원장 #3");
-  await page.getByLabel("누적 하역량 보정").fill("30000");
-  await page.getByRole("button", { name: "보정 저장" }).click();
-  await expect(site.locator(".site-ledger-link")).toContainText("저장했습니다");
-  const unload = posted.find((p) => p.url.includes("/unloading"))!;
-  expect(unload.body).toMatchObject({ cumulative: 30000, rate: 2000, allocations: { g14: 1 } });
-  // 이탄 원장: 저장분(#11, 2→1발전처)이 약도에 반영되고, 모의 이탄을 g14→g910으로 저장.
-  await site.locator(".yard-title").first().click();
-  await expect(site.locator(".site-transfer-list")).toContainText("원장 #11");
-  await expect(site.locator(".yard-transfer-tag")).toHaveCount(2);
-  await page.getByLabel("이송량 입력").fill("5000");
-  await page.getByLabel("도착 발전처").selectOption("P3");
-  await page.getByLabel("이탄 비고").fill("UI 테스트");
-  await page.getByRole("button", { name: "이탄 적용", exact: true }).click();
-  await site.getByRole("button", { name: "원장 저장" }).click();
-  await expect(site.locator(".site-transfer-list")).toContainText("원장 #12");
-  const saved = posted.find((p) => p.url.endsWith("/api/supply/transfers"))!;
-  expect(saved.body).toMatchObject({
-    from_group: "g14",
-    to_group: "g910",
-    tonnes: 5000,
-    note: "UI 테스트",
-    at: "2026-10-06T09:00:00+09:00",
-  });
+  await page.route(`**/api/vessels/waiting-candidates/${mmsi}/answer`, r => r.fulfill({ json: { ok: true, answeredAt: new Date().toISOString() } }));
+  await openEta(page);
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(1);
+  await panel.getByRole('button', { name: '목록 새로 고침' }).click();
+  await panel.getByRole('button', { name: '아니요' }).click();
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
+  await expect.poll(() => reads).toBeGreaterThan(1);
+  await page.waitForTimeout(1200);
+  await expect(panel.locator('.vw-wait-item')).toHaveCount(0);
+});
+
+test('waiting panel and interest headings share one left inset on narrow screens', async ({ page }) => {
+  const { feed } = waitingFixture();
+  await page.route('**/api/vessels/waiting-candidates', r => r.fulfill({ json: feed([]) }));
+  await openEta(page);
+  await page.setViewportSize({ width: 542, height: 1000 });
+  const panel = page.getByRole('region', { name: '확인할 배' });
+  await expect(panel).toContainText('확인할 배 없음');
+  const left = async (locator: import('@playwright/test').Locator) => (await locator.boundingBox())!.x;
+  const wait = await left(panel.getByRole('heading', { name: '확인할 배' }));
+  const interests = await left(page.locator('.vessel-workspace-title h2'));
+  const card = await left(page.locator('.vessel-watchlist-panel'));
+  expect(interests - card).toBeGreaterThanOrEqual(12);
+  expect(Math.abs(wait - interests)).toBeLessThanOrEqual(1);
+  await page.locator('.vessel-watchlist-panel').screenshot({ path: '.tooling-tmp/waiting-panel-narrow.png' });
 });

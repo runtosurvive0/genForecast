@@ -7,8 +7,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build && node scripts/export.mjs",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --experimental-strip-types --test tests/operations.test.ts tests/control-tower.test.ts tests/stockyard.test.ts tests/planning.test.ts tests/vessel-map.test.ts tests/dev-origin.test.ts",
-    "test:ui": "node scripts/test-ui.mjs"
+    "test": "node --experimental-strip-types --test tests/operations.test.ts tests/control-tower.test.ts tests/stockyard.test.ts tests/planning.test.ts tests/vessel-map.test.ts tests/dev-origin.test.ts tests/navigation.test.ts tests/fuel-reference.test.ts tests/fuel-demo.test.ts tests/fuel-demo-engine.test.cjs tests/fuel-demo-material.test.cjs tests/fuel-demo-silo.test.cjs tests/fuel-demo-server.test.cjs tests/fuel-demo-store.test.cjs tests/operations-workspaces.test.ts tests/manual-yard-inventory.test.ts tests/demo-forecast.test.ts tests/operations-status.test.ts tests/waiting-candidates.test.ts",
+    "test:ui": "node scripts/test-ui.mjs",
+    "demo": "node scripts/fuel-demo/server.cjs"
   },
   "dependencies": {
     "@maplibre/vt-pbf": "4.3.2",
@@ -25,9 +26,11 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-simple-maps": "^5.0.5",
+    "recharts": "^3.10.1",
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.3",
-    "thinking-orbs": "^0.3.2"
+    "thinking-orbs": "^0.3.2",
+    "three": "0.187.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -38,6 +41,7 @@
     "prettier": "^3.9.9",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "ws": "8.22.0"
   }
 }

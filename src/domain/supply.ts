@@ -1,9 +1,9 @@
 import type { PlanningSnapshot } from "./planning";
 
 export const SUPPLY_GROUPS = [
-  { id: "g14", name: "1~4호기 처", first: 1, last: 4, color: "#248df5" },
-  { id: "g58", name: "5~8호기 처", first: 5, last: 8, color: "#eea628" },
-  { id: "g910", name: "9~10호기 처", first: 9, last: 10, color: "#30b77b" },
+  { id: "g14", name: "1저탄장", first: 1, last: 4, color: "#248df5" },
+  { id: "g58", name: "2저탄장", first: 5, last: 8, color: "#eea628" },
+  { id: "g910", name: "3저탄장", first: 9, last: 10, color: "#30b77b" },
 ] as const;
 export const SUPPLY_RISK_NAMES: Record<string, string> = {
   normal: "정상",

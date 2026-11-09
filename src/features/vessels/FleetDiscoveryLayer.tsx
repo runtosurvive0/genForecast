@@ -14,6 +14,8 @@ import './fleet-discovery.css';
 export interface FleetDiscoveryOptions {
   interests: string[];
   onAdd: (vessel: TrackingVessel) => void;
+  /** 다른 패널에서 "지도에서 보기"로 요청한 선박. key가 바뀔 때마다 이동한다. */
+  focus?: { mmsi: string; longitude: number; latitude: number; key: number } | null;
 }
 const SOURCE = 'vessel-fleet-discovery';
 const LAYERS = ['vessel-fleet-clusters', 'vessel-fleet-counts', 'vessel-fleet-points', 'vessel-fleet-headings'];
@@ -105,7 +107,7 @@ export function FleetDiscoveryLayer({ map, revision, theme, options, statusTarge
     setClusterNotice('');
     if (f.properties.kind === 'cluster') {
       if (map.getZoom() >= 17.99) setClusterNotice('최대 확대에서도 선박이 밀집해 있습니다. 관심 선박 구성 → 실제 AIS 검색에서 선박명·MMSI로 조회해 주세요.');
-      else map.easeTo({ center: f.geometry.coordinates as [number, number], zoom: Math.min(18, map.getZoom() + 2), duration: 350 });
+      else map.easeTo({ center: f.geometry.coordinates as [number, number], zoom: Math.min(18, map.getZoom() + 2), duration: 350 }, { userCamera: true });
     } else setSelected(f.properties.mmsi!);
   }
   const chooseRef = useRef(choose); chooseRef.current = choose;
@@ -121,6 +123,14 @@ export function FleetDiscoveryLayer({ map, revision, theme, options, statusTarge
     map.on('click', click);
     return () => { map.off('click', click); };
   }, [map, enabled]);
+
+  const focus = options.focus;
+  useEffect(() => {
+    if (!focus) return;
+    setEnabled(true);
+    map.flyTo({ center: [focus.longitude, focus.latitude], zoom: Math.max(map.getZoom(), 11) });
+    setSelected(focus.mmsi);
+  }, [map, focus?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setVessel(null); setDetailError('');

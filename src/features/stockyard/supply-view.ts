@@ -45,9 +45,9 @@ export interface YardFeed {
 }
 
 /** 같은 MILP 날짜의 발전량·DB 혼합 열량 연소량. t/h는 일평균이며 순간값이 아니다. */
-export function supplyFeeds(snapshot: PlanningSnapshot | null): YardFeed[] {
-  const day = snapshot?.daily.find((d) => d.date === snapshot.start);
-  const inventory = snapshot?.inventory.daily.find((d) => d.day === snapshot.start);
+export function supplyFeeds(snapshot: PlanningSnapshot | null, selectedDay?: string): YardFeed[] {
+  const day = snapshot?.daily.find((d) => d.date === (selectedDay ?? snapshot.start));
+  const inventory = snapshot?.inventory.daily.find((d) => d.day === (selectedDay ?? snapshot.start));
   return Object.entries(YARD_GROUP_IDS).map(([yard, groupId]) => {
     const [first, last] = YARD_UNIT_RANGES[yard];
     const generationMwh = sumKnownInventory(Array.from({ length: last - first + 1 }, (_, i) =>

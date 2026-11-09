@@ -1,5 +1,13 @@
 # SPEC v0.1 페이지 데이터 계약
 
+## 공용 수기 항차 원장 (2026-11-06 추가)
+
+`voyage_registry_ships.ship_code` → `voyage_registry_voyages.ship_code`, `voyage_registry_voyages.voyage_no` → `voyage_registry_cargo.voyage_no`의 1:N 관계다. 원장 키는 불변 내부 관리ID이며 표시용 항차번호와 MMSI/IMO를 분리한다. MMSI/IMO는 선박별 고유 텍스트다. 화물별 `destination_plant_id`는 기존 발전소 ID를 사용한다. `planned_t`와 `bl_t`는 t이며 적어도 하나 필요하다. 기존 화물의 `cv/cv_basis`, 회분·황분/`analysis_basis`, 전수분 AR 값은 호환용으로 보존한다. 새 성상 입력은 화물에 연결한 별도 분석 원장을 사용한다(아래 확장 계약 참조). 선택값 미확인은 null, 0은 확정된 0이다. 날짜는 KST ISO8601, 예정·실제 일정은 각각 시간 순서를 검증한다.
+
+승인된 팀원이 공동 편집한다. revision과 audit를 저장 트랜잭션에 묶으며 일괄 수정은 전체 성공 또는 전체 롤백이다. XLSX 헤더와 폼의 단일 계약은 `backend/src/midterm/voyage_registry.py`의 SCHEMA다. 기존 AIS·private workspace·하역 원장과 자동 병합하지 않는다. 완료 화물은 사용자가 Pile에 배분하면 수기 재고 원장에 반영된다. [항차 DB 안내](VOYAGE_REGISTRY.md)에 전체 헤더·빈값·충돌·배포 규칙이 있다.
+
+업무형 XLSX의 `배선 묶음`은 같은 파일 안에서 번호 미정 배선의 화물·분석 행을 연결하는 임시 식별값이며 원장의 계획명이 아니다. 단일 행은 묶음 없이 등록할 수 있다. 같은 파일 재검토는 동일한 식별자를 사용하고, 기존 자료의 수정은 내보낸 숨김 관리ID를 사용한다. 이전 `계획명` 헤더 양식과 기존 원장 필드는 계속 읽고 보존한다.
+
 **발전소 종합과 저탄장 현황**은 같은 MILP·DB 수급 조회 조건을 사용한다. 데이터 모드는
 발전소 종합에서 선택하며 저탄장의 기존 약도·패널·원장 UI를 유지한다. 데이터/관리자에는 MILP 업로드 탭을 추가한다.
 선박추적·모델 상세·정지계획·시나리오는 기존 기능을 유지한다. 아래 기존 SPEC 정의는 합성 데모와 기존 메뉴에 적용한다.
@@ -203,3 +211,25 @@ epoch로 사용하지 않는다. 이 관측은 팀 Voyage/Cargo/입하 원장을
 위치 없는 정적 정보의 출처는 선택적 `ais.metadataFeed`에 보존한다. 위치가 생기면 위치 출처를 우선한다.
 관측 시각은 원본 시각이며, 정적 수신·재연결이 위치 최신성을 바꾸지 않는다. 공급원별 상태는 카탈로그의 `feeds`에 제공한다.
 DB 테이블·계정·관심 선박 ID 변경 없이 확장한다. [설정·이용 범위·배포 안내](OPENWATERS_SETUP.md)를 참고한다.
+
+
+## 배선·화물·성상 공용 원장 확장
+
+- 저탄장 기준현황은 `yard_baselines`에 기준일·등록시각·등록자·구역별 탄종·재고량과 알려진 항차·적치 정보를 보관한다. 항차·화물 등록을 필수로 만들지 않으며, 기준일 이후의 입하를 중복 합산하지 않도록 입하 재고 원장과 별도로 보관한다. 기준현황은 실시간 센서값이 아니다.
+- 수급 전망은 기준일만 있는 저탄장별 기준량을 다음 날 00:00 KST부터 반영하며 같은 날 입하는 중복 합산하지 않는다. P1~4, P5~8, A/B 구역은 각각 g14, g58, g910 기준량에 대응한다. 기준일까지 분석된 확정 성상과 항차·탄종이 유일하게 일치하는 재고만 발열량을 연결하고, 양이 있는 모든 구간의 발열량이 확인되지 않으면 해당 처의 연소량과 전망은 미확정으로 둔다.
+- 모의 운전 WebSocket은 기본적으로 별도의 `backend/data/operating-simulation.sqlite3`에 상태 이력과 복원 지점을 기록한다. `SIMULATION_DB_PATH`로 별도 경로를 지정할 수 있으며 실제 입하·재고 원장에 쓰지 않는다. 재시작 시 마지막 설정과 예약을 복원하되 일시정지 상태로 시작한다.
+- 모의 운전에는 호기별 사일로·급탄기 6조가 있다. 기본 사일로 용량 1,000 t, 잔량 500 t은 모의 가정값이며 일시정지 중 조정할 수 있다. 지정된 주계통의 사일로로 상탄하고 급탄량(t/h)에 따라 잔량을 차감한다. 급탄기 속도비는 임의 정격 1,000 t/h에 선형 비례하는 모의치로, 실제 벨트 속도나 교정식이 아니다. 모사 시간은 최대 1초 구간으로 계산하며, 상탄은 빈 용량을 넘지 않고 급탄은 잔량을 넘지 않는다. 교차 공급, 이송 지연, 탄종별 혼합·보일러 열량 연계는 미구현이며 수기 조정량은 별도로 기록한다.
+
+- `voyage_registry_voyages.voyage_no`는 불변 내부 관리ID이며 `voyage_number`가 사용자가 보는 항차번호(YY-부두-일련번호)다. 저탄장은 별도 항목이다. 번호와 선박이 미정인 계획을 허용한다. 기존 키/화물 참조는 번호 부여 시 바꾸지 않는다.
+- `voyage_registry_cargo`: 배선별 복수 화물. `receipt_date`/`receipt_end_date`는 석탄 입고 시작/종료 날짜, `received_t`는 입하량(t). 선박 입항·접안 시각과 구분한다. 기존 재고 엔진을 자동 호출하지 않는다.
+- `voyage_registry_assays`: `assay_id` 키, `cargo_no` 참조, stage loading/unloading/buyer, 분석·채취일·기관·성적서·결과상태. 재분석은 별도 행으로 보존한다.
+- 기본 성상: `gcv_arb/gcv_adb/gcv_db/ncv` kcal/kg, `ncv_basis` unknown/AR/ADB/DB, `tm_ar/sulfur_ar` %wt, `hgi`.
+- 공업분석 ADB %wt: `im_adb/vm_adb/ash_adb/fc_adb`. 원소분석 DB %wt: `c_db/h_db/n_db/o_db/s_db`. `derived_ash_db`는 Ash ADB×100/(100−IM ADB) 계산값이며 원본을 덮어쓰지 않는다.
+- 회성분 %wt: `sio2/al2o3/cao/mgo/na2o/k2o/so3/tio2/ash_other`.
+- 연료특성: `combustion_start_c/combustion_end_c/combustion_peak_c` °C, `combustion_max_rate` %/min. 환원성 회융점: `fusion_it/fusion_st/fusion_ht/fusion_ft` °C.
+- `size_2mm/size_025mm`: 해당 체 이하 누적 %wt. `chlorine_db_ppm`: 건식 염소 ppm. `csn`: 점결성 지수.
+- `quality_selection[cargo_no]`: confirmed 하역 우선, 없으면 confirmed 선적. 동일 구분은 분석일·채취일·수정시각·관리ID 내림차순. 바이어는 비교용. 빈값은 null, 다른 분석과 자동 혼합하지 않는다. NCV 기준 unknown은 계산 사용 불가다.
+- 수기 Pile 재고는 하역완료·입고 종료·입하량 확인 후 명시적으로 배분하고, 기준시각 이후 입하만 공통 수급 전망에 반영한다. 원본 완료 정보 변경과 기존 선박 원장 중복 가능성은 확인 필요로 남긴다. 조건별 혼탄 검토는 ARB 발열량 목표·AR 총수분·유황분 제한을 계산하며 다른 성상 및 설비 제약은 미반영이다.
+- Pile 배분 정정은 `stock_inventory_reconciliations`에 화물별 정정 전후 스냅샷·시각·사유·작성자를 저장한다. 과거 시점은 당시 배분으로 복원한다. 현재 전망은 정정 전후에 영향받은 처별 기준재고가 정정 이후에 다시 확인되기 전까지 미확정이다. 재고·항차 원장 두 revision을 트랜잭션 안에서 검사한다.
+- 반입 검토 계획은 `receipt_review_plans`에 별도로 저장하며 기준 계산 ID·시작일·기간과 사용자가 입력한 부두, 구역, 물량, 저장한도, 미래 잔량 및 해당 화물의 사용 계획을 보관한다. 승인된 팀원이 조회·수정하며 행별 revision 충돌을 검사하고 `receipt_review_plan_audit`에 변경 전후·작성자·시각을 남긴다. 이 계획의 저장은 하역 실적이나 재고를 변경하지 않는다. 운전 모사 스트림은 현재 선택 경로의 수신 상태로만 표시하고 계획 입력과 실제 센서값에 자동 반영하지 않는다.
+- 상세 사용·엑셀 계약은 [VOYAGE_REGISTRY.md](VOYAGE_REGISTRY.md), 구현 필드의 단위·검증 범위는 `/api/voyage-registry/schema`를 따른다.

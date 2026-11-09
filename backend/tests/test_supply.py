@@ -60,6 +60,49 @@ def test_transfer_conserves_mass_and_calorific_energy():
     assert g['g58']['cv'] == pytest.approx((100000 * 6500 + 10000 * 5500) / 110000)
 
 
+def test_yard_baseline_with_unknown_quality_never_publishes_estimated_burn():
+    r = records()
+    r['baselines'][0]['cv'] = None
+    result = simulate(r, plan(), START, 7)
+    group = result['groups'][0]
+    assert group['baseline']['tonnes'] == 100000
+    assert group['stock'] is None and group['cv'] is None
+    assert result['forecast'][0]['groups']['g14']['burn'] is None
+    assert any('발열량 확인 필요' in issue for issue in result['transfer_issues'])
+
+
+def test_dated_yard_snapshots_feed_supply_without_same_day_receipt(tmp_path):
+    from midterm.stock_baseline import save_baseline
+    from midterm.supply import read_supply
+    path = tmp_path / 'stock.sqlite3'
+    save_baseline({'as_of':'2026-10-06', 'lots':[
+        {'location':'P1', 'coal_name':'A', 'tonnes':100},
+        {'location':'P5', 'coal_name':'B', 'tonnes':200},
+        {'location':'A2', 'coal_name':'C', 'tonnes':300}]}, 0, 'operator', path)
+    save_baseline({'as_of':'2026-10-09', 'lots':[
+        {'location':'P1', 'coal_name':'A', 'tonnes':999}]}, 1, 'operator', path)
+    r = read_supply(path)
+    earlier = simulate(r, {}, START, 1)
+    groups = {g['id']: g for g in earlier['groups']}
+    assert [groups[g]['baseline']['tonnes'] for g in GROUPS] == [100, 200, 300]
+    assert groups['g14']['baseline']['at'].startswith('2026-10-07T00:00:00')
+    assert all(groups[g]['cv'] is None for g in GROUPS)
+
+
+def test_yard_quality_requires_unique_matching_confirmed_dated_assays(tmp_path):
+    from midterm.stock_baseline import save_baseline
+    from midterm.voyage_registry import commit
+    from midterm.supply import read_supply
+    path = tmp_path / 'stock.sqlite3'
+    commit({'voyages':[{'voyage_no':'V1', 'voyage_number':'26-1-001', 'berth_id':'BD-1', 'status':'planned'}],
+            'cargo':[{'cargo_no':'C1','voyage_no':'V1','destination_plant_id':'dangjin','coal_name':'A','planned_t':100}],
+            'assays':[{'assay_id':'A1','cargo_no':'C1','stage':'loading','result_status':'confirmed','analysis_date':'2026-10-05','gcv_arb':5500},
+                      {'assay_id':'A2','cargo_no':'C1','stage':'unloading','result_status':'confirmed','analysis_date':'2026-10-09','gcv_arb':6000}]}, 0, 'operator', 'manual', path)
+    save_baseline({'as_of':'2026-10-06','lots':[{'location':'P1','coal_name':'A','voyage_number':'26-1-001','tonnes':100}]}, 0, 'operator', path)
+    b = next(row for row in read_supply(path)['baselines'] if row['group_id'] == 'g14')
+    assert b['cv'] == 5500
+
+
 def test_unload_mixes_yard_cv_and_burn_uses_mixed_cv():
     r = records()
     r['vessels'] = [vessel()]
@@ -107,6 +150,79 @@ def test_rebase_counts_only_events_after_new_baseline():
     assert g['received'] == pytest.approx(100)
     assert g['delta'] == pytest.approx(100)
     assert g['cv'] == pytest.approx((5000 * 6000 + 100 * 6500) / 5100)
+
+
+def test_registry_actual_receipt_is_counted_once_after_baseline_and_rebase():
+    r = records()
+    r['registry_receipts'] = [{'cargo_no': 'C1', 'group': 'g14', 'at': (START + timedelta(hours=1)).isoformat(),
+                               'tonnes': 1000., 'cv': 6000., 'mmsi': None, 'vessel_name': None, 'needs_review': False}]
+    result = simulate(r, plan(mw=0), START + timedelta(hours=2), 7)
+    assert result['groups'][0]['stock'] == pytest.approx(101000)
+    assert result['groups'][0]['received'] == pytest.approx(1000)
+    r['baselines'].append({**r['baselines'][0], 'at': (START + timedelta(hours=1)).isoformat(), 'tonnes': 99000.})
+    result = simulate(r, plan(mw=0), START + timedelta(hours=2), 7)
+    assert result['groups'][0]['stock'] == pytest.approx(99000)
+    assert result['groups'][0]['received'] == pytest.approx(0)
+
+
+def test_registry_receipt_without_assay_or_duplicate_vessel_makes_forecast_unknown():
+    r = records()
+    event = {'cargo_no': 'C1', 'group': 'g14', 'at': (START + timedelta(hours=1)).isoformat(),
+             'tonnes': 1000., 'cv': None, 'mmsi': '123456789', 'vessel_name': None, 'needs_review': False}
+    r['registry_receipts'] = [event]
+    assert simulate(r, plan(mw=0), START + timedelta(hours=2), 7)['groups'][0]['stock'] is None
+    r['vessels'] = [{**vessel(), 'mmsi': '123456789'}]
+    event['cv'] = 6000.
+    result = simulate(r, plan(mw=0), START + timedelta(hours=2), 7)
+    assert result['groups'][0]['stock'] is None
+    assert any('중복' in issue for issue in result['transfer_issues'])
+
+
+def test_manual_pile_balance_change_does_not_invent_group_burn_allocation():
+    r = records()
+    r['registry_receipts'] = [{'cargo_no': 'C1', 'group': 'g14', 'at': (START + timedelta(hours=1)).isoformat(),
+                               'tonnes': 1000., 'cv': 6000., 'mmsi': None, 'vessel_name': None, 'needs_review': False,
+                               'balance_updated_at': (START + timedelta(hours=2)).isoformat(), 'remaining_t': 700.}]
+    result = simulate(r, plan(mw=0), START + timedelta(hours=3), 7)
+    assert result['groups'][0]['stock'] is None
+    assert any('잔량' in issue for issue in result['transfer_issues'])
+
+
+def test_pile_reconciliation_preserves_previous_view_and_requires_new_baseline_for_both_groups():
+    r = records()
+    original = {'cargo_no':'C1','group':'g14','at':(START + timedelta(hours=1)).isoformat(),
+                'tonnes':1000.,'cv':5500.,'mmsi':None,'vessel_name':None,'needs_review':False}
+    moved = {**original,'group':'g58'}
+    r['registry_receipts'] = [moved]
+    r['registry_reconciliations'] = [{'cargo_no':'C1','at':(START + timedelta(hours=3)).isoformat(),
+                                      'groups':['g14','g58'],'before':[original]}]
+    before = simulate(r, plan(mw=0), START + timedelta(hours=2), 7)
+    assert before['groups'][0]['stock'] == 101000
+    assert before['groups'][1]['stock'] == 100000
+    after = simulate(r, plan(mw=0), START + timedelta(hours=4), 7)
+    assert after['groups'][0]['stock'] is None and after['groups'][1]['stock'] is None
+    assert any('정정' in message for message in after['transfer_issues'])
+    for i in (0, 1):
+        r['baselines'].append({**r['baselines'][i], 'at':(START + timedelta(hours=3, minutes=30)).isoformat(), 'tonnes':99000.})
+    rebased = simulate(r, plan(mw=0), START + timedelta(hours=4), 7)
+    assert [rebased['groups'][i]['stock'] for i in (0,1)] == [99000,99000]
+
+
+def test_pile_multiple_reconciliations_roll_back_in_order_for_historical_views():
+    r = records()
+    original = {'cargo_no':'C1','group':'g14','at':(START + timedelta(hours=1)).isoformat(),
+                'tonnes':1000.,'cv':5500.,'mmsi':None,'vessel_name':None,'needs_review':False}
+    middle = {**original, 'group':'g58'}
+    current = {**original, 'group':'g910'}
+    r['registry_receipts'] = [current]
+    r['registry_reconciliations'] = [
+        {'cargo_no':'C1','at':(START + timedelta(hours=3)).isoformat(),'groups':['g14','g58'],'before':[original]},
+        {'cargo_no':'C1','at':(START + timedelta(hours=5)).isoformat(),'groups':['g58','g910'],'before':[middle]},
+    ]
+    before = simulate(r, plan(mw=0), START + timedelta(hours=2), 7)
+    assert [x['stock'] for x in before['groups']] == [101000,100000,100000]
+    middle_view = simulate(r, plan(mw=0), START + timedelta(hours=4), 7)
+    assert middle_view['groups'][2]['stock'] == 100000
 
 
 def test_source_rebase_after_transfer_does_not_lose_destination_transfer_cv():

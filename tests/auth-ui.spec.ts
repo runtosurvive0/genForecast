@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { vesselCatalog, trackingVoyages } from '../src/data/vessel-workflow';
+import { mkdirSync } from 'node:fs';
 
 const password = 'crew1234'; // Exercise the minimum length through real signup and login.
 async function login(page: Page, username: string, value = password) {
@@ -19,6 +20,26 @@ test.beforeEach(async ({ context }) => {
     const response = await route.fetch({ url: url.href });
     await route.fulfill({ response });
   });
+});
+
+test('approved split login retains its introduction, workflow and responsive form', async ({page}) => {
+  mkdirSync('artifacts/integration',{recursive:true});
+  for (const width of [1920,1131,390,320]) {
+    await page.setViewportSize({width,height:width===1920?1080:884});
+    await page.goto('/#yard');
+    await expect(page.getByRole('list',{name:'연료 수급 업무 흐름'})).toBeVisible();
+    await expect(page.getByRole('list',{name:'연료 수급 업무 흐름'}).getByRole('listitem')).toHaveCount(4);
+    await expect(page.getByLabel('아이디',{exact:true})).toBeVisible();
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    const form=await page.locator('.gf-auth-card').boundingBox(),intro=await page.locator('.gf-auth-intro').boundingBox();
+    if(width>900) expect(form!.x).toBeGreaterThan(intro!.x+intro!.width);
+    else expect(form!.y).toBeLessThan(intro!.y);
+    await page.screenshot({path:`artifacts/integration/login-${width}.png`,fullPage:true,animations:'disabled'});
+  }
+  await page.setViewportSize({width:1920,height:1080});
+  await page.getByRole('button',{name:'다크 모드로 전환',exact:true}).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.screenshot({path:'artifacts/integration/login-dark-1920.png',fullPage:true,animations:'disabled'});
 });
 
 test('real approved signup blocks pending accounts, approves as member and isolates workspaces', async ({ page, context }) => {
@@ -47,7 +68,7 @@ test('real approved signup blocks pending accounts, approves as member and isola
   expect((await page.request.get('http://127.0.0.1:8097/api/me/vessel-workspace')).status()).toBe(403);
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
   await login(page, 'test-admin', 'only-for-isolated-ui-tests-2026');
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '데이터/관리자', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '사용자·권한', exact: true }).click();
   const member = page.locator('.gf-member-list article').filter({ hasText: 'Test Crew' });
   await expect(member).toBeVisible();
   await page.screenshot({ path: '.tooling-tmp/members-dark.png' });
@@ -55,7 +76,7 @@ test('real approved signup blocks pending accounts, approves as member and isola
   await expect(page.getByRole('status')).toContainText('계정 변경을 반영했습니다');
   await logout(page);
   await login(page, 'test-crew');
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(page.locator('.vessel-watchlist .shipment-card')).toHaveCount(0);
   await page.getByRole('button', { name: '관심 선박 구성', exact: true }).click();
   await page.getByRole('tab', { name: '직접 등록', exact: true }).click();
@@ -80,12 +101,12 @@ test('real approved signup blocks pending accounts, approves as member and isola
     return data.workspace.voyages.map((v: { origin: string }) => v.origin);
   }).toContain('Test Port');
   await page.reload();
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(page.locator('.vessel-watchlist .shipment-card')).toContainText('Crew Private Vessel');
   expect(await page.evaluate(() => localStorage.getItem('genforecast.vessel-workspace.v1'))).toBeNull();
   await logout(page);
   await login(page, 'test-admin', 'only-for-isolated-ui-tests-2026');
-  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '선박 추적', exact: true }).click();
+  await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '항차·화물', exact: true }).click();
   await expect(page.locator('.vessel-watchlist .shipment-card')).toHaveCount(0);
   await expect(page.getByText('Crew Private Vessel', { exact: true })).toHaveCount(0);
   const stale = await page.evaluate(async () => ({

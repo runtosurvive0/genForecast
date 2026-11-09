@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { FuelDashboard } from "./FuelDashboard";
+import { ForecastDetails } from "./ForecastDetails";
 import { addDays, type PlanningSnapshot } from "../../domain/planning";
 import type { SupplyTarget } from "../../domain/supply";
 import "./midterm.css";
@@ -32,9 +33,9 @@ function Outages({ snapshot: s }: { snapshot: PlanningSnapshot }) {
     (o) => Date.parse(o.end_at) > first && Date.parse(o.start_at) < last,
   );
   return (
-    <Section
+    <div id="gf-forecast-outages"><ForecastDetails title="호기별 계획정지 일정" note={`${s.start} ~ ${s.end} · ${visible.length}건`}><Section
       title="호기별 계획정지 일정"
-      note={`${s.start} ~ ${s.end} · 선택한 MILP 계산에 반영된 일정 · 종료시각 제외`}
+      note={`${s.start} ~ ${s.end} · 선택한 발전계획에 반영된 일정 · 종료시각 제외`}
     >
       <div className="midterm-outage-axis">
         <span>{s.start}</span>
@@ -98,7 +99,7 @@ function Outages({ snapshot: s }: { snapshot: PlanningSnapshot }) {
           여부를 확인하세요.
         </p>
       )}
-    </Section>
+    </Section></ForecastDetails></div>
   );
 }
 
@@ -106,16 +107,22 @@ export function MidtermDashboard({
   snapshot,
   theme,
   onSupplyTarget,
+  onSimulation,
+  onPurchasing,
 }: {
   snapshot: PlanningSnapshot;
   theme: string;
   onSupplyTarget: (target: SupplyTarget) => void;
+  onSimulation: () => void;
+  onPurchasing?: () => void;
 }) {
   return (
     <FuelDashboard
       snapshot={snapshot}
       theme={theme}
       onSupplyTarget={onSupplyTarget}
+      onSimulation={onSimulation}
+      onPurchasing={onPurchasing}
     >
       <Outages snapshot={snapshot} />
     </FuelDashboard>

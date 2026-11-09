@@ -1,7 +1,7 @@
 import type { TrackingVessel } from '../../domain/vessel-workflow.ts';
 
 export function vesselSourceLabel(v: TrackingVessel) {
-  if (v.source === 'demo') return '합성 표본';
+  if (v.source === 'demo') return '시연 자료';
   if (v.source === 'digitraffic') return 'Digitraffic · 핀란드';
   if (!v.ais) return '직접 등록';
   const feed = v.ais.position ? (v.ais.position.feed ?? 'aisstream') : v.ais.metadataFeed;

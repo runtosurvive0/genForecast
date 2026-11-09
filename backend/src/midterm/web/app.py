@@ -43,6 +43,10 @@ from midterm.web.ledger_api import router as ledger_router
 app.include_router(ledger_router)
 from midterm.web.vessels_api import router as vessels_router
 app.include_router(vessels_router)
+from midterm.web.voyage_registry_api import router as voyage_registry_router
+app.include_router(voyage_registry_router)
+from midterm.web.assistant_api import router as assistant_router
+app.include_router(assistant_router)
 from midterm.web.catalog_transport import CatalogCompressionMiddleware
 app.add_middleware(CatalogCompressionMiddleware)
 from midterm.web.auth_api import install_access

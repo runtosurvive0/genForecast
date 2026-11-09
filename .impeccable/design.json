@@ -1,0 +1,712 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-07T06:46:55.821Z",
+  "title": "Design System: gen4cast",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "동작 파랑",
+        "canonical": "#2447c5",
+        "tonalRamp": [
+          "oklch(15% 0.0817 266.17)",
+          "oklch(26% 0.1312 266.17)",
+          "oklch(38% 0.1674 266.17)",
+          "oklch(49% 0.1799 266.17)",
+          "oklch(61% 0.1694 266.17)",
+          "oklch(72% 0.1387 266.17)",
+          "oklch(84% 0.0867 266.17)",
+          "oklch(95% 0.0282 266.17)"
+        ]
+      },
+      "operating-blue": {
+        "role": "primary",
+        "displayName": "운영 패널 파랑",
+        "canonical": "#2447c5",
+        "tonalRamp": [
+          "oklch(15% 0.0817 266.17)",
+          "oklch(26% 0.1312 266.17)",
+          "oklch(38% 0.1674 266.17)",
+          "oklch(49% 0.1799 266.17)",
+          "oklch(61% 0.1694 266.17)",
+          "oklch(72% 0.1387 266.17)",
+          "oklch(84% 0.0867 266.17)",
+          "oklch(95% 0.0282 266.17)"
+        ]
+      },
+      "active-rail-ink": {
+        "role": "primary",
+        "displayName": "선택 메뉴 파랑",
+        "canonical": "#2447c5",
+        "tonalRamp": [
+          "oklch(15% 0.0817 266.17)",
+          "oklch(26% 0.1312 266.17)",
+          "oklch(38% 0.1674 266.17)",
+          "oklch(49% 0.1799 266.17)",
+          "oklch(61% 0.1694 266.17)",
+          "oklch(72% 0.1387 266.17)",
+          "oklch(84% 0.0867 266.17)",
+          "oklch(95% 0.0282 266.17)"
+        ]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "다크 동작 파랑",
+        "canonical": "#6b94ff",
+        "tonalRamp": [
+          "oklch(15% 0.0817 259.04)",
+          "oklch(26% 0.1312 259.04)",
+          "oklch(38% 0.1674 259.04)",
+          "oklch(49% 0.1799 259.04)",
+          "oklch(61% 0.1694 259.04)",
+          "oklch(72% 0.1387 259.04)",
+          "oklch(84% 0.0867 259.04)",
+          "oklch(95% 0.0282 259.04)"
+        ]
+      },
+      "workspace": {
+        "role": "neutral",
+        "displayName": "회색 작업면",
+        "canonical": "#edf1f6",
+        "tonalRamp": [
+          "oklch(15% 0.0036 253.85)",
+          "oklch(26% 0.0058 253.85)",
+          "oklch(38% 0.0074 253.85)",
+          "oklch(49% 0.0080 253.85)",
+          "oklch(61% 0.0075 253.85)",
+          "oklch(72% 0.0061 253.85)",
+          "oklch(84% 0.0038 253.85)",
+          "oklch(95% 0.0012 253.85)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "흰 정보 영역",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "oklch(15% 0.0000 89.88)",
+          "oklch(26% 0.0000 89.88)",
+          "oklch(38% 0.0000 89.88)",
+          "oklch(49% 0.0000 89.88)",
+          "oklch(61% 0.0000 89.88)",
+          "oklch(72% 0.0000 89.88)",
+          "oklch(84% 0.0000 89.88)",
+          "oklch(95% 0.0000 89.88)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "본문 잉크",
+        "canonical": "#172333",
+        "tonalRamp": [
+          "oklch(15% 0.0158 255.85)",
+          "oklch(26% 0.0254 255.85)",
+          "oklch(38% 0.0324 255.85)",
+          "oklch(49% 0.0349 255.85)",
+          "oklch(61% 0.0328 255.85)",
+          "oklch(72% 0.0269 255.85)",
+          "oklch(84% 0.0168 255.85)",
+          "oklch(95% 0.0055 255.85)"
+        ]
+      },
+      "quiet": {
+        "role": "neutral",
+        "displayName": "보조 잉크",
+        "canonical": "#5a6a80",
+        "tonalRamp": [
+          "oklch(15% 0.0182 256.41)",
+          "oklch(26% 0.0291 256.41)",
+          "oklch(38% 0.0372 256.41)",
+          "oklch(49% 0.0400 256.41)",
+          "oklch(61% 0.0376 256.41)",
+          "oklch(72% 0.0308 256.41)",
+          "oklch(84% 0.0193 256.41)",
+          "oklch(95% 0.0063 256.41)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "구분선",
+        "canonical": "#d8e1ed",
+        "tonalRamp": [
+          "oklch(15% 0.0087 255.54)",
+          "oklch(26% 0.0139 255.54)",
+          "oklch(38% 0.0177 255.54)",
+          "oklch(49% 0.0191 255.54)",
+          "oklch(61% 0.0179 255.54)",
+          "oklch(72% 0.0147 255.54)",
+          "oklch(84% 0.0092 255.54)",
+          "oklch(95% 0.0030 255.54)"
+        ]
+      },
+      "selection": {
+        "role": "primary",
+        "displayName": "옅은 선택면",
+        "canonical": "#e9f1ff",
+        "tonalRamp": [
+          "oklch(15% 0.0094 261.77)",
+          "oklch(26% 0.0151 261.77)",
+          "oklch(38% 0.0192 261.77)",
+          "oklch(49% 0.0207 261.77)",
+          "oklch(61% 0.0195 261.77)",
+          "oklch(72% 0.0159 261.77)",
+          "oklch(84% 0.0100 261.77)",
+          "oklch(95% 0.0032 261.77)"
+        ]
+      },
+      "rail-label": {
+        "role": "neutral",
+        "displayName": "운영 패널 보조 글자",
+        "canonical": "#dce7ff",
+        "tonalRamp": [
+          "oklch(15% 0.0158 265.99)",
+          "oklch(26% 0.0253 265.99)",
+          "oklch(38% 0.0323 265.99)",
+          "oklch(49% 0.0347 265.99)",
+          "oklch(61% 0.0327 265.99)",
+          "oklch(72% 0.0268 265.99)",
+          "oklch(84% 0.0167 265.99)",
+          "oklch(95% 0.0054 265.99)"
+        ]
+      },
+      "workspace-dark": {
+        "role": "neutral",
+        "displayName": "다크 작업면",
+        "canonical": "#17181b",
+        "tonalRamp": [
+          "oklch(15% 0.0022 248.02)",
+          "oklch(26% 0.0035 248.02)",
+          "oklch(38% 0.0045 248.02)",
+          "oklch(49% 0.0048 248.02)",
+          "oklch(61% 0.0045 248.02)",
+          "oklch(72% 0.0037 248.02)",
+          "oklch(84% 0.0023 248.02)",
+          "oklch(95% 0.0008 248.02)"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "다크 정보 영역",
+        "canonical": "#222428",
+        "tonalRamp": [
+          "oklch(15% 0.0028 258.36)",
+          "oklch(26% 0.0045 258.36)",
+          "oklch(38% 0.0057 258.36)",
+          "oklch(49% 0.0061 258.36)",
+          "oklch(61% 0.0058 258.36)",
+          "oklch(72% 0.0047 258.36)",
+          "oklch(84% 0.0030 258.36)",
+          "oklch(95% 0.0010 258.36)"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "다크 본문",
+        "canonical": "#eef0f4",
+        "tonalRamp": [
+          "oklch(15% 0.0028 255.48)",
+          "oklch(26% 0.0046 255.48)",
+          "oklch(38% 0.0058 255.48)",
+          "oklch(49% 0.0063 255.48)",
+          "oklch(61% 0.0059 255.48)",
+          "oklch(72% 0.0048 255.48)",
+          "oklch(84% 0.0030 255.48)",
+          "oklch(95% 0.0010 255.48)"
+        ]
+      },
+      "quiet-dark": {
+        "role": "neutral",
+        "displayName": "다크 보조 글자",
+        "canonical": "#aaafb9",
+        "tonalRamp": [
+          "oklch(15% 0.0106 254.42)",
+          "oklch(26% 0.0170 254.42)",
+          "oklch(38% 0.0217 254.42)",
+          "oklch(49% 0.0233 254.42)",
+          "oklch(61% 0.0219 254.42)",
+          "oklch(72% 0.0179 254.42)",
+          "oklch(84% 0.0112 254.42)",
+          "oklch(95% 0.0036 254.42)"
+        ]
+      },
+      "line-dark": {
+        "role": "neutral",
+        "displayName": "다크 구분선",
+        "canonical": "#373b44",
+        "tonalRamp": [
+          "oklch(15% 0.0045 253.95)",
+          "oklch(26% 0.0073 253.95)",
+          "oklch(38% 0.0093 253.95)",
+          "oklch(49% 0.0100 253.95)",
+          "oklch(61% 0.0094 253.95)",
+          "oklch(72% 0.0077 253.95)",
+          "oklch(84% 0.0048 253.95)",
+          "oklch(95% 0.0016 253.95)"
+        ]
+      },
+      "selection-dark": {
+        "role": "primary",
+        "displayName": "다크 선택면",
+        "canonical": "#222d4a",
+        "tonalRamp": [
+          "oklch(15% 0.0263 257.63)",
+          "oklch(26% 0.0422 257.63)",
+          "oklch(38% 0.0538 257.63)",
+          "oklch(49% 0.0578 257.63)",
+          "oklch(61% 0.0544 257.63)",
+          "oklch(72% 0.0446 257.63)",
+          "oklch(84% 0.0279 257.63)",
+          "oklch(95% 0.0090 257.63)"
+        ]
+      },
+      "header-dark": {
+        "role": "neutral",
+        "displayName": "다크 상단바",
+        "canonical": "#111214",
+        "tonalRamp": [
+          "oklch(15% 0.0019 264.47)",
+          "oklch(26% 0.0031 264.47)",
+          "oklch(38% 0.0040 264.47)",
+          "oklch(49% 0.0043 264.47)",
+          "oklch(61% 0.0040 264.47)",
+          "oklch(72% 0.0033 264.47)",
+          "oklch(84% 0.0021 264.47)",
+          "oklch(95% 0.0007 264.47)"
+        ]
+      },
+      "scene-surface": {
+        "role": "neutral",
+        "displayName": "참고 장면 작업면",
+        "canonical": "#e8eff4",
+        "tonalRamp": [
+          "oklch(15% 0.0046 238.51)",
+          "oklch(26% 0.0074 238.51)",
+          "oklch(38% 0.0094 238.51)",
+          "oklch(49% 0.0101 238.51)",
+          "oklch(61% 0.0095 238.51)",
+          "oklch(72% 0.0078 238.51)",
+          "oklch(84% 0.0049 238.51)",
+          "oklch(95% 0.0016 238.51)"
+        ]
+      },
+      "scene-ink": {
+        "role": "neutral",
+        "displayName": "참고 장면 잉크",
+        "canonical": "#344b5e",
+        "tonalRamp": [
+          "oklch(15% 0.0195 244.06)",
+          "oklch(26% 0.0313 244.06)",
+          "oklch(38% 0.0399 244.06)",
+          "oklch(49% 0.0429 244.06)",
+          "oklch(61% 0.0404 244.06)",
+          "oklch(72% 0.0331 244.06)",
+          "oklch(84% 0.0207 244.06)",
+          "oklch(95% 0.0067 244.06)"
+        ]
+      },
+      "scene-surface-dark": {
+        "role": "neutral",
+        "displayName": "다크 참고 장면",
+        "canonical": "#222428",
+        "tonalRamp": [
+          "oklch(15% 0.0081 248.36)",
+          "oklch(26% 0.0130 248.36)",
+          "oklch(38% 0.0166 248.36)",
+          "oklch(49% 0.0178 248.36)",
+          "oklch(61% 0.0168 248.36)",
+          "oklch(72% 0.0137 248.36)",
+          "oklch(84% 0.0086 248.36)",
+          "oklch(95% 0.0028 248.36)"
+        ]
+      },
+      "scene-ink-dark": {
+        "role": "neutral",
+        "displayName": "다크 참고 장면 잉크",
+        "canonical": "#eef0f4",
+        "tonalRamp": [
+          "oklch(15% 0.0078 242.45)",
+          "oklch(26% 0.0125 242.45)",
+          "oklch(38% 0.0159 242.45)",
+          "oklch(49% 0.0171 242.45)",
+          "oklch(61% 0.0161 242.45)",
+          "oklch(72% 0.0132 242.45)",
+          "oklch(84% 0.0083 242.45)",
+          "oklch(95% 0.0027 242.45)"
+        ]
+      },
+      "caution": {
+        "role": "secondary",
+        "displayName": "주의 잉크",
+        "canonical": "#956319",
+        "tonalRamp": [
+          "oklch(15% 0.0483 71.31)",
+          "oklch(26% 0.0775 71.31)",
+          "oklch(38% 0.0989 71.31)",
+          "oklch(49% 0.1063 71.31)",
+          "oklch(61% 0.1001 71.31)",
+          "oklch(72% 0.0819 71.31)",
+          "oklch(84% 0.0512 71.31)",
+          "oklch(95% 0.0166 71.31)"
+        ]
+      },
+      "caution-dark": {
+        "role": "secondary",
+        "displayName": "다크 주의 잉크",
+        "canonical": "#dbb573",
+        "tonalRamp": [
+          "oklch(15% 0.0431 80.52)",
+          "oklch(26% 0.0692 80.52)",
+          "oklch(38% 0.0882 80.52)",
+          "oklch(49% 0.0948 80.52)",
+          "oklch(61% 0.0893 80.52)",
+          "oklch(72% 0.0731 80.52)",
+          "oklch(84% 0.0457 80.52)",
+          "oklch(95% 0.0148 80.52)"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "오류 잉크",
+        "canonical": "#bb5555",
+        "tonalRamp": [
+          "oklch(15% 0.0601 22.08)",
+          "oklch(26% 0.0965 22.08)",
+          "oklch(38% 0.1230 22.08)",
+          "oklch(49% 0.1323 22.08)",
+          "oklch(61% 0.1245 22.08)",
+          "oklch(72% 0.1020 22.08)",
+          "oklch(84% 0.0637 22.08)",
+          "oklch(95% 0.0207 22.08)"
+        ]
+      },
+      "danger-dark": {
+        "role": "secondary",
+        "displayName": "다크 오류 잉크",
+        "canonical": "#e99090",
+        "tonalRamp": [
+          "oklch(15% 0.0492 19.95)",
+          "oklch(26% 0.0790 19.95)",
+          "oklch(38% 0.1007 19.95)",
+          "oklch(49% 0.1083 19.95)",
+          "oklch(61% 0.1019 19.95)",
+          "oklch(72% 0.0835 19.95)",
+          "oklch(84% 0.0522 19.95)",
+          "oklch(95% 0.0170 19.95)"
+        ]
+      },
+      "auth-visual": {
+        "role": "primary",
+        "displayName": "로그인 흐름도 파랑",
+        "canonical": "#032fd9",
+        "tonalRamp": [
+          "oklch(15% 0.0817 264.25)",
+          "oklch(26% 0.1312 264.25)",
+          "oklch(38% 0.1674 264.25)",
+          "oklch(49% 0.1799 264.25)",
+          "oklch(61% 0.1694 264.25)",
+          "oklch(72% 0.1387 264.25)",
+          "oklch(84% 0.0867 264.25)",
+          "oklch(95% 0.0282 264.25)"
+        ]
+      },
+      "auth-visual-dark": {
+        "role": "primary",
+        "displayName": "다크 로그인 흐름도 파랑",
+        "canonical": "#172e78",
+        "tonalRamp": [
+          "oklch(15% 0.0589 266.16)",
+          "oklch(26% 0.0945 266.16)",
+          "oklch(38% 0.1206 266.16)",
+          "oklch(49% 0.1296 266.16)",
+          "oklch(61% 0.1220 266.16)",
+          "oklch(72% 0.0999 266.16)",
+          "oklch(84% 0.0625 266.16)",
+          "oklch(95% 0.0203 266.16)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "brand": {
+        "displayName": "brand",
+        "purpose": "자체 호스팅 gen4cast 워드마크."
+      },
+      "headline": {
+        "displayName": "headline",
+        "purpose": "운영 화면 제목."
+      },
+      "title": {
+        "displayName": "title",
+        "purpose": "접안·저탄 섹션 제목."
+      },
+      "workspace-title": {
+        "displayName": "workspace-title",
+        "purpose": "분석 섹션 제목."
+      },
+      "body": {
+        "displayName": "body",
+        "purpose": "기본 UI 본문."
+      },
+      "workspace-body": {
+        "displayName": "workspace-body",
+        "purpose": "운영 본문."
+      },
+      "label": {
+        "displayName": "label",
+        "purpose": "입력·탭·표 라벨."
+      },
+      "source-label": {
+        "displayName": "source-label",
+        "purpose": "출처·기준시각."
+      },
+      "metric": {
+        "displayName": "metric",
+        "purpose": "저탄·접안 KPI."
+      },
+      "rail-metric": {
+        "displayName": "rail-metric",
+        "purpose": "운영 패널 출력."
+      },
+      "dimension": {
+        "displayName": "dimension",
+        "purpose": "장면 이격 측정값."
+      },
+      "auth-intro": {
+        "displayName": "auth-intro",
+        "purpose": "복원 로그인 소개 제목."
+      },
+      "auth-title": {
+        "displayName": "auth-title",
+        "purpose": "복원 로그인 폼 제목."
+      }
+    },
+    "shadows": [
+      {
+        "name": "flat-panel",
+        "value": "none",
+        "purpose": "공통 운영 정보면."
+      },
+      {
+        "name": "selected-segment",
+        "value": "0 1px 3px #0000000c",
+        "purpose": "유지된 세그먼트 선택면."
+      },
+      {
+        "name": "online-signal",
+        "value": "0 0 0 3px #ffffff20",
+        "purpose": "파란 운영 패널의 연결 표시."
+      }
+    ],
+    "motion": [
+      {
+        "name": "button-state-properties",
+        "value": "color, background-color, border-color, opacity",
+        "purpose": "refinement.css의 transition-property. 새 duration은 지정하지 않음."
+      },
+      {
+        "name": "scene-motion-gate",
+        "value": "online && snapshot.playing && !prefers-reduced-motion",
+        "purpose": "연결된 운전 모사에서만 물류 흐름 animation."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "장면 흐름 정지; 재고·정지 차트의 animation/transition 없음."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "scene-desktop",
+        "value": "1500px"
+      },
+      {
+        "name": "shell-compact-max",
+        "value": "1499px"
+      },
+      {
+        "name": "workspace-detail-collapse",
+        "value": "1250px"
+      },
+      {
+        "name": "scene-detail-collapse",
+        "value": "1100px"
+      },
+      {
+        "name": "shell-mobile",
+        "value": "900px"
+      },
+      {
+        "name": "auth-form-first",
+        "value": "900px"
+      },
+      {
+        "name": "workspace-stack",
+        "value": "850px"
+      },
+      {
+        "name": "scene-toolbar-wrap",
+        "value": "640px"
+      },
+      {
+        "name": "operations-phone",
+        "value": "600px"
+      },
+      {
+        "name": "auth-phone",
+        "value": "600px"
+      },
+      {
+        "name": "shell-two-row-header",
+        "value": "480px"
+      },
+      {
+        "name": "demo-wide",
+        "value": "1700px"
+      },
+      {
+        "name": "demo-compact",
+        "value": "1300px"
+      },
+      {
+        "name": "demo-clock-row",
+        "value": "1050px"
+      },
+      {
+        "name": "demo-phone",
+        "value": "720px"
+      },
+      {
+        "name": "demo-small-phone",
+        "value": "360px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Workflow button",
+      "kind": "button",
+      "refersTo": "button-workflow",
+      "description": "워크플로 선택 전 상태. 선택 의미는 aria-pressed로 전달한다.",
+      "html": "<button class=\"ds-workflow\" aria-pressed=\"false\">수급 검토</button>",
+      "css": ".ds-workflow{display:inline-flex;align-items:center;gap:8px;background:var(--card,#fff);border:1px solid var(--border,#d8e1ed);color:var(--muted-foreground,#5a6a80);border-radius:20px;padding:9px 16px;font:12px Pretendard,sans-serif;cursor:pointer;transition-property:color,background-color,border-color,opacity}.ds-workflow[aria-pressed=true]{background:var(--primary,#2447c5);color:#fff;border-color:var(--primary,#2447c5)}.ds-workflow:focus-visible{outline:2px solid var(--primary,#2447c5);outline-offset:4px}.ds-workflow:disabled{opacity:.5;cursor:not-allowed}"
+    },
+    {
+      "name": "Selected workflow button",
+      "kind": "button",
+      "refersTo": "button-workflow-active",
+      "description": "선택된 실제 작업 경로.",
+      "html": "<button class=\"ds-workflow\" aria-pressed=\"true\">수급 검토</button>",
+      "css": ".ds-workflow{display:inline-flex;align-items:center;gap:8px;background:var(--card,#fff);border:1px solid var(--border,#d8e1ed);color:var(--muted-foreground,#5a6a80);border-radius:20px;padding:9px 16px;font:12px Pretendard,sans-serif;cursor:pointer;transition-property:color,background-color,border-color,opacity}.ds-workflow[aria-pressed=true]{background:var(--primary,#2447c5);color:#fff;border-color:var(--primary,#2447c5)}.ds-workflow:focus-visible{outline:2px solid var(--primary,#2447c5);outline-offset:4px}.ds-workflow:disabled{opacity:.5;cursor:not-allowed}"
+    },
+    {
+      "name": "Demo primary action",
+      "kind": "button",
+      "refersTo": "button-demo-primary",
+      "description": "모사 조작반 주 동작. 실제 설비 제어가 아니다.",
+      "html": "<button class=\"ds-demo-action\">모사에 적용</button>",
+      "css": ".ds-demo-action{background:var(--fdc-blue,#2447c5);border:1px solid var(--fdc-blue,#2447c5);color:#fff;border-radius:6px;padding:7px 9px;font:13px/1.5 Pretendard,sans-serif;cursor:pointer}.ds-demo-action:hover{background:#1c3bac}.ds-demo-action:focus-visible{outline:2px solid #397fdc;outline-offset:3px}.ds-demo-action:disabled{opacity:.5;cursor:default}"
+    },
+    {
+      "name": "Planning input",
+      "kind": "input",
+      "refersTo": "input-workspace",
+      "description": "구매 검토의 사용자 입력 조건.",
+      "html": "<label class=\"ds-field\">리드타임 (일)<input type=\"number\" value=\"30\" /></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:8px;font:11px Pretendard,sans-serif;color:var(--muted-foreground,#5a6a80)}.ds-field input{width:100%;height:36px;border:1px solid var(--border,#d8e1ed);border-radius:5px;padding:5px 9px;color:var(--foreground,#172333);background:var(--card,#fff);font:12px Pretendard,sans-serif}.ds-field input::placeholder{color:var(--muted-foreground,#5a6a80)}.ds-field input:focus-visible{outline:2px solid var(--primary,#2447c5);outline-offset:3px}@media(max-width:600px){.ds-field{font-size:12px}.ds-field input{height:44px;font-size:14px}}"
+    },
+    {
+      "name": "Operating navigation",
+      "kind": "nav",
+      "refersTo": "navigation-stage-active",
+      "description": "파란 운영 맥락 속 실제 메뉴 선택.",
+      "html": "<nav class=\"ds-rail\" aria-label=\"운영 단계\"><button class=\"ds-stage\" aria-current=\"page\"><svg width=\"21\" height=\"21\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" aria-hidden=\"true\"><path d=\"m3 8 9-5 9 5v12H3Z M7 20V10h10v10 M7 14h10 M7 17h10\"/></svg><span>저탄·재고</span></button><button class=\"ds-stage\">접안·하역</button></nav>",
+      "css": ".ds-rail{display:grid;gap:4px;padding:15px 18px;background:var(--sidebar,#2447c5);border-radius:16px}.ds-stage{display:flex;align-items:center;gap:12px;min-height:39px;border:0;border-radius:9px;color:#f5f7ff;background:none;padding:8px 10px;text-align:left;font:13px Pretendard,sans-serif;cursor:pointer}.ds-stage[aria-current]{background:#fff;color:#2447c5}.ds-stage:hover:not([aria-current]){background:#ffffff12}.ds-stage:focus-visible{outline:2px solid #fff;outline-offset:4px}"
+    },
+    {
+      "name": "Source tag",
+      "kind": "chip",
+      "description": "접안 제목 옆 출처 태그. 조작 버튼이 아니다.",
+      "html": "<span class=\"ds-source-tag\">시연</span>",
+      "css": ".ds-source-tag{display:inline;border:1px solid var(--border,#d8e1ed);border-radius:3px;padding:1px 4px;margin-left:8px;font:10px/1.5 Pretendard,sans-serif;color:var(--muted-foreground,#5a6a80)}"
+    },
+    {
+      "name": "Operations panel",
+      "kind": "card",
+      "refersTo": "card-operations",
+      "description": "제목·내용을 한 정보 영역으로 읽는 평평한 패널.",
+      "html": "<section class=\"ds-panel\"><header><h2>연결 상태</h2><span>기준 확인</span></header><p>자료 미연결 · 값 미확정</p></section>",
+      "css": ".ds-panel{min-width:0;overflow:hidden;border-radius:12px;background:var(--card,#fff);color:var(--foreground,#172333);box-shadow:none;font-family:Pretendard,sans-serif}.ds-panel header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;min-height:47px}.ds-panel h2{margin:0;font-size:14px;font-weight:550}.ds-panel header span{font-size:11px;color:var(--muted-foreground,#5a6a80)}.ds-panel p{margin:0;padding:12px 18px;font-size:11px;line-height:1.7;color:var(--muted-foreground,#5a6a80)}"
+    },
+    {
+      "name": "Source strip",
+      "kind": "custom",
+      "refersTo": "source-strip",
+      "description": "출처와 한계를 수치 가까이에 유지하는 설명.",
+      "html": "<div class=\"ds-source-strip\"><strong>저장 계획</strong><span>실제 출력 실적은 미연계</span></div>",
+      "css": ".ds-source-strip{display:flex;gap:10px;align-items:center;padding:12px 16px;background:var(--card,#fff);border-radius:9px;font:12px/1.5 Pretendard,sans-serif;color:var(--muted-foreground,#5a6a80)}.ds-source-strip strong{color:var(--foreground,#172333);font-weight:550;white-space:nowrap}@media(max-width:850px){.ds-source-strip{flex-wrap:wrap}}"
+    },
+    {
+      "name": "Scene inspection controls",
+      "kind": "custom",
+      "refersTo": "scene-toolbar",
+      "description": "배율과 지붕 투시 도구. 정적 미리보기는 장면 런타임을 포함하지 않는다.",
+      "html": "<div class=\"ds-scene-toolbar\"><div class=\"ds-scene-controls\"><button aria-label=\"축소\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M5 12h14\"/></svg></button><output>100%</output><button aria-label=\"확대\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M5 12h14 M12 5v14\"/></svg></button><button class=\"ds-roof\" aria-pressed=\"true\">지붕 투시</button></div></div>",
+      "css": ".ds-scene-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid var(--fuel-scene-border,#cbd6df);background:var(--fuel-scene-bg,#e8eff4);color:var(--fuel-scene-ink,#344b5e);font-family:Pretendard,sans-serif}.ds-scene-controls{display:flex;align-items:center;gap:3px}.ds-scene-controls button{display:inline-flex;align-items:center;justify-content:center;gap:4px;width:28px;height:28px;padding:0;border:1px solid transparent;border-radius:4px;background:transparent;color:inherit;cursor:pointer}.ds-scene-controls button:hover:not(:disabled),.ds-scene-controls button[aria-pressed=true]{background:color-mix(in srgb,#1580d9 13%,transparent);color:#137dd2;border-color:color-mix(in srgb,#1580d9 25%,transparent)}.ds-scene-controls button:focus-visible{outline:2px solid #1685e0;outline-offset:2px}.ds-scene-controls button:disabled{opacity:.35;cursor:default}.ds-scene-controls .ds-roof{width:auto;min-width:76px;font-size:11px;padding:0 5px}.ds-scene-controls output{width:43px;font-size:11px;text-align:center;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Authentication form surface",
+      "kind": "card",
+      "refersTo": "auth-card",
+      "description": "복원된 소개·흐름도 옆 실제 로그인·가입 폼의 표면.",
+      "html": "<section class=\"ds-auth-card\"><h1>로그인</h1><label>이메일<input type=\"email\" placeholder=\"이메일 주소\" /></label></section>",
+      "css": ".ds-auth-card{width:100%;margin:0;padding:34px;background:var(--card,#fff);border:1px solid var(--border,#d8e1ed);border-radius:10px;color:var(--foreground,#172333);font-family:Pretendard,sans-serif}.ds-auth-card h1{font-size:24px;line-height:1.45;letter-spacing:-.04em;margin:12px 0;font-weight:650}.ds-auth-card label{display:grid;gap:7px;font-size:12px}.ds-auth-card input{background:var(--background,#edf1f6);color:var(--foreground,#172333);border:1px solid var(--border,#d8e1ed);border-radius:6px;height:38px;min-width:0;width:100%;padding:0 10px;font:12px Pretendard,sans-serif}.ds-auth-card input:focus-visible{outline:2px solid var(--primary,#2447c5);outline-offset:2px}@media(max-width:600px){.ds-auth-card{padding:22px}.ds-auth-card h1{font-size:21px}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "연료 운영 워크스페이스",
+    "overview": "gen4cast는 연료 흐름의 관측과 계획을 함께 읽는 산업 운영 작업면이다. 회색 바탕 위에 흰 정보 영역을 놓고, 파란 왼쪽 운영 패널이 출력·재고·접안과 이동 경로를 계속 유지한다. 브랜드의 Newsreader와 본문의 Pretendard는 높은 정보 밀도 안에서 서로 다른 역할을 맡는다.\n\n장면이 필요한 화면은 실제 React/Three.js 상호작용을 중심에 둔다. 참고 형상, 사진 판독 재고, 합성 계획, 명시적으로 연결한 운전 모사와 ZGX 관측·저장 계획의 출처를 가까이에 적어 시각적 완성도가 사실의 확실성을 대신하지 않게 한다.\n\n이 문서는 사용자가 승인한 운영 디자인을 실제 통합 코드에서 추출한 기록이다. 기존 보라색 강조·184px 사이드바·파란 패널 금지 규칙을 대체하며, 기능·인증·데이터 계약과 공통 컴포넌트 재사용 원칙은 유지한다. 토큰의 원천은 `src/refinement.css`와 `src/components/operations-shell/operations-shell.css`, 화면별 규칙은 각 기능 CSS다. `src/index.css`의 이전 색 값은 덮어쓰기 전 기본값이다. 문서는 팀 약속이며 새 lint·CI 강제를 추가하지 않는다.\n\n검토 기준은 `PRODUCT.md`, `docs/GEN4CAST_UI_INTEGRATION.md`, 해당 통합 계획과 2026-11-05의 데스크톱·모바일·다크 캡처다. 문서와 캡처가 실제 운영 데이터 검증 또는 배포 완료를 뜻하지 않는다.",
+    "keyCharacteristics": [
+      "회색 작업면·파란 운영 패널·흰 정보 영역과 짙은 회색 다크모드.",
+      "고정된 운영 맥락, 중앙 설비 장면, 간결한 재고·선택 상세의 위계.",
+      "자체 호스팅 브랜드 글꼴과 표 숫자의 일정한 자릿폭.",
+      "작은 화면의 세로 읽기 순서와 명시적인 연결·미확정 상태."
+    ],
+    "rules": [
+      {
+        "name": "Operating Context",
+        "body": "파란 운영 패널은 제품의 지속적인 맥락이다. 선택 메뉴는 흰 면과 파란 글자로 구분하고, 일반 콘텐츠 전체를 같은 파랑으로 채우지 않는다.",
+        "section": "colors"
+      },
+      {
+        "name": "Evidence Beside Values",
+        "body": "계획·사진 참고·합성·운전 모사·실제 관측의 출처를 값 또는 장면 가까이에 유지한다. 색만으로 출처나 상태를 전달하지 않는다.",
+        "section": "colors"
+      },
+      {
+        "name": "Brand Has One Voice",
+        "body": "Newsreader Medium은 gen4cast 워드마크에 사용한다. 조작, 한국어 본문, 표와 수치는 Pretendard를 사용한다.",
+        "section": "typography"
+      },
+      {
+        "name": "Surface Before Shadow",
+        "body": "패널의 경계는 작업면과 정보면의 명도 차이, 간격과 얇은 구분선으로 만든다. 일반 운영 카드에 장식용 그림자를 추가하지 않는다.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 공통 셸과 CSS 토큰을 재사용하고 기능별 선택자를 해당 기능 범위 안에 둔다.",
+      "Do 흰 정보 영역과 파란 운영 패널의 역할을 유지하고 다크모드에서는 회색 작업면·정보면·밝은 글자를 함께 적용한다.",
+      "Do 숫자에 tabular-nums를 쓰고 단위 t, kcal/kg, MW와 KST를 데이터 계약에 맞게 표시한다.",
+      "Do 참고·합성·모사·실제 관측의 출처, 미연결, 미확정과 마지막 값 상태를 가까이에 표시한다.",
+      "Do 1920×1080의 접안·저탄 화면과 작은 화면의 세로 배치를 모두 확인하고 넓은 표의 스크롤을 표 안에 둔다.",
+      "Do 키보드 포커스, 장면 밖 더미 선택, 상세·원장 진입과 reduced-motion 동작을 유지한다."
+    ],
+    "donts": [
+      "Don't API 실패나 첫 모사 수신 전 빈 값을 합성 수치 또는 0으로 채워 실제 관측처럼 보이게 하지 않는다.",
+      "Don't 사진 판독 재고와 DB 처별 집계를 섞거나 개념 3D 형상을 실제 측량·센서 상태로 주장하지 않는다.",
+      "Don't 작은 화면을 데스크톱 한 페이지 안에 억지로 축소하거나 운전 데모 연결 상태를 숨기지 않는다.",
+      "Don't 과거 보라색 강조, 184px 사이드바, 9px 초과 모서리 금지와 파란 패널 금지를 새 화면의 기준으로 되살리지 않는다.",
+      "Don't 화면마다 재고 계산·공통 내비게이션·차트 기본값을 복제하지 않는다.",
+      "Don't 캡처에 남은 작은 보조 글자, 중복 토큰이나 개별 화면 편차를 새 화면의 필수 규칙으로 확대하지 않는다."
+    ]
+  }
+}
