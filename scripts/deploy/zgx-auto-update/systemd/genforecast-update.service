@@ -1,0 +1,16 @@
+# GenForecast ZGX 자동 갱신(한 번 실행). genforecast-update.timer가 5분마다 시작한다.
+# 저장소 사본이 아니라 설치된 사본(/home/puyo/genforecast/bin/update.py)을 실행한다.
+# sudo -n systemctl restart 를 써야 하므로 NoNewPrivileges를 켜지 않는다.
+[Unit]
+Description=GenForecast ZGX auto-update from GitHub main
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=puyo
+WorkingDirectory=/home/puyo/genforecast
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/puyo/miniforge3/envs/genforecast/bin/python /home/puyo/genforecast/bin/update.py deploy
+TimeoutStartSec=40min
+Nice=10

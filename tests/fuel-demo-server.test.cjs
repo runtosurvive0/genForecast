@@ -227,3 +227,55 @@ test("a superficially local prefix does not bypass the exact browser-origin allo
     });
   }
 });
+
+function upgradeStatus(port, origin) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/demo-stream?role=viewer`,
+      { origin },
+    );
+    ws.on("unexpected-response", (_req, res) => {
+      res.resume();
+      ws.terminate();
+      resolve(res.statusCode);
+    });
+    ws.on("error", () => {});
+    ws.on("open", () => {
+      ws.close();
+      resolve(101);
+    });
+  });
+}
+test("DEMO_ALLOWED_ORIGINS adds exact deployment origins while other origins stay forbidden", async (t) => {
+  const previous = process.env.DEMO_ALLOWED_ORIGINS;
+  process.env.DEMO_ALLOWED_ORIGINS =
+    " https://zgx-6660.tailec6d33.ts.net , ,ftp://files.test,not-a-url,https://bad.test/path";
+  t.after(() => {
+    if (previous === undefined) delete process.env.DEMO_ALLOWED_ORIGINS;
+    else process.env.DEMO_ALLOWED_ORIGINS = previous;
+  });
+  const app = createDemoServer({ port: 0 });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  assert.equal(await upgradeStatus(port, "https://zgx-6660.tailec6d33.ts.net"), 101);
+  assert.equal(await upgradeStatus(port, "http://127.0.0.1:5173"), 101);
+  for (const origin of [
+    "http://zgx-6660.tailec6d33.ts.net",
+    "https://zgx-6660.tailec6d33.ts.net.evil.test",
+    "ftp://files.test",
+    "https://bad.test",
+    "https://example.com",
+  ])
+    assert.equal(await upgradeStatus(port, origin), 403, origin);
+});
+test("parseAllowedOrigins keeps only well-formed http(s) origins", () => {
+  const { parseAllowedOrigins } = require("../scripts/fuel-demo/server.cjs");
+  assert.deepEqual(parseAllowedOrigins(undefined), []);
+  assert.deepEqual(parseAllowedOrigins(""), []);
+  assert.deepEqual(
+    parseAllowedOrigins(
+      " https://a.test ,http://b.test:8080,, https://c.test/,https://d.test/x,javascript:alert(1),b.test,https://user@e.test",
+    ),
+    ["https://a.test", "http://b.test:8080", "https://c.test"],
+  );
+});

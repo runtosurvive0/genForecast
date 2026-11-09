@@ -1,0 +1,20 @@
+# GenForecast 데모 실시간 연결(/demo-stream) 서버. 현재 릴리스(current)에서 실행한다.
+# 모의 운전 상태 DB는 릴리스가 바뀌어도 남도록 /home/puyo/genforecast/data에 둔다.
+[Unit]
+Description=GenForecast demo stream (WebSocket)
+After=network.target
+
+[Service]
+Type=simple
+User=puyo
+WorkingDirectory=/home/puyo/genforecast/current
+Environment=DEMO_PORT=61578
+Environment=DEMO_ALLOWED_ORIGINS=https://zgx-6660.tailec6d33.ts.net
+Environment=SIMULATION_DB_PATH=/home/puyo/genforecast/data/operating-simulation.sqlite3
+ExecStart=/home/puyo/miniforge3/envs/genforecast-node/bin/node scripts/fuel-demo/server.cjs
+NoNewPrivileges=true
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

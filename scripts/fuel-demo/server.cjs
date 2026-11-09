@@ -7,11 +7,27 @@ const { loadCatalog } = require("./demo-catalog.cjs");
 const { openSimulationStore } = require("./simulation-store.cjs");
 const { resolve } = require("node:path");
 
-const allowedOrigins = new Set(
-  [5173, 5174, 4173, 61577].flatMap((port) =>
-    ["127.0.0.1", "localhost"].map((host) => `http://${host}:${port}`),
-  ),
+const devOrigins = [5173, 5174, 4173, 61577].flatMap((port) =>
+  ["127.0.0.1", "localhost"].map((host) => `http://${host}:${port}`),
 );
+
+/** Parse DEMO_ALLOWED_ORIGINS (comma separated); malformed or non-http(s) entries are ignored. */
+function parseAllowedOrigins(value) {
+  const origins = [];
+  for (const raw of String(value ?? "").split(",")) {
+    const candidate = raw.trim().replace(/\/$/, "");
+    if (!/^https?:\/\//.test(candidate)) continue;
+    let url;
+    try {
+      url = new URL(candidate);
+    } catch {
+      continue;
+    }
+    if (url.origin !== candidate) continue;
+    if (!origins.includes(candidate)) origins.push(candidate);
+  }
+  return origins;
+}
 
 /** Local simulation; optional telemetry history is stored separately from operational records. */
 function createDemoServer({
@@ -23,7 +39,11 @@ function createDemoServer({
   const catalog = loadCatalog(),
     engine = createEngine(catalog),
     serverId = crypto.randomUUID(),
-    store = storePath ? openSimulationStore(storePath) : null;
+    store = storePath ? openSimulationStore(storePath) : null,
+    allowedOrigins = new Set([
+      ...devOrigins,
+      ...parseAllowedOrigins(process.env.DEMO_ALLOWED_ORIGINS),
+    ]);
   const previous = store?.latest();
   if (previous?.checkpoint) engine.restore(previous.checkpoint);
   if (store) store.record(engine.snapshot(), Date.now(), engine.checkpoint());
@@ -214,4 +234,4 @@ if (require.main === module) {
   for (const signal of ["SIGTERM", "SIGINT"])
     process.on(signal, () => app.close().then(() => process.exit(0)));
 }
-module.exports = { createDemoServer };
+module.exports = { createDemoServer, parseAllowedOrigins };

@@ -31,7 +31,7 @@
 - 팀원 PC는 기본적으로 `npm ci` 후 `npm run dev`로 프런트엔드만 실행한다. `/api`는 Vite 프록시를 통해 `https://zgx-6660.tailec6d33.ts.net`에 연결한다. 팀원별 AIS/GFW 키, Python 서버, 로컬 선박 DB, Tailscale·SSH 터널을 기본 설치 절차로 요구하지 않는다.
 - 로그인과 관리자 승인은 공용 ZGX 계정 기준이다. GitHub 계정과 앱 계정은 별개다. 공용 API에 대한 쓰기는 실제 ZGX 자료를 변경하므로 테스트는 격리된 테스트 서버·DB에서 실행한다.
 - 별도 Python 백엔드를 개발할 때만 로컬 서버를 실행하고 `MIDTERM_API_TARGET=http://127.0.0.1:8093`으로 명시한다. 이때 기존 `MIDTERM_API_ORIGIN`은 제거한다. `.env.local` 등에 남은 설정이 공용 기본값을 덮어쓰는지 먼저 확인한다. 자세한 절차는 `docs/ACCESS_SETUP.md`와 `scripts/dev-origin.ts`를 확인한다.
-- API 키·계정·세션·수집 DB를 Git에 넣지 않는다. ZGX 접속 실패를 로컬 DB나 합성 데이터로 자동 대체하지 않는다. GitHub main 병합은 ZGX 자동 배포를 의미하지 않으며, 서버 업데이트는 별도 배포 절차를 따른다.
+- API 키·계정·세션·수집 DB를 Git에 넣지 않는다. ZGX 접속 실패를 로컬 DB나 합성 데이터로 자동 대체하지 않는다. GitHub main에 병합되면 ZGX가 약 5분 안에 자동으로 시험·반영한다(docs/ZGX_AUTO_DEPLOY.md). 시험 실패 시 이전 버전을 유지한다.
 
 ## 폴더와 계약
 

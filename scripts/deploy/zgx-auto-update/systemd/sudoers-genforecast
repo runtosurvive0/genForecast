@@ -1,0 +1,3 @@
+# /etc/sudoers.d/genforecast (0440). GenForecast 자동 갱신기가 서비스 재시작만 암호 없이 하도록 허용한다.
+# update.py의 RESTART_COMMAND와 글자 그대로 같아야 한다.
+puyo ALL=(root) NOPASSWD: /usr/bin/systemctl restart genforecast-backend.service genforecast-frontend.service genforecast-demo.service
