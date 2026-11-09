@@ -35,9 +35,9 @@ ZGX의 폴더 구성:
 `update.py deploy` 순서:
 
 1. 잠금을 잡는다. 이미 실행 중이면 종료 코드 75로 끝낸다.
-2. `state/activating`이 남아 있으면 이전 실행이 전환 도중 멈춘 것이다. 먼저 상태를 확인한다. 정상이면 그대로 받아들이고, 아니면 이전 릴리스로 되돌린 뒤(재시작 포함) 그 커밋을 실패로 기록한다.
+2. `state/activating`이 남아 있으면 이전 실행이 전환 도중 멈춘 것이다. 먼저 세 서비스를 재시작해 현재 `current`로 다시 띄운 뒤 상태를 확인한다(옛 프로세스의 응답을 보고 새 릴리스를 받아들이지 않기 위해). 정상이면 그대로 받아들이고, 재시작 실패나 비정상이면 이전 릴리스로 되돌린 뒤(재시작 포함) 그 커밋을 실패로 기록한다.
 3. `origin/main`을 받는다. 현재 커밋과 같거나, 이전에 실패한 커밋이면 끝낸다.
-4. GitHub check-runs(토큰 없이 공개 API, 10초 제한)에서 `verify`와 `backend`가 모두 success인지 본다.
+4. GitHub check-runs(토큰 없이 공개 API, 10초 제한)에서 `verify`와 `backend`가 모두 success인지 본다. `app.slug`가 `github-actions`인 실행만 센다(다른 앱이 같은 이름으로 올린 결과는 무시).
    - 진행 중이거나 결과가 없거나 네트워크 오류면 "대기"로 보고 종료 코드 76으로 끝낸다. 다음 주기에 다시 본다.
    - 하나라도 failure·cancelled·timed_out이면 그 커밋을 실패로 기록한다.
 5. `git archive`로 `releases/<UTC시각>-<짧은커밋>`에 풀고 `REVISION`에 커밋을 적는다.
@@ -50,23 +50,23 @@ ZGX의 폴더 구성:
    - 갱신 서비스는 `InaccessiblePaths`로 `backend.env`, `demo.env`를 가려 시험 프로세스가 키를 읽지 못한다.
 8. 공유 데이터 연결: 기존 데이터 폴더의 파일 중 그 커밋에 추적되지 않은 것(DB, `-wal`/`-shm`, `coal_units.csv` 등)만 릴리스 `backend/data/`에 링크한다. 추적되는 파일은 저장소 사본을 쓴다. 여기까지가 `--no-switch`다.
 9. 전환 단계(백업부터):
-   - 공유 데이터의 `*.sqlite3`를 SQLite backup API로 `~/.config/genforecast/backups/auto-<시각>/`에 복사한다(자동 백업 최근 3개).
+   - 공유 데이터의 `*.sqlite3`를 SQLite backup API로 `~/.config/genforecast/backups/auto-<시각>/`에 복사한다(자동 백업 최근 3개, 600초 제한). 끝까지 복사한 백업에만 완료 표시 `.complete`를 남긴다. 시간 초과나 오류면 만들던 폴더를 지우고 일시 실패로 센다. 복구에 쓸 백업은 완료 표시가 있는 것 중 가장 최근 것을 고른다.
    - runs/·inputs/를 정리한다. 그 커밋에 추적된 파일은 `shared/`에 덮어쓰고, 추적되지 않은 파일은 그대로 둔다. 릴리스의 `backend/runs`, `backend/inputs`는 공유 폴더 링크로 바꾼다.
 10. `state/activating`(이전·새 대상, 커밋, 시각)을 쓰고 `current` 링크를 원자적으로 바꾼 뒤 세 서비스를 재시작한다.
 11. 상태 확인(최대 약 60초): 백엔드 8093(500 미만, 로그인 필요 401도 정상)과 화면 8094 `/` 200이 10초 간격으로 **두 번 연속** 정상이어야 한다. 데모 61578 `/health`는 실패해도 경고만 남기고 되돌리지 않는다.
 12. 실패하면 이전 릴리스로 되돌리고 재시작·상태 확인을 한 뒤 그 커밋을 실패로 기록한다. 이전 버전으로도 정상이 아니면, 복구에 쓸 백업 폴더 경로를 로그와 `last-result.json`에 남긴다.
 13. 성공이든 실패든 끝에 정리한다. 현재·직전 릴리스는 항상 남기고 3개만 보관한다. 현재·직전이 아닌 릴리스의 `node_modules`는 지운다.
-14. 전환에 성공했고 새 커밋의 `update.py`가 설치본과 다르면 `bin/update.py`를 교체한다. 이전 파일은 `update.py.prev`로 남긴다. 새 파일로 `status`를 실행해 보고, 실패하면 되돌린다.
+14. 전환에 성공했고 새 커밋의 `update.py`가 설치본과 다르면 `bin/update.py`를 교체한다. 이전 파일은 `update.py.prev`로 남긴다. 새 파일로 `deploy --self-check`(부작용 없는 점검: import, deploy 인자 해석, 상태 읽기·판단까지. 잠금·네트워크·쓰기 없음)를 실행해 보고, 실패하면 되돌린다. 교체 중 파일 오류는 경고만 남기고 결과는 `deployed`로 기록한다.
 
 실패 분류:
 
 - **실패 커밋으로 기록**(같은 커밋은 다시 시도하지 않음): GitHub 검사 실패, `pyproject.toml` 읽기 오류, 백엔드 시험, `npm test`, `npm run build`, 반영 후 상태 확인 실패, 전환 중단 후 상태 확인 실패, 수동 `rollback`.
-- **다음 주기에 다시 시도**: `git fetch`/`git archive`, venv 생성, `pip install`, `npm ci`, 공유 데이터 연결, 파일 작업 오류, 백업 실패. 같은 커밋에서 3번을 넘으면 실패로 기록한다.
+- **다음 주기에 다시 시도**: `git fetch`/`git archive`, venv 생성, `pip install`, `npm ci`, 공유 데이터 연결, 파일 작업 오류, 백업 실패·시간 초과. 같은 커밋에서 3번을 넘으면 실패로 기록한다. 준비 단계와 전환 단계(백업·공유 연결)의 실패를 함께 센다. 횟수는 준비가 막 성공했을 때, 반영에 성공했을 때, `--retry`로 그 커밋을 다시 시도할 때만 초기화한다.
 - **대기**(실패 아님): GitHub 검사가 아직 끝나지 않음.
 
 실패로 기록된 커밋은 고친 커밋이 `main`에 병합되면 그 커밋으로 넘어간다. 같은 커밋을 다시 시도하려면 `--retry`를 쓴다.
 
-단계별 시간 제한의 최악 합계는 약 99분(5,916초)이다(데이터 백업 제외). 서비스 `TimeoutStartSec=120min` 안에서 되돌리기까지 끝나도록 맞췄다. 그래도 강제 종료되면 2번 단계가 다음 실행에서 복구한다.
+단계별 시간 제한의 최악 합계는 약 113분(6,739초)이다. 데이터 백업(600초)과, 중단 복구의 재시작·상태 확인 뒤 같은 실행에서 전환·되돌리기까지 이어지는 경우를 넣었다. 5분 여유를 더해도 서비스 `TimeoutStartSec=120min` 안에 든다(시험으로 확인). 그래도 강제 종료되면 2번 단계가 다음 실행에서 복구한다.
 
 ## main 보호 설정 (권장, 아직 적용 안 됨)
 
@@ -86,7 +86,8 @@ ZGX의 폴더 구성:
 - 토큰을 바꾸려면 `demo.env`를 지우고 `install.sh`를 다시 실행한다. 또는 파일 값을 직접 바꾼 뒤 `sudo systemctl restart genforecast-demo.service`를 실행한다.
 - 서버 제한:
   - Origin이 없는 연결이나 허용 목록 밖 Origin은 거부한다.
-  - 동시 연결은 최대 100개(`DEMO_MAX_CLIENTS`)다.
+  - 동시 연결 상한은 역할별로 따로 둔다. 시청자 최대 100개(`DEMO_MAX_CLIENTS`), 토큰으로 인증된 조작반 최대 5개(`DEMO_MAX_CONTROLLERS`). 시청자가 가득 차도 조작반은 접속할 수 있다.
+  - `DEMO_ALLOWED_ORIGINS`가 설정됐는데 `DEMO_CONTROLLER_TOKEN`이 비어 있으면 조작반 연결을 모두 거부한다(닫힌 쪽으로 실패). 시청자는 그대로 접속한다.
   - 조작 명령이 연결당 초당 5개를 넘으면 넘는 명령은 무시하고, 계속되면 연결을 끊는다.
 - 토큰이 설정되지 않은 개발 PC(`npm run demo`)에서는 지금처럼 토큰 없이 조작할 수 있다.
 
@@ -100,7 +101,7 @@ git -C /home/puyo/genforecast/repo pull --ff-only origin main
 bash /home/puyo/genforecast/repo/scripts/deploy/zgx-auto-update/install.sh
 ```
 
-`install.sh` 단계(이미 된 단계는 건너뛰므로 다시 실행해도 안전). 설치하는 동안 자동 갱신 타이머를 멈추고, 진행 중인 갱신이 있으면 끝날 때까지 기다린다. 중간에 멈추면 원래 켜져 있던 타이머만 다시 켠다.
+`install.sh` 단계(이미 된 단계는 건너뛰므로 다시 실행해도 안전). 설치하는 동안 자동 갱신 타이머를 멈추고, 진행 중인 갱신이 있으면(`ActiveState`가 `activating` 포함 실행 중이면) 끝날 때까지 기다린다. 중간에 멈추면 원래 켜져 있던 타이머만 다시 켠다.
 
 1. conda로 Node 환경 `genforecast-node`(conda-forge `nodejs>=22.13`) 준비
 2. `/home/puyo/genforecast`와 저장소 clone
@@ -147,7 +148,8 @@ journalctl -u genforecast-update -n 50
 
 ```bash
 sudo systemctl start genforecast-update.service      # 타이머를 기다리지 않고 한 번 실행
-/home/puyo/miniforge3/envs/genforecast/bin/python /home/puyo/genforecast/bin/update.py deploy --retry   # 실패 기록 커밋 재시도
+/home/puyo/miniforge3/envs/genforecast/bin/python /home/puyo/genforecast/bin/update.py deploy --self-check   # 부작용 없는 갱신기 점검
+/home/puyo/miniforge3/envs/genforecast/bin/python /home/puyo/genforecast/bin/update.py deploy --retry   # 실패 기록 커밋 재시도(재시도 횟수도 새로 셈)
 ```
 
 ## 되돌리기

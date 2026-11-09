@@ -356,6 +356,44 @@ test("the number of concurrent connections is capped", async (t) => {
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(await openStatus(url), 101);
 });
+test("viewers cannot crowd out controllers, which have their own small cap", async (t) => {
+  const app = createDemoServer({ port: 0, maxClients: 2, maxControllers: 1, controllerToken: "tok" });
+  const { port } = await app.listen();
+  t.after(() => app.close());
+  const base = `ws://127.0.0.1:${port}/demo-stream`;
+  const open = [];
+  t.after(() => open.forEach((ws) => ws.terminate()));
+  const keep = async (url) => {
+    const ws = new WebSocket(url);
+    await new Promise((resolve, reject) => { ws.on("open", resolve); ws.on("error", reject); });
+    open.push(ws);
+  };
+  await keep(`${base}?role=viewer`);
+  await keep(`${base}?role=viewer`);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(await openStatus(`${base}?role=viewer`), 503);
+  await keep(`${base}?role=controller&token=tok`);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(await openStatus(`${base}?role=controller&token=tok`), 503);
+  assert.equal(await openStatus(`${base}?role=viewer`), 503);
+});
+test("controllers fail closed when deployment origins are set but no controller token is", async (t) => {
+  const previous = process.env.DEMO_ALLOWED_ORIGINS;
+  process.env.DEMO_ALLOWED_ORIGINS = "https://zgx-6660.tailec6d33.ts.net";
+  t.after(() => { if (previous === undefined) delete process.env.DEMO_ALLOWED_ORIGINS; else process.env.DEMO_ALLOWED_ORIGINS = previous; });
+  const origin = { origin: "https://zgx-6660.tailec6d33.ts.net" };
+  const open = createDemoServer({ port: 0, controllerToken: "" });
+  const { port } = await open.listen();
+  t.after(() => open.close());
+  const base = `ws://127.0.0.1:${port}/demo-stream`;
+  assert.equal(await openStatus(`${base}?role=controller`, origin), 403);
+  assert.equal(await openStatus(`${base}?role=controller&token=anything`, origin), 403);
+  assert.equal(await openStatus(`${base}?role=viewer`, origin), 101);
+  const locked = createDemoServer({ port: 0, controllerToken: "tok" });
+  const second = await locked.listen();
+  t.after(() => locked.close());
+  assert.equal(await openStatus(`ws://127.0.0.1:${second.port}/demo-stream?role=controller&token=tok`, origin), 101);
+});
 test("controller commands beyond five per second are ignored and a flood closes the connection", async (t) => {
   const app = createDemoServer({ port: 0, interval: 1000 });
   const { port } = await app.listen();

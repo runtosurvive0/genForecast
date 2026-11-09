@@ -79,6 +79,8 @@ UPDATER_IN_REPO = 'scripts/deploy/zgx-auto-update/update.py'
 # 서버가 실행 중에 만드는 상태가 들어 있어 릴리스 사이에 보존하는 backend 하위 폴더.
 SHARED_DIRS = ('runs', 'inputs')
 SEED_MARKER = '.seeded'
+BACKUP_DONE = '.complete'  # 끝까지 만들어진 백업에만 남기는 완료 표시
+CI_APP = 'github-actions'  # 이 앱이 만든 check-run만 센다
 # 이 단계의 실패만 커밋 탓으로 보고 기록한다. 그 밖(받기·설치·연결 등)은 다음 주기에 다시 시도한다.
 RECORDED_STEPS = frozenset({'백엔드 시험', 'npm test', 'npm run build', 'pyproject'})
 # 시험용 환경에 남길 변수(그 밖의 키·DB 경로·서비스 설정은 모두 버린다).
@@ -87,12 +89,14 @@ ENV_ALLOW = ('PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC
              'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy')
 SECRET_HINTS = ('KEY', 'TOKEN', 'SECRET', 'PASSWORD', 'DSN', 'CREDENTIAL')
 
-# 단계별 시간 제한(초)과 한 번의 deploy에서 최악의 호출 횟수. 합이 100분 이하여야 한다
-# (genforecast-update.service TimeoutStartSec=120min 안에서 되돌리기까지 끝내기 위해).
+# 단계별 시간 제한(초)과 한 번의 deploy에서 최악의 호출 횟수. 합계에 5분 여유를 더해도
+# genforecast-update.service TimeoutStartSec=120min 안에 들어야 한다(되돌리기까지 끝내기 위해).
+# 재시작 3번 = 중단 복구 재시작 + 전환 재시작 + 되돌리기 재시작.
 TIMEOUT = {'git': 120, 'venv': 180, 'pip': 1200, 'npm_ci': 900, 'pytest': 1200, 'npm_test': 600,
-           'npm_build': 600, 'restart': 120, 'self_check': 60}
+           'npm_build': 600, 'backup': 600, 'restart': 120, 'self_check': 60}
 STEP_CALLS = {'git': 6, 'venv': 1, 'pip': 1, 'npm_ci': 1, 'pytest': 1, 'npm_test': 1,
-              'npm_build': 1, 'restart': 2, 'self_check': 1}
+              'npm_build': 1, 'backup': 1, 'restart': 3, 'self_check': 1}
+HEALTH_CALLS = 3  # 중단 복구 확인 + 전환 후 확인 + 되돌린 뒤 확인
 
 
 class StepError(RuntimeError):
@@ -186,6 +190,9 @@ def ci_verdict(payload):
     for run in payload['check_runs']:
         if not isinstance(run, dict) or run.get('name') not in REQUIRED_CHECKS:
             continue
+        app = run.get('app')
+        if not isinstance(app, dict) or app.get('slug') != CI_APP:
+            continue  # 다른 앱이 같은 이름으로 올린 결과는 믿지 않는다.
         name = run['name']
         if name not in latest or (run.get('id') or 0) > (latest[name].get('id') or 0):
             latest[name] = run
@@ -274,9 +281,9 @@ def health_budget_seconds():
 
 
 def worst_case_seconds():
-    """한 번의 deploy가 걸릴 수 있는 최악의 시간(데이터 백업 제외)."""
+    """한 번의 deploy가 걸릴 수 있는 최악의 시간(데이터 백업 포함)."""
     return (sum(TIMEOUT[name] * count for name, count in STEP_CALLS.items())
-            + 2 * health_budget_seconds() + CI_TIMEOUT)
+            + HEALTH_CALLS * health_budget_seconds() + CI_TIMEOUT)
 
 
 # ---------------------------------------------------------------- 상태 파일
@@ -571,24 +578,45 @@ def prepare_release(sha):
     return dest
 
 
+class _BackupTimeout(Exception):
+    pass
+
+
 def backup_data():
+    """공유 DB를 auto-<시각>/에 복사한다. 시간 제한을 넘거나 실패하면 만들던 폴더를 지운다."""
+    deadline = time.monotonic() + TIMEOUT['backup']
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     target = BACKUPS / f'auto-{stamp}'
+    created = False
+
+    def check_deadline(*_progress):
+        if time.monotonic() > deadline:
+            raise _BackupTimeout()
+
     try:
         target.mkdir(parents=True, mode=0o700)
+        created = True
         count = 0
         for db in sorted(SHARED_DATA.glob('*.sqlite3')):
             if not db.is_file():
                 continue
+            check_deadline()
             src = sqlite3.connect(db, timeout=30)  # 읽기만 한다(backup API).
             dst = sqlite3.connect(target / db.name)
             try:
-                src.backup(dst)
+                src.backup(dst, pages=1024, progress=check_deadline)
             finally:
                 dst.close()
                 src.close()
             count += 1
+        (target / BACKUP_DONE).write_text(utc_now() + '\n', encoding='utf-8')
+    except _BackupTimeout:
+        if created:
+            shutil.rmtree(target, ignore_errors=True)
+        raise StepError(f'데이터 백업이 {TIMEOUT["backup"]}초를 넘었습니다. 전환하지 않습니다.', step='백업') from None
     except (OSError, sqlite3.Error) as error:
+        if created:
+            shutil.rmtree(target, ignore_errors=True)
         raise StepError(f'데이터 백업 실패({type(error).__name__}). 전환하지 않습니다.', step='백업') from None
     log(f'데이터 백업 {count}개: {target}')
     for name in select_backup_prune([p.name for p in BACKUPS.iterdir() if p.is_dir()]):
@@ -599,7 +627,8 @@ def backup_data():
 def latest_backup():
     if not BACKUPS.is_dir():
         return None
-    autos = sorted(p for p in BACKUPS.iterdir() if p.is_dir() and p.name.startswith('auto-'))
+    autos = sorted(p for p in BACKUPS.iterdir()
+                   if p.is_dir() and p.name.startswith('auto-') and (p / BACKUP_DONE).is_file())
     return autos[-1] if autos else None
 
 
@@ -686,8 +715,17 @@ def prune_releases():
 def self_update(release):
     """전환에 성공한 커밋의 update.py가 설치본과 다르면 BASE/bin에 반영한다(다음 실행부터 적용).
 
-    이전 파일은 update.py.prev로 남기고, 새 파일로 `status`를 실행해 보아 실패하면 되돌린다.
+    이전 파일은 update.py.prev로 남기고, 새 파일로 `deploy --self-check`를 실행해 보아 실패하면
+    되돌린다. 파일 오류는 경고만 남긴다(반영 자체는 이미 끝났다).
     """
+    try:
+        _self_update(release)
+    except OSError as error:
+        log(f'경고: 갱신기 자체 교체 중 파일 오류({type(error).__name__} {error.strerror or ""}). '
+            '지금 갱신기를 계속 씁니다.')
+
+
+def _self_update(release):
     source = Path(release) / UPDATER_IN_REPO
     installed = BIN / 'update.py'
     previous = BIN / 'update.py.prev'
@@ -711,14 +749,14 @@ def self_update(release):
     env = clean_env(os.environ, node_bin=None)
     env.update({k: v for k, v in os.environ.items() if k.startswith('GENFORECAST_UPDATE_')})
     try:
-        ok = subprocess.run([sys.executable, str(installed), 'status'], env=env, capture_output=True,
-                            timeout=TIMEOUT['self_check'], check=False).returncode == 0
+        ok = subprocess.run([sys.executable, str(installed), 'deploy', '--self-check'], env=env,
+                            capture_output=True, timeout=TIMEOUT['self_check'], check=False).returncode == 0
     except (subprocess.TimeoutExpired, OSError):
         ok = False
     if not ok and previous.is_file():
         shutil.copy2(previous, tmp)
         os.replace(tmp, installed)
-        log('새 update.py로 status 실행이 실패해 이전 갱신기로 되돌렸습니다.')
+        log('새 update.py의 점검(deploy --self-check)이 실패해 이전 갱신기로 되돌렸습니다.')
         return
     log('갱신기(update.py)를 새 버전으로 교체했습니다(이전 파일: update.py.prev). 다음 실행부터 적용됩니다.')
 
@@ -808,8 +846,14 @@ def activate(release, target):
 
 def recover_interrupted(marker):
     """이전 실행이 전환 도중 멈췄다. 정상이면 받아들이고 None, 아니면 이전 대상으로 되돌리고 1."""
-    log('이전 실행이 전환 도중 멈춘 흔적이 있습니다. 상태를 먼저 확인합니다.')
-    if wait_healthy():
+    log('이전 실행이 전환 도중 멈춘 흔적이 있습니다. 서비스를 다시 시작한 뒤 상태를 확인합니다.')
+    try:
+        restart_services()  # 옛 프로세스의 상태를 보고 새 릴리스를 받아들이지 않도록.
+        healthy = wait_healthy()
+    except StepError as error:
+        log(str(error))
+        healthy = False
+    if healthy:
         write_json('activating', None)
         log('현재 상태가 정상이라 그대로 둡니다.')
         return None
@@ -842,6 +886,8 @@ def deploy(no_switch=False, retry=False):
             log(f'GitHub 확인 실패(다음 주기에 다시 시도): {error}')
             write_result(None, 'retry_later', 'git fetch', str(error))
             return 1
+        if retry and (read_json('retries.json') or {}).get('commit') == target:
+            write_json('retries.json', None)  # --retry는 그 커밋의 재시도 횟수를 새로 센다.
         current = current_revision()
         ready = find_ready_release(target)
         action = decide_action(target, current, read_state('failed'), ready, no_switch=no_switch, retry=retry)
@@ -874,11 +920,11 @@ def deploy(no_switch=False, retry=False):
                     return transient_failure(target, error.step, str(error))
                 except OSError as error:
                     return transient_failure(target, '파일 작업', f'{type(error).__name__} {error.strerror or ""}')
+                if read_state('failed') == target:  # --retry로 다시 시도해 통과했다
+                    write_state('failed', None)
+                write_json('retries.json', None)  # 준비가 막 성공했다. 전환 단계 실패는 새로 센다.
             else:
                 release = ready
-            if read_state('failed') == target:  # --retry로 다시 시도해 통과했다
-                write_state('failed', None)
-            write_json('retries.json', None)
             if no_switch:
                 log(f'준비만 완료했습니다(--no-switch): {release.name}')
                 write_result(target, 'prepared', '', release.name)
@@ -963,12 +1009,29 @@ def check():
     return 0
 
 
+def self_check():
+    """부작용 없는 점검: deploy 경로의 import·인자 해석·상태 읽기·판단까지만 한다(잠금·네트워크·쓰기 없음)."""
+    failed = read_state('failed')
+    read_state('previous')
+    read_json('retries.json')
+    read_json('activating')
+    read_result()
+    current_target()
+    current = current_revision()
+    decide_action('0' * 40, current, failed, None)
+    clean_env(os.environ)
+    budget = worst_case_seconds()
+    log(f'점검 통과(deploy --self-check): 최악 소요 {budget}초')
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='GenForecast ZGX 자동 갱신기')
     sub = parser.add_subparsers(dest='command')
     deploy_parser = sub.add_parser('deploy', help='시험 통과 시 새 버전으로 전환')
     deploy_parser.add_argument('--no-switch', action='store_true', help='시험·빌드까지만')
     deploy_parser.add_argument('--retry', action='store_true', help='실패 기록 커밋도 재시도')
+    deploy_parser.add_argument('--self-check', action='store_true', help='부작용 없이 실행 경로만 점검')
     sub.add_parser('status')
     sub.add_parser('rollback')
     sub.add_parser('check')
@@ -978,6 +1041,8 @@ def main(argv=None):
     command = args.command or 'deploy'
     if command == 'seed-shared':
         return seed_shared(args.old_backend)
+    if command == 'deploy' and getattr(args, 'self_check', False):
+        return self_check()
     if command == 'deploy':
         return deploy(no_switch=getattr(args, 'no_switch', False), retry=getattr(args, 'retry', False))
     return {'status': status, 'rollback': rollback, 'check': check}[command]()

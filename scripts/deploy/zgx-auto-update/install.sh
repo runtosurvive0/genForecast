@@ -102,7 +102,12 @@ restore_timer() {
 }
 trap restore_timer EXIT
 for _ in $(seq 1 120); do
-  systemctl is-active --quiet genforecast-update.service 2>/dev/null || break
+  # Type=oneshot은 실행 중에 activating이다. is-active만 보면 이 상태를 놓친다.
+  update_state=$(systemctl show -p ActiveState --value genforecast-update.service 2>/dev/null || true)
+  case "$update_state" in
+    active|activating|deactivating|reloading) ;;
+    *) break ;;
+  esac
   info "진행 중인 자동 갱신이 끝나기를 기다립니다."
   sleep 15
 done

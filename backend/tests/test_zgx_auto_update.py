@@ -325,8 +325,8 @@ def test_ci_failure_records_commit_without_building(upd, monkeypatch):
     assert upd.read_result()['result'] == 'ci_failed'
 
 
-def run(name, status='completed', conclusion='success', id=1):
-    return {'name': name, 'status': status, 'conclusion': conclusion, 'id': id}
+def run(name, status='completed', conclusion='success', id=1, app='github-actions'):
+    return {'name': name, 'status': status, 'conclusion': conclusion, 'id': id, 'app': {'slug': app}}
 
 
 @pytest.mark.parametrize('runs, expected', [
@@ -340,6 +340,11 @@ def run(name, status='completed', conclusion='success', id=1):
     ([run('verify'), run('backend', conclusion='failure', id=1), run('backend', id=2)], 'pass'),
     ([run('verify'), run('backend', id=3, conclusion='timed_out'), run('backend', id=2)], 'fail'),
     ([run('verify'), run('backend', conclusion='skipped')], 'pending'),
+    # GitHub Actions가 만든 검사만 센다. 다른 앱이 같은 이름으로 올린 결과는 무시한다.
+    ([run('verify', app='someone-else'), run('backend')], 'pending'),
+    ([run('verify', conclusion='failure'), run('verify', app='someone-else', id=9), run('backend')], 'fail'),
+    ([run('verify'), run('backend'), run('backend', conclusion='failure', id=5, app='other-app')], 'pass'),
+    ([{'name': 'verify', 'status': 'completed', 'conclusion': 'success', 'id': 1}, run('backend')], 'pending'),
 ])
 def test_ci_verdict(upd, runs, expected):
     assert upd.ci_verdict({'total_count': len(runs), 'check_runs': runs}) == expected
@@ -473,8 +478,8 @@ def test_interrupted_switch_unhealthy_is_rolled_back_first(upd, monkeypatch):
     upd.write_json('activating', {'previous': '/base/releases/old', 'target': '/base/releases/new',
                                   'commit': NEW, 'at': '2026-11-09T00:00:00Z'})
     assert upd.deploy() == 1
-    assert steps.names() == ['health', 'point', 'restart', 'health', 'prune']
-    assert steps.calls[1][1] == Path('/base/releases/old')
+    assert steps.names() == ['restart', 'health', 'point', 'restart', 'health', 'prune']
+    assert steps.calls[2][1] == Path('/base/releases/old')
     assert upd.read_state('failed') == NEW
     assert not (upd.STATE / 'activating').exists()
     assert upd.read_result()['result'] == 'recovered_interrupted'
@@ -484,7 +489,7 @@ def test_interrupted_switch_without_previous_removes_current(upd, monkeypatch):
     steps = Steps(upd, monkeypatch, current=NEW, health=(False,))
     upd.write_json('activating', {'previous': None, 'target': '/base/releases/new', 'commit': NEW, 'at': 'x'})
     assert upd.deploy() == 1
-    assert steps.names() == ['health', 'remove_current', 'prune']
+    assert steps.names() == ['restart', 'health', 'remove_current', 'prune']
     assert upd.read_state('failed') == NEW
 
 
@@ -493,7 +498,7 @@ def test_interrupted_switch_healthy_is_accepted_and_run_continues(upd, monkeypat
     upd.write_json('activating', {'previous': '/base/releases/old', 'target': '/base/releases/new',
                                   'commit': NEW, 'at': 'x'})
     assert upd.deploy() == 0
-    assert steps.names() == ['health']
+    assert steps.names() == ['restart', 'health']
     assert not (upd.STATE / 'activating').exists()
     assert upd.read_state('failed') is None
 
@@ -545,9 +550,12 @@ def test_wait_healthy_gives_up_after_deadline(upd, monkeypatch):
 
 
 def test_step_timeouts_fit_inside_service_timeout(upd):
-    assert upd.worst_case_seconds() <= 100 * 60
     unit = (DEPLOY_DIR / 'systemd/genforecast-update.service').read_text(encoding='utf-8')
     assert 'TimeoutStartSec=120min' in unit.splitlines()
+    # 데이터 백업과, 중단 복구(재시작·상태 확인) 뒤 이어지는 전환까지 넣은 최악의 합계.
+    assert upd.TIMEOUT['backup'] == 600 and upd.STEP_CALLS['backup'] == 1
+    assert upd.STEP_CALLS['restart'] >= 3
+    assert upd.worst_case_seconds() + 5 * 60 <= 120 * 60
 
 
 def test_update_unit_hides_key_files_and_accepts_wait_codes():
@@ -639,7 +647,7 @@ def test_backup_copies_sqlite_and_keeps_three_auto_backups(upd, monkeypatch):
     names = sorted(p.name for p in upd.BACKUPS.iterdir())
     assert 'manual-keep' in names and 'auto-20261101T000000Z' not in names
     newest = upd.BACKUPS / sorted(n for n in names if n.startswith('auto-'))[-1]
-    assert sorted(p.name for p in newest.iterdir()) == ['access.sqlite3']
+    assert sorted(p.name for p in newest.iterdir()) == [upd.BACKUP_DONE, 'access.sqlite3']
     copy = sqlite3.connect(newest / 'access.sqlite3')
     assert copy.execute('select x from t').fetchall() == [(42,)]
     copy.close()
@@ -791,3 +799,139 @@ def test_successful_retry_clears_failure_record(upd, monkeypatch):
     assert upd.read_state('failed') is None
     assert upd.read_json('retries.json') is None
     assert upd.deploy() == 0  # 실패 기록이 없으니 준비된 릴리스로 진행한다(가짜 단계에서는 다시 prepare)
+
+
+def test_switch_step_transient_failures_are_capped_too(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch, ready='/base/releases/ready')
+
+    def broken_backup():
+        steps.calls.append(('backup',))
+        raise upd.StepError('데이터 백업 실패(OperationalError)', step='백업')
+    monkeypatch.setattr(upd, 'backup_data', broken_backup)
+    for count in (1, 2, 3):
+        assert upd.deploy() == 1
+        assert upd.read_state('failed') is None
+        assert upd.read_json('retries.json') == {'commit': NEW, 'count': count}
+    assert upd.deploy() == 1
+    assert upd.read_state('failed') == NEW
+    assert upd.read_result()['result'] == 'retry_exhausted'
+
+
+def test_retry_flag_resets_retry_count_of_that_commit(upd, monkeypatch):
+    Steps(upd, monkeypatch, prepare_error=('ETIMEDOUT', 'npm ci'))
+    upd.write_state('failed', NEW)
+    upd.write_json('retries.json', {'commit': NEW, 'count': 4})
+    assert upd.deploy(retry=True) == 1
+    assert upd.read_json('retries.json') == {'commit': NEW, 'count': 1}
+    assert upd.read_result()['result'] == 'retry_later'
+
+
+def test_interrupted_switch_restart_error_counts_as_unhealthy(upd, monkeypatch):
+    steps = Steps(upd, monkeypatch, current=NEW, previous_target='/base/releases/new', health=(True,))
+
+    def restart():
+        steps.calls.append(('restart',))
+        if steps.names().count('restart') == 1:
+            raise upd.StepError('재시작 실패')
+    monkeypatch.setattr(upd, 'restart_services', restart)
+    upd.write_json('activating', {'previous': '/base/releases/old', 'target': '/base/releases/new',
+                                  'commit': NEW, 'at': 'x'})
+    assert upd.deploy() == 1
+    assert steps.names() == ['restart', 'point', 'restart', 'health', 'prune']
+    assert upd.read_state('failed') == NEW
+
+
+def _make_db(path, value=1):
+    import sqlite3
+    db = sqlite3.connect(path)
+    db.execute('create table t(x)')
+    db.execute('insert into t values (?)', (value,))
+    db.commit()
+    db.close()
+
+
+def test_backup_timeout_is_a_step_error_and_leaves_no_partial_backup(upd, monkeypatch):
+    upd.SHARED_DATA.mkdir(parents=True)
+    _make_db(upd.SHARED_DATA / 'access.sqlite3')
+    clock = iter([0] + [10_000] * 50)
+    monkeypatch.setattr(upd.time, 'monotonic', lambda: next(clock))
+    with pytest.raises(upd.StepError) as error:
+        upd.backup_data()
+    assert error.value.step == '백업'
+    assert not upd.should_record_failure(error.value.step)
+    assert not upd.BACKUPS.exists() or not any(upd.BACKUPS.iterdir())
+
+
+def test_backup_failure_removes_partial_folder_and_latest_needs_completion_mark(upd):
+    upd.SHARED_DATA.mkdir(parents=True)
+    _make_db(upd.SHARED_DATA / 'access.sqlite3')
+    (upd.SHARED_DATA / 'zz-broken.sqlite3').write_bytes(b'not a database at all' * 100)
+    done = upd.BACKUPS / 'auto-20261102T000000Z'
+    done.mkdir(parents=True)
+    (done / upd.BACKUP_DONE).write_text('ok')
+    (upd.BACKUPS / 'auto-20261103T000000Z').mkdir()  # 완료 표시가 없는 옛 백업
+    with pytest.raises(upd.StepError):
+        upd.backup_data()
+    assert sorted(p.name for p in upd.BACKUPS.iterdir()) == ['auto-20261102T000000Z', 'auto-20261103T000000Z']
+    assert upd.latest_backup() == done
+    (upd.SHARED_DATA / 'zz-broken.sqlite3').unlink()
+    made = upd.backup_data()
+    assert (made / upd.BACKUP_DONE).is_file()
+    assert upd.latest_backup() == made
+
+
+def test_self_check_runs_deploy_argument_path_without_side_effects(tmp_path):
+    import os
+    import subprocess
+    import sys
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GENFORECAST_UPDATE_')}
+    env.update({'GENFORECAST_UPDATE_BASE': str(tmp_path / 'base'),
+                'GENFORECAST_UPDATE_SHARED_DATA': str(tmp_path / 'data'),
+                'GENFORECAST_UPDATE_BACKUPS': str(tmp_path / 'backups')})
+    done = subprocess.run([sys.executable, str(DEPLOY_DIR / 'update.py'), 'deploy', '--self-check'],
+                          env=env, capture_output=True, timeout=60, check=False)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert list(tmp_path.iterdir()) == []
+    bad = subprocess.run([sys.executable, str(DEPLOY_DIR / 'update.py'), 'deploy', '--no-such-flag'],
+                         env=env, capture_output=True, timeout=60, check=False)
+    assert bad.returncode != 0
+
+
+def test_self_update_checks_new_updater_through_deploy_path_not_status(upd, tmp_path):
+    release = tmp_path / 'rel'
+    source = release / upd.UPDATER_IN_REPO
+    source.parent.mkdir(parents=True)
+    upd.BIN.mkdir(parents=True)
+    (upd.BIN / 'update.py').write_text('print("v1")\n')
+    # status는 통과하지만 deploy 경로는 깨진 갱신기
+    source.write_text('import sys\nsys.exit(0 if sys.argv[1:] == ["status"] else 3)\n')
+    upd.self_update(release)
+    assert (upd.BIN / 'update.py').read_text() == 'print("v1")\n'
+    source.write_text('import sys\nsys.exit(0 if sys.argv[1:] == ["deploy", "--self-check"] else 3)\n')
+    upd.self_update(release)
+    assert 'self-check' in (upd.BIN / 'update.py').read_text()
+
+
+def test_self_update_os_error_is_a_warning_and_deploy_is_recorded(upd, monkeypatch, capsys):
+    real_self_update = upd.self_update
+    Steps(upd, monkeypatch)
+    monkeypatch.setattr(upd, 'self_update', real_self_update)
+    source = upd.RELEASES / 'new' / upd.UPDATER_IN_REPO
+    source.parent.mkdir(parents=True)
+    source.write_text('print("v2")\n')
+    upd.BIN.mkdir(parents=True)
+    (upd.BIN / 'update.py').write_text('print("v1")\n')
+
+    def full_disk(*args, **kwargs):
+        raise OSError(28, 'No space left on device')
+    monkeypatch.setattr(upd.shutil, 'copy2', full_disk)
+    assert upd.deploy() == 0
+    assert upd.read_result()['result'] == 'deployed'
+    assert (upd.BIN / 'update.py').read_text() == 'print("v1")\n'
+    assert '경고' in capsys.readouterr().out
+
+
+def test_install_waits_for_activating_update_service():
+    text = (DEPLOY_DIR / 'install.sh').read_text(encoding='utf-8')
+    assert 'systemctl show -p ActiveState --value genforecast-update.service' in text
+    assert 'activating' in text

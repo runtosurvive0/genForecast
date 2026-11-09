@@ -54,6 +54,7 @@ function createDemoServer({
   storePath = null,
   controllerToken = process.env.DEMO_CONTROLLER_TOKEN || "",
   maxClients = positiveInteger(process.env.DEMO_MAX_CLIENTS, 100),
+  maxControllers = positiveInteger(process.env.DEMO_MAX_CONTROLLERS, 5),
   commandsPerSecond = 5,
 } = {}) {
   const catalog = loadCatalog(),
@@ -123,13 +124,18 @@ function createDemoServer({
       !["/demo-stream", "/demo"].includes(url.pathname) ||
       !["viewer", "controller"].includes(role) ||
       (origin ? !allowedOrigins.has(origin) : requireOrigin) ||
-      (role === "controller" && controllerToken &&
-        !tokenMatches(controllerToken, url.searchParams.get("token")))
+      (role === "controller" &&
+        (controllerToken
+          ? !tokenMatches(controllerToken, url.searchParams.get("token"))
+          : requireOrigin)) // 배포 주소가 있는데 토큰이 없으면 조작반을 닫는다.
     ) {
       reject(socket, "403 Forbidden");
       return;
     }
-    if (wss.clients.size >= maxClients) {
+    // 시청자와 조작반은 상한을 따로 둔다. 시청자가 많아도 조작반 자리는 남는다.
+    let sameRole = 0;
+    for (const peer of wss.clients) if (peer.role === role) sameRole++;
+    if (sameRole >= (role === "controller" ? maxControllers : maxClients)) {
       reject(socket, "503 Service Unavailable");
       return;
     }
@@ -273,6 +279,8 @@ if (require.main === module) {
   }
   const app = createDemoServer({ port, storePath: resolve(process.env.SIMULATION_DB_PATH || 'backend/data/operating-simulation.sqlite3') });
   if (process.env.DEMO_CONTROLLER_TOKEN) console.log("조작반 연결은 DEMO_CONTROLLER_TOKEN이 필요합니다.");
+  else if (parseAllowedOrigins(process.env.DEMO_ALLOWED_ORIGINS).length)
+    console.log("DEMO_ALLOWED_ORIGINS는 있는데 DEMO_CONTROLLER_TOKEN이 없어 조작반 연결을 막습니다.");
   app
     .listen()
     .then((address) =>
