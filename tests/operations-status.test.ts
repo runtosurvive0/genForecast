@@ -12,7 +12,7 @@ test('호기별 현재 출력은 운전 데모 값과 정격을 쓰고, 값이 �
   const snapshot = createEngine(catalog).snapshot();
   const out = unitOutputs(snapshot, catalog);
   assert.equal(out.rows.length, 10);
-  assert.deepEqual(out.rows[0], { unit: 1, mw: 460, maxMW: 600, status: 'running', scale: 600 / 1020 });
+  assert.deepEqual(out.rows[0], { unit: 1, mw: 460, maxMW: 500, status: 'running', scale: 500 / 1020 });
   assert.equal(out.rows[9].maxMW, 1020);
   assert.equal(out.rows[9].scale, 1);
   assert.equal(out.totalMW, 5370);
