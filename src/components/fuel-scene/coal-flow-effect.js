@@ -49,10 +49,12 @@ export function createFlowEffect(THREE,parent,own,{scale=1}={}){
  }
  return {group,update,debug:()=>({visible:group.visible,paths:current,transportParticles:particles.count,fallingParticles:falling.count})};
 }
-export function detachMotion(g){const moving=[];g.traverse(o=>{if(o.userData.motion)moving.push(o);});g.updateMatrixWorld(true);for(const o of moving){g.attach(o);o.userData.baseQuaternion=o.quaternion.clone();}return moving;}
+export function detachMotion(g){const moving=[];g.traverse(o=>{if(o.userData.motion)moving.push(o);});g.updateMatrixWorld(true);for(const o of moving){g.attach(o);o.userData.baseQuaternion=o.quaternion.clone();if(o.userData.motion==='elevator')o.userData.chain=elevatorChain(o);}return moving;}
+// 버킷 체인의 궤도는 묶음 자신의 좌표에서 처음 배치한 버킷 위치로 정한다(오르는 쪽 +x, 내리는 쪽 -x).
+function elevatorChain(o){const ys=o.children.map(m=>m.position.y),xs=o.children.map(m=>Math.abs(m.position.x));return {low:Math.min(...ys),high:Math.max(...ys),x:Math.max(...xs),z:o.children[0]?.position.z??0};}
 export function withinMotion(o){while(o){if(o.userData.motion)return true;o=o.parent;}return false;}
 export function animateMachinery(THREE,parts,clock,flow){
  if(!flow)return;for(const o of parts){if(o.userData.motion==='rotor')o.quaternion.copy(o.userData.baseQuaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-clock*flow/6000));
-  if(o.userData.motion==='elevator')o.children.forEach((m,i)=>{const t=(i/o.children.length+clock*flow/50000)%1,side=t<.5?1:-1;m.position.set(side*1.2,t<.5?1.8+t*36.4:20-(t-.5)*36.4,23);});
+  if(o.userData.motion==='elevator'){const c=o.userData.chain??(o.userData.chain=elevatorChain(o)),span=c.high-c.low;o.children.forEach((m,i)=>{const t=(i/o.children.length+clock*flow/50000)%1,up=t<.5;m.position.set(up?c.x:-c.x,up?c.low+t*2*span:c.high-(t-.5)*2*span,c.z);});}
  }
 }
