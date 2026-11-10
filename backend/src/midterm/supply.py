@@ -275,12 +275,16 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
     daily_coverage = defaultdict(lambda: dict.fromkeys(GROUPS, True))
     daily_receipts = defaultdict(lambda: dict.fromkeys(GROUPS, 0.))
     transfer_issues = []
+    # 계획 첫 시각 전은 '계획 공백'(아직 시작 안 한 계획)이다. 계획 시작 후 빠진 호기 행(계획 누락)과 구분한다.
+    plan_start = min((timestamp(k) for k in plan), default=None)
+    plan_gaps = dict.fromkeys(GROUPS)
     ordered = sorted(times)
     for t, nxt in zip(ordered, ordered[1:]):
         for b in baseline_events[t]:
             g = b["group_id"]
             state[g] = {"stock": b["tonnes"], "cv": b["cv"] or fallback_cv, "known": b["cv"] is not None}
             active_anchors[g] = b
+            plan_gaps[g] = None
             if b['cv'] is None:
                 transfer_issues.append(f"{GROUPS[g]}: 기준재고의 발열량 확인 필요")
         for receipt in registry_events[t]:
@@ -365,6 +369,19 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
                     st["stock"] += q
         at_hour = t.replace(minute=0, second=0, microsecond=0).isoformat()
         rows = plan.get(at_hour, {})
+        before_plan = plan_start is not None and t < plan_start
+        if before_plan:
+            # 기준재고 이후 계획 시작 전: 재고를 '모름'으로 만들지 않고 사용량 0으로 넘기되 공백 시간을 경고한다.
+            for g in GROUPS:
+                b = active_anchors[g]
+                if b and t >= timestamp(b["at"]):
+                    gap = plan_gaps[g] or {"anchor": b, "hours": 0.}
+                    gap["hours"] += dt
+                    plan_gaps[g] = gap
+                daily_coverage[day][g] = False
+            if nxt.hour == 0 and nxt.minute == 0 and nxt.second == 0:
+                stock_days[day] = {g: dict(v) for g, v in state.items()}
+            continue
         for u, g in UNITS.items():
             st, row = state[g], rows.get(u)
             # 기준재고가 잡힌 뒤 발열량을 모르게 된 처만 계산을 멈춘다. 기준재고 이전 시간은 사용량만 계산한다.
@@ -384,6 +401,18 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
         if nxt.hour == 0 and nxt.minute == 0 and nxt.second == 0:
             stock_days[day] = {g: dict(v) for g, v in state.items()}
 
+    gap_groups = defaultdict(list)
+    for g, gap in plan_gaps.items():
+        if gap and gap["hours"] > 0:
+            b = gap["anchor"]
+            baseline_day = b.get("source_date") or timestamp(b["at"]).date().isoformat()
+            gap_groups[(baseline_day, round(gap["hours"], 2))].append(g)
+    plan_issues = []
+    for (baseline_day, hours), names in gap_groups.items():
+        scope = "" if len(gap_groups) == 1 and len(names) == len(GROUPS) else "·".join(GROUPS[g] for g in names) + ": "
+        shown = f"{hours:g}"
+        plan_issues.append(f"{scope}기준재고({baseline_day}) 이후 계획 시작({plan_start.date().isoformat()}) 전 {shown}시간 사용량 미반영")
+
     def daily_burn(day, g):
         totals = unit_daily[day]
         names = [u for u in UNITS if UNITS[u] == g]
@@ -396,7 +425,8 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             return None
         avg = sum(burns) / 7
         # 정지 등으로 7일간 연소가 0이면 무한대 대신 별도 휴지 상태.
-        return stock["stock"] / avg if avg > 0 else None
+        # 재고가 바닥난 뒤에는 0일(소진)로 둔다. 부족량은 stock·min_stock(음수)에 그대로 남는다.
+        return max(0.0, stock["stock"] / avg) if avg > 0 else None
 
     forecast = []
     for i in range(horizon):
@@ -470,7 +500,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
     stock_total = sum(g["stock"] for g in groups) if known else None
     current_days = [g["days"] for g in groups]
     return {"as_of": as_of.isoformat(), "horizon": horizon, "groups": groups, "forecast": forecast,
-        "units": unit_summary, "vessels": vessels, "transfer_issues": transfer_issues,
+        "units": unit_summary, "vessels": vessels, "transfer_issues": transfer_issues, "plan_issues": plan_issues,
         "kpis": {"risk": status, "stock": stock_total,
             "days": min(current_days) if all(x is not None for x in current_days) else None,
             "min_days": min(g["min_days"] for g in groups) if all(g["min_days"] is not None for g in groups) else None,

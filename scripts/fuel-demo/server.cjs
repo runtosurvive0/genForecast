@@ -41,6 +41,66 @@ function tokenMatches(expected, given) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+const DEFAULT_SESSION_URL = "http://127.0.0.1:8093/api/auth/session";
+
+/** 앱 로그인 확인 주소. 배포 주소(DEMO_ALLOWED_ORIGINS)가 있으면 같은 서버의 백엔드를 기본으로 쓴다. */
+function defaultSessionUrl(env = process.env) {
+  if (env.DEMO_SESSION_URL) return env.DEMO_SESSION_URL;
+  return parseAllowedOrigins(env.DEMO_ALLOWED_ORIGINS).length ? DEFAULT_SESSION_URL : "";
+}
+
+/** Cookie 헤더에서 앱 세션 쿠키(gf_session) 하나만 꺼낸다. */
+function sessionCookie(header) {
+  for (const part of String(header ?? "").split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === "gf_session" && rest.length) return rest.join("=");
+  }
+  return "";
+}
+
+/**
+ * 백엔드 /api/auth/session으로 관리자 승인을 받은(scope=full) 로그인인지 확인한다.
+ * 세션 쿠키만 넘기고, Host는 이미 허용 목록으로 검증한 Origin에서 만든다. 오류·시간 초과는 거부.
+ */
+function approvedLogin(sessionUrl, cookie, origin, timeoutMs = 3000) {
+  return new Promise((done) => {
+    let target;
+    try {
+      target = new URL(sessionUrl);
+    } catch {
+      done(false);
+      return;
+    }
+    const req = http.request(
+      target,
+      {
+        method: "GET",
+        timeout: timeoutMs,
+        headers: { Cookie: `gf_session=${cookie}`, Host: new URL(origin).host, Accept: "application/json" },
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+          if (body.length > 65536) req.destroy();
+        });
+        res.on("end", () => {
+          try {
+            const value = JSON.parse(body);
+            done(res.statusCode === 200 && Boolean(value?.user) && value.scope === "full");
+          } catch {
+            done(false);
+          }
+        });
+      },
+    );
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => done(false));
+    req.end();
+  });
+}
+
 const reject = (socket, status) => {
   socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
   socket.destroy();
@@ -56,6 +116,7 @@ function createDemoServer({
   maxClients = positiveInteger(process.env.DEMO_MAX_CLIENTS, 100),
   maxControllers = positiveInteger(process.env.DEMO_MAX_CONTROLLERS, 5),
   commandsPerSecond = 5,
+  sessionUrl = defaultSessionUrl(),
 } = {}) {
   const catalog = loadCatalog(),
     engine = createEngine(catalog),
@@ -123,15 +184,37 @@ function createDemoServer({
     if (
       !["/demo-stream", "/demo"].includes(url.pathname) ||
       !["viewer", "controller"].includes(role) ||
-      (origin ? !allowedOrigins.has(origin) : requireOrigin) ||
-      (role === "controller" &&
-        (controllerToken
-          ? !tokenMatches(controllerToken, url.searchParams.get("token"))
-          : requireOrigin)) // 배포 주소가 있는데 토큰이 없으면 조작반을 닫는다.
+      (origin ? !allowedOrigins.has(origin) : requireOrigin)
     ) {
       reject(socket, "403 Forbidden");
       return;
     }
+    if (role === "viewer") {
+      admit(req, socket, head, role);
+      return;
+    }
+    // 조작반: 토큰이 맞거나, 관리자 승인을 받은 앱 로그인이면 연다.
+    // 둘 다 설정되지 않은 개발 환경(배포 주소 없음)만 그대로 열어 둔다.
+    if (controllerToken && tokenMatches(controllerToken, url.searchParams.get("token"))) {
+      admit(req, socket, head, role);
+      return;
+    }
+    const cookie = sessionCookie(req.headers.cookie);
+    if (sessionUrl && origin && cookie) {
+      approvedLogin(sessionUrl, cookie, origin).then((ok) => {
+        if (socket.destroyed) return;
+        if (ok) admit(req, socket, head, role);
+        else reject(socket, "403 Forbidden");
+      });
+      return;
+    }
+    if (!controllerToken && !sessionUrl && !requireOrigin) {
+      admit(req, socket, head, role);
+      return;
+    }
+    reject(socket, "403 Forbidden");
+  });
+  const admit = (req, socket, head, role) => {
     // 시청자와 조작반은 상한을 따로 둔다. 시청자가 많아도 조작반 자리는 남는다.
     let sameRole = 0;
     for (const peer of wss.clients) if (peer.role === role) sameRole++;
@@ -143,7 +226,7 @@ function createDemoServer({
       peer.role = role;
       wss.emit("connection", peer);
     });
-  });
+  };
   wss.on("connection", (peer) => {
     peer.on("error", () => peer.terminate());
     peer.alive = true;
@@ -278,9 +361,9 @@ if (require.main === module) {
     process.exit(1);
   }
   const app = createDemoServer({ port, storePath: resolve(process.env.SIMULATION_DB_PATH || 'backend/data/operating-simulation.sqlite3') });
-  if (process.env.DEMO_CONTROLLER_TOKEN) console.log("조작반 연결은 DEMO_CONTROLLER_TOKEN이 필요합니다.");
-  else if (parseAllowedOrigins(process.env.DEMO_ALLOWED_ORIGINS).length)
-    console.log("DEMO_ALLOWED_ORIGINS는 있는데 DEMO_CONTROLLER_TOKEN이 없어 조작반 연결을 막습니다.");
+  const loginUrl = defaultSessionUrl();
+  if (loginUrl) console.log(`조작반은 관리자 승인을 받은 앱 로그인으로 엽니다(확인 주소 ${loginUrl}).`);
+  if (process.env.DEMO_CONTROLLER_TOKEN) console.log("DEMO_CONTROLLER_TOKEN으로도 조작반을 열 수 있습니다.");
   app
     .listen()
     .then((address) =>
@@ -300,4 +383,4 @@ if (require.main === module) {
   for (const signal of ["SIGTERM", "SIGINT"])
     process.on(signal, () => app.close().then(() => process.exit(0)));
 }
-module.exports = { createDemoServer, parseAllowedOrigins };
+module.exports = { createDemoServer, parseAllowedOrigins, defaultSessionUrl };

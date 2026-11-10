@@ -99,7 +99,7 @@ export function VesselVoyageCard({
       </span>
       <span className="gf-voyage-card-id">
         <span>MMSI {vessel.mmsi || "미등록"}</span>
-        <span className="gf-voyage-card-source">{source} <VesselFreshnessTag observedAt={position?.observedAt} now={now} /></span>
+        <span className="gf-voyage-card-source">{source} <VesselFreshnessTag observedAt={position?.observedAt} now={now} synthetic={vessel.source === "demo"} /></span>
       </span>
       {berthObservation && <span className="gf-voyage-card-berth">
         {berthObservation.berth ? `${berthObservation.berth}부두` : "부두 인근"} · {berthObservation.stale ? "마지막 위치 · 확인 필요" : berthObservation.estimated ? "AIS 접안 추정" : "접안 판별 대기"}

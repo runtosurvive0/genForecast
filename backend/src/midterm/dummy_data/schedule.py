@@ -23,6 +23,7 @@ class Slot:
     sailing: timedelta      # loading port → 당진
     jitter: timedelta       # U(−12 h, +12 h) on the interpolated arrival
     wait: timedelta         # U(2 h, 18 h) from arrival to berthing
+    fixed_arrival: datetime | None = None  # a person's arrival time the dummy chain must start from
 
 
 def parse(value: str | None) -> datetime | None:
@@ -85,7 +86,7 @@ def plan_berth(slots: dict[int, Slot], last_serial: int, as_of: datetime) -> dic
             times[serial] = {'departure': arrival - slot.sailing, 'arrival': arrival}
             continue
         else:
-            arrival = interpolate(points, serial) + slot.jitter
+            arrival = slot.fixed_arrival or interpolate(points, serial) + slot.jitter
             berth = arrival + slot.wait
             if previous_end is not None and berth < previous_end:
                 berth = previous_end + BERTH_GAP

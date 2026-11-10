@@ -27,7 +27,7 @@ ZGX의 폴더 구성:
   shared/     runs/, inputs/ (서버가 실행 중에 만드는 계획 실행·시나리오. 릴리스 사이에 보존)
   data/       데모 모의 운전 상태 DB(operating-simulation.sqlite3, 최근 20,000행·7일만 보관)
 /home/puyo/genforecast-hp-20261012/backend/data/   실사용 DB·공유 자료(그대로 사용)
-/home/puyo/.config/genforecast/demo.env              데모 조작반 토큰(0600)
+/home/puyo/.config/genforecast/demo.env              데모 조작반 비상용 토큰(0600)
 ```
 
 백엔드·화면 서비스는 drop-in으로 `ExecStart`를 비운 뒤 `/home/puyo/genforecast/current/.venv/bin/python`으로 다시 정의한다. 공용 Python 환경(`genforecast`)에는 아무것도 설치하지 않는다.
@@ -78,18 +78,23 @@ ZGX의 폴더 구성:
 
 ## 데모 조작반(공개 주소) 보호
 
-`/demo-stream`은 Funnel로 공개된다. 조회(viewer)는 누구나 할 수 있고, 조작(controller)은 `DEMO_CONTROLLER_TOKEN`이 맞아야 연결된다.
+`/demo-stream`은 Funnel로 공개된다. 조회(viewer)는 누구나 할 수 있다. 조작(controller)은 **관리자 승인을 받은 앱 로그인**이면 열린다.
 
-- 토큰은 `install.sh`가 `~/.config/genforecast/demo.env`(0600)에 한 번 만든다. 이미 있으면 유지하고, 값을 화면에 출력하지 않는다.
-- 조작반 주소: `https://zgx-6660.tailec6d33.ts.net/#demo-control?token=<demo.env의 DEMO_CONTROLLER_TOKEN 값>`. 화면은 토큰을 sessionStorage에 보관하고 주소창에서 지운다.
-  - 브라우저 탭마다 따로 보관되므로, 새 탭이나 창에서는 이 주소로 다시 연다.
-- 토큰을 바꾸려면 `demo.env`를 지우고 `install.sh`를 다시 실행한다. 또는 파일 값을 직접 바꾼 뒤 `sudo systemctl restart genforecast-demo.service`를 실행한다.
+- 사용법: 공개 주소에 로그인한 뒤 데이터 화면의 "조작반 열기"나 `https://zgx-6660.tailec6d33.ts.net/#demo-control`을 연다. 새 탭에서도 로그인이 유지되므로 따로 할 일이 없다.
+- 확인 방식: 데모 서버가 웹소켓 연결 요청의 `gf_session` 쿠키 하나만 같은 서버 백엔드 `http://127.0.0.1:8093/api/auth/session`에 넘겨 묻는다. `user`가 있고 `scope`가 `full`(승인 완료, 비밀번호 변경 완료)일 때만 연다.
+  - Host는 이미 허용 목록으로 검증한 Origin에서 만든다.
+  - 응답이 없거나 3초가 지나거나 형식이 다르면 거부한다.
+  - 쿠키가 없으면 백엔드에 묻지 않고 거부한다.
+  - 확인 주소는 `DEMO_ALLOWED_ORIGINS`가 있으면 위 주소가 기본이다. 바꾸려면 `DEMO_SESSION_URL`을 쓴다.
+- 비상용 토큰: `~/.config/genforecast/demo.env`(0600)의 `DEMO_CONTROLLER_TOKEN`도 그대로 쓸 수 있다(`#demo-control?token=<값>`). 백엔드가 멈춰 로그인 확인이 안 될 때만 쓰고, 값은 대화방·문서에 붙여 넣지 않는다.
+  - 토큰을 바꾸려면 파일 값을 바꾼 뒤 `sudo systemctl restart genforecast-demo.service`를 실행한다.
 - 서버 제한:
   - Origin이 없는 연결이나 허용 목록 밖 Origin은 거부한다.
-  - 동시 연결 상한은 역할별로 따로 둔다. 시청자 최대 100개(`DEMO_MAX_CLIENTS`), 토큰으로 인증된 조작반 최대 5개(`DEMO_MAX_CONTROLLERS`). 시청자가 가득 차도 조작반은 접속할 수 있다.
-  - `DEMO_ALLOWED_ORIGINS`가 설정됐는데 `DEMO_CONTROLLER_TOKEN`이 비어 있으면 조작반 연결을 모두 거부한다(닫힌 쪽으로 실패). 시청자는 그대로 접속한다.
+  - 동시 연결 상한은 역할별로 따로 둔다. 시청자 최대 100개(`DEMO_MAX_CLIENTS`), 조작반 최대 5개(`DEMO_MAX_CONTROLLERS`). 시청자가 가득 차도 조작반은 접속할 수 있다.
+  - `DEMO_ALLOWED_ORIGINS`가 설정되면 토큰도 승인된 로그인도 없는 조작반 연결은 모두 거부한다(닫힌 쪽으로 실패). 시청자는 그대로 접속한다.
   - 조작 명령이 연결당 초당 5개를 넘으면 넘는 명령은 무시하고, 계속되면 연결을 끊는다.
-- 토큰이 설정되지 않은 개발 PC(`npm run demo`)에서는 지금처럼 토큰 없이 조작할 수 있다.
+- 배포 주소가 없는 개발 PC(`npm run demo`)에서는 지금처럼 로그인·토큰 없이 조작할 수 있다.
+- 이 변경은 `scripts/fuel-demo/server.cjs`만 바꾸므로 자동 반영으로 적용된다. 서비스 파일은 그대로다.
 
 ## 최초 설치
 
@@ -114,7 +119,7 @@ bash /home/puyo/genforecast/repo/scripts/deploy/zgx-auto-update/install.sh
    2. 두 서비스의 `WorkingDirectory`·`ExecStart`와 화면 서비스의 `GENFORECAST_FRONTEND_FILE`이 바뀌었는지 확인한다.
    3. `update.py deploy`로 전환·재시작·상태 확인을 한다.
    첫 전환이 실패하면 drop-in을 지우고 기존 설치(2026-10-12 폴더)로 서비스를 복구한다.
-8. `genforecast-update.timer`를 켜고, 데모 조작반 주소를 안내한다(토큰 값은 출력하지 않음).
+8. `genforecast-update.timer`를 켜고, 데모 조작반 사용법(승인된 로그인)을 안내한다.
 
 ### Tailscale 경로 (ZGX Tailscale 1.104.2 기준)
 

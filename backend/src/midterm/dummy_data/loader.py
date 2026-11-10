@@ -15,7 +15,7 @@ from midterm.stock_baseline import DUMMY_ACTOR, LOT_KEY, dummy_names, read_basel
 from midterm.voyage_registry import (DUMMY_ORIGIN, KST, PURGE_ORDER, SCHEMA, RegistryError, commit, dummy_keys,
                                      purge, snapshot)
 
-from .generate import DEFAULT_SEED, ENTITIES, generate
+from .generate import DEFAULT_SEED, ENTITIES, STOCKED_FROM_STATUS, generate
 
 ACTOR = 'dummy-seed'
 BACKUP_FILE = 'planning.sqlite3'
@@ -171,7 +171,13 @@ def _clear_changes(registry: dict, edited: set = frozenset()) -> tuple[dict, lis
                 if basis in dummies and any(row.get(u) is not None and u not in dummies for u in users):
                     keep.add(basis)
             blank = dummies - keep
-            change = {key_field: row[key_field], **{k: None for k in blank},
+            restored = {}
+            if (entity == 'voyages' and not row[key_field].startswith('DV-') and 'status' in keep
+                    and 'actual_unload_end' in blank):
+                # generate() turned an entered 'arrived' into 'completed' because the yard holds the coal.
+                keep.discard('status')
+                restored = {'status': STOCKED_FROM_STATUS}
+            change = {key_field: row[key_field], **{k: None for k in blank}, **restored,
                       'data_origin': 'mixed' if keep else 'entered',
                       'dummy_fields': ','.join(sorted(keep)) or None}
             if keep:

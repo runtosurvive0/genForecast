@@ -1,5 +1,6 @@
 import { voyages } from "./control-tower.ts";
 import { BASE_TIME } from "../domain/operations.ts";
+import { demoFleet, DEMO_DOCK } from "./demo-fleet.ts";
 import type {
   TrackingVessel,
   TrackingVoyage,
@@ -7,6 +8,7 @@ import type {
 } from "../domain/vessel-workflow.ts";
 
 /** Entire catalog and forecast below are synthetic, including all identifiers. */
+const fleet = demoFleet();
 export const vesselCatalog: TrackingVessel[] = [
   ...voyages.map((v) => ({
     id: `vessel-${v.voyage_id}`,
@@ -30,6 +32,13 @@ export const vesselCatalog: TrackingVessel[] = [
     mmsi: "999000006",
     source: "demo",
   },
+  ...fleet.map((v) => ({
+    id: v.vesselId,
+    name: v.name,
+    imo: v.imo,
+    mmsi: v.mmsi,
+    source: "demo" as const,
+  })),
 ];
 export const trackingVoyages: TrackingVoyage[] = [
   ...voyages.map((v, i) => ({
@@ -90,6 +99,28 @@ export const trackingVoyages: TrackingVoyage[] = [
     cargoT: 65000,
     cv: 5400,
   },
+  ...fleet.map((v) => ({
+    id: `tracking-${v.id}`,
+    vesselId: v.vesselId,
+    plantId: "dangjin",
+    origin: v.origin.split(" · ").at(-1) ?? v.origin,
+    destination: v.berth ? `당진 연료부두 ${v.berth}부두` : "당진 연료부두",
+    state: v.state,
+    etd: null,
+    plannedEta: v.arrivalAt,
+    distanceNm: v.position && v.state === "underway"
+      ? Math.round(Math.hypot(v.position.latitude - DEMO_DOCK.latitude, (v.position.longitude - DEMO_DOCK.longitude) * Math.cos((DEMO_DOCK.latitude * Math.PI) / 180)) * 60)
+      : null,
+    plannedSpeedKn: 12,
+    position: v.position
+      ? { latitude: v.position.latitude, longitude: v.position.longitude, observedAt: new Date().toISOString(), sogKn: v.position.sogKn, cogDeg: v.position.cogDeg }
+      : null,
+    actualArrivalAt: v.state === "arrived" ? v.arrivalAt : null,
+    portWaitH: 0,
+    unloadH: 48,
+    cargoT: v.tons,
+    cv: 5500,
+  })),
 ];
 export const initialWatchlist = vesselCatalog.slice(0, 4).map((v) => v.id);
 export const sampleWeatherBase = BASE_TIME;

@@ -270,6 +270,6 @@ info "공개 주소 $DEMO_PATH 연결 시험: HTTP ${code:-응답 없음} (101�
 
 trap - ERR
 printf '\n설치 완료. main에 병합된 커밋은 5분마다 확인하고, GitHub 검사가 통과하면 시험·빌드를 거쳐 반영합니다.\n'
-printf '데모 조작반 주소: %s/#demo-control?token=<토큰>\n' "$PUBLIC_URL"
-printf '  <토큰> 자리에는 %s 파일의 DEMO_CONTROLLER_TOKEN 값을 넣습니다(이 화면에는 출력하지 않음).\n' "$DEMO_ENV"
+printf '데모 조작반: %s 에 관리자 승인을 받은 계정으로 로그인한 뒤 #demo-control 을 엽니다.\n' "$PUBLIC_URL"
+printf '  비상용 토큰은 %s 파일에 있습니다(이 화면에는 출력하지 않음).\n' "$DEMO_ENV"
 printf '상태: systemctl status genforecast-update.timer / 기록: journalctl -u genforecast-update -n 50\n'

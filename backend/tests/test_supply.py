@@ -249,6 +249,42 @@ def test_missing_plan_hour_is_not_zero_burn_or_normal_risk():
     assert output['kpis']['risk'] == 'unknown'
 
 
+def test_baseline_one_day_before_plan_start_keeps_stock_and_warns_once():
+    r = records()
+    for b in r['baselines']:
+        b['at'] = (START - timedelta(days=1)).isoformat()
+        b['source_date'] = '2026-10-06'
+    output = simulate(r, plan(), START + timedelta(hours=2), 7)
+    hourly = 10 * 55 * 2000 / 5500  # 처별 시간당 사용량 합(모든 호기 동일)
+    for g in output['groups']:
+        names = [u for u in UNITS if UNITS[u] == g['id']]
+        assert g['stock'] == pytest.approx(100000 - 2 * len(names) * 55 * 2000 / 5500)
+        assert g['days'] is not None
+    assert output['kpis']['stock'] == pytest.approx(300000 - 2 * hourly)
+    assert output['plan_issues'] == ['기준재고(2026-10-06) 이후 계획 시작(2026-10-08) 전 24시간 사용량 미반영']
+    # 계획 공백일의 사용량은 0으로 확정하지 않는다.
+    earlier = simulate(r, plan(), START - timedelta(hours=12), 7)
+    assert earlier['forecast'][0]['groups']['g14']['burn'] is None
+    assert earlier['forecast'][0]['groups']['g14']['stock'] == pytest.approx(100000)
+
+
+def test_missing_unit_row_after_plan_start_still_unknown_with_early_baseline():
+    r, p = records(), plan()
+    for b in r['baselines']:
+        b['at'] = (START - timedelta(days=1)).isoformat()
+    del p[(START + timedelta(hours=1)).isoformat()]['당진1']
+    output = simulate(r, p, START + timedelta(hours=2), 7)
+    groups = {g['id']: g for g in output['groups']}
+    assert groups['g14']['stock'] is None and groups['g14']['risk'] == 'unknown'
+    assert groups['g58']['stock'] is not None
+
+
+def test_empty_plan_does_not_count_as_plan_gap():
+    output = simulate(records(), {}, START + timedelta(hours=2), 7)
+    assert all(g['stock'] is None for g in output['groups'])
+    assert output['plan_issues'] == []
+
+
 def test_missing_extra_seven_days_prevents_false_safe_risk():
     output = simulate(records(), plan(days=7), START, 7)
     assert output['groups'][0]['min_days'] is None
@@ -288,3 +324,15 @@ def test_hourly_quadratic_heat_works_without_manual_hr():
     output = simulate(r, plan(mw=100), START + timedelta(hours=1), 7)
     expected = sum((master[u].heat[0] * 100**2 + master[u].heat[1] * 100 + master[u].heat[2]) * 1000/5500 for u in UNITS)
     assert output['kpis']['stock'] == pytest.approx(300000 - expected)
+
+
+def test_exhausted_stock_reports_zero_days_not_negative_days():
+    r = records()
+    r['baselines'][0]['tonnes'] = 5000  # 1,920 t/일이면 사흘 안에 소진
+    output = simulate(r, plan(), START, 7)
+    g = output['groups'][0]
+    assert g['min_days'] == 0
+    assert g['min_stock'] < 0  # 부족량은 그대로 보인다
+    assert g['risk'] == 'danger'
+    assert all(p['groups']['g14']['days'] >= 0 for p in output['forecast'])
+    assert output['kpis']['min_days'] == 0
