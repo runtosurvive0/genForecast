@@ -318,8 +318,11 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             times.add(at)
     planned_total = dict.fromkeys(GROUPS, 0.)
 
-    def overlapping(receipt, t, v):
-        """같은 배가 기존 입하 원장(supply_vessels)에도 있으면 중복으로 본다."""
+    def overlapping(receipt, t, v, unknown_overlaps=True):
+        """같은 배가 기존 입하 원장(supply_vessels)에도 있으면 중복으로 본다.
+
+        unknown_overlaps: 배 이름·MMSI가 둘 다 없는 입고를 중복 가능성으로 볼지. 실제 입고는 보수적으로 보지만,
+        계획 항차는 배가 정해지지 않은 경우가 많아 같은 배로 확인될 때만 중복으로 본다."""
         if v.get('classification') == 'simulation':
             return False
         at = timestamp(v['arrival_at'])
@@ -328,7 +331,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
         mmsi, name = receipt.get('mmsi'), receipt.get('vessel_name')
         return ((mmsi and mmsi == v.get('mmsi')) or
                 (name and str(name).strip().casefold() == str(v.get('name') or '').strip().casefold()) or
-                (not mmsi and not name))
+                (unknown_overlaps and not mmsi and not name))
 
     state = {g: {"stock": 0., "cv": fallback_cv, "known": False} for g in GROUPS}
     active_anchors = dict.fromkeys(GROUPS)
@@ -375,7 +378,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             anchor, st = active_anchors[g], state[g]
             if not anchor or t <= timestamp(anchor['at']) or not st['known']:
                 continue
-            if any(overlapping(item, t, v) for v in records['vessels']):
+            if any(overlapping(item, t, v, unknown_overlaps=False) for v in records['vessels']):
                 transfer_issues.append(f"{item['cargo_no']}: 기존 입하 원장과 같은 배로 보여 계획 입하에서 제외")
                 continue
             q, weight = item['tonnes'], max(st['stock'], 0)

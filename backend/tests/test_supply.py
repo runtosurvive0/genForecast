@@ -431,3 +431,23 @@ def test_planned_receipt_without_yard_is_reported_not_guessed():
     output = simulate(r, plan(), START, 7)
     assert all(p['groups'][g]['receipts'] == 0 for p in output['forecast'] for g in GROUPS)
     assert any('P4' in issue and '저탄장' in issue for issue in output['transfer_issues'])
+
+
+def test_old_supply_vessel_does_not_hide_planned_receipts_of_an_unnamed_ship():
+    """ZGX에서 10-06 입항 시험 선박(이름·MMSI 없음 판정 창 60일)이 그 뒤 계획 입하를 모두 지웠던 회귀."""
+    r = records()
+    old = {**vessel(), 'name': 'Pacific Horizon', 'mmsi': None, 'classification': 'planned',
+           'arrival_at': (START - timedelta(days=2)).isoformat()}
+    old['points'] = [{**old['points'][0], 'at': old['arrival_at']}]
+    r['vessels'] = [old]
+    at = START + timedelta(days=1, hours=6)
+    r['registry_planned'] = [{'cargo_no': 'P1', 'group': 'g58', 'at': at.isoformat(), 'tonnes': 70000.,
+                              'cv': 5600., 'vessel_name': None, 'mmsi': None}]
+    output = simulate(r, plan(), START, 5)
+    assert output['forecast'][1]['groups']['g58']['receipts'] == 70000
+    assert not any('P1' in issue for issue in output['transfer_issues'])
+    # 같은 배로 확인되면 여전히 중복으로 뺀다.
+    r['registry_planned'][0]['vessel_name'] = 'PACIFIC HORIZON'
+    again = simulate(r, plan(), START, 5)
+    assert again['forecast'][1]['groups']['g58']['receipts'] == 0
+    assert any('P1' in issue and '같은 배' in issue for issue in again['transfer_issues'])
