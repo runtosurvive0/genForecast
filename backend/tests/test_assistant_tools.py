@@ -132,7 +132,7 @@ def test_tool_schemas_cover_registry():
     schemas = tool_schemas()
     assert [s['name'] for s in schemas] == list(TOOLS)
     assert set(TOOLS) == {'list_voyages', 'waiting_vessels', 'stock_snapshot', 'plan_for_day', 'simulate_scenario', 'screen_checks',
-                          'recommend_stacking', 'stacking_candidates', 'recommend_blend'}
+                          'recommend_stacking', 'stacking_candidates', 'recommend_blend', 'optimize_berth_schedule'}
     assert all(s['description'] and s['parameters']['type'] == 'object' for s in schemas)
 
 
@@ -312,3 +312,34 @@ def test_new_tools_do_not_write(monkeypatch, stack_db):
     monkeypatch.setattr(voyage_registry, 'commit', boom)
     assert run_tool('stacking_candidates', {}, ctx(stack_db))['ok']
     assert run_tool('recommend_stacking', SCENARIO_ARGS, ctx(stack_db))['ok']
+
+
+def test_optimize_berth_schedule_tool(monkeypatch):
+    from midterm.berth_plan.inputs import build_inputs, load_berths
+    from test_berth_plan_api import AS_OF, REGISTRY
+
+    berths, outages = load_berths()
+    seen = {}
+
+    def fake_load(db_path, as_of, horizon_days):
+        seen.update(db_path=db_path, as_of=as_of, horizon_days=horizon_days)
+        return build_inputs(REGISTRY, berths, outages, None, AS_OF, horizon_days)
+
+    monkeypatch.setattr('midterm.assistant.tools.load_inputs', fake_load)
+    r = run_tool('optimize_berth_schedule', {}, ctx_for())
+    assert r['ok'] and r['source'] == 'berth_plan' and r['data']['options'][0]['rank'] == 1
+    assert seen['horizon_days'] == 14
+    assert run_tool('optimize_berth_schedule', {'horizon_days': 7, 'penalty_usd': 0}, ctx_for())['ok']
+    assert seen['horizon_days'] == 7
+    assert not run_tool('optimize_berth_schedule', {'horizon_days': 40}, ctx_for())['ok']
+    assert not run_tool('optimize_berth_schedule', {'penalty_usd': -1}, ctx_for())['ok']
+    description = TOOLS['optimize_berth_schedule'].description
+    assert '읽기 전용' in description and '1순위' in description
+
+
+def test_optimize_berth_schedule_tool_failure_is_reported(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError('원장 없음')
+    monkeypatch.setattr('midterm.assistant.tools.load_inputs', boom)
+    r = run_tool('optimize_berth_schedule', {}, ctx_for())
+    assert not r['ok'] and r['error'].startswith('접안 추천 실패')

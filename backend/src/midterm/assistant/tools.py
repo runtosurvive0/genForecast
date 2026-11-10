@@ -13,6 +13,8 @@ from typing import Any, Callable
 
 from midterm.assistant import checks
 from midterm.baseline_quality import blend_lots
+from midterm.berth_plan import recommend_berth_plan
+from midterm.berth_plan.inputs import load_inputs
 from midterm.blend_recommendation import recommend_blend
 from midterm.dummy_data.profiles import load_profiles
 from midterm.stacking import blocked_result, load_layout, load_routes, recommend, validate_cargo
@@ -306,6 +308,17 @@ def _recommend_stacking(args: dict, ctx: ToolContext) -> dict:
         return _fail(f"적치 추천 실패: {exc}")
 
 
+def _optimize_berth_schedule(args: dict, ctx: ToolContext) -> dict:
+    try:
+        inputs = load_inputs(ctx.db_path, ctx.now, args.get("horizon_days", 14))
+        result = recommend_berth_plan(inputs, float(args.get("penalty_usd", 20000)))
+        return _ok(result["as_of"], "berth_plan", result)
+    except ValueError as exc:
+        return _fail(f"접안 추천 입력 오류: {exc}")
+    except Exception as exc:
+        return _fail(f"접안 추천 실패: {exc}")
+
+
 def _stacking_candidates(args: dict, ctx: ToolContext) -> dict:
     try:
         baseline = read_baseline(ctx.db_path)
@@ -395,6 +408,13 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
             "berth": {"type": "integer", "minimum": 1, "maximum": 3},
             "destination_yard": {"type": ["integer", "null"], "minimum": 1, "maximum": 3},
         }, "required": []}, _recommend_stacking),
+    ToolSpec("optimize_berth_schedule", "입항 예정 배의 부두·접안 시각을 체선료와 재고 위험으로 세 안 추천한다(읽기 전용). "
+             "답은 1순위 안을 중심으로 하고 다른 안의 차이와 gaps를 함께 말한다.", {
+        "type": "object",
+        "properties": {
+            "horizon_days": {"type": "integer", "minimum": 1, "maximum": 30},
+            "penalty_usd": {"type": "number", "minimum": 0},
+        }, "required": []}, _optimize_berth_schedule),
     ToolSpec("stacking_candidates", "지금 하역 대기 중인 항차(도착했고 부두가 배정됐으며 아직 하역 전)와 "
              "각 항차의 화물 정보·추천 불가 이유를 조회한다.", {
         "type": "object", "properties": {}, "required": []}, _stacking_candidates),
