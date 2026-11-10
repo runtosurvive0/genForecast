@@ -49,6 +49,8 @@ from midterm.web.assistant_api import router as assistant_router
 app.include_router(assistant_router)
 from midterm.web.ops_assistant_api import router as ops_assistant_router
 app.include_router(ops_assistant_router)
+from midterm.web.stacking_api import router as stacking_router
+app.include_router(stacking_router)
 from midterm.web.catalog_transport import CatalogCompressionMiddleware
 app.add_middleware(CatalogCompressionMiddleware)
 from midterm.web.auth_api import install_access
