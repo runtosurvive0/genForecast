@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createFuelDemoTransport, disabledDemoState } from "./transport";
 import type { FuelDemoRole, FuelDemoValue } from "./types";
+import { alignDemoToBaseline, type BaselineLotLike } from "./align-baseline";
 
 const disabledValue: FuelDemoValue = {
   ...disabledDemoState,
@@ -18,10 +19,13 @@ const FuelDemoContext = createContext<FuelDemoValue>(disabledValue);
 export function FuelDemoProvider({
   enabled,
   role = "viewer",
+  baselineLots,
   children,
 }: {
   enabled: boolean;
   role?: FuelDemoRole;
+  /** 저장된 기준재고 원탄. 주면 데모 재고를 저탄장·등급별 기준재고 합계에 맞춰 모든 화면이 같은 값을 본다. */
+  baselineLots?: BaselineLotLike[] | null;
   children: ReactNode;
 }) {
   const transport = useMemo(() => createFuelDemoTransport({ role }), [role]);
@@ -38,8 +42,10 @@ export function FuelDemoProvider({
     return transport.start();
   }, [enabled, transport]);
   const value = useMemo<FuelDemoValue>(
-    () => (enabled ? { ...state, command: transport.command } : disabledValue),
-    [enabled, state, transport],
+    () => (enabled
+      ? { ...state, snapshot: alignDemoToBaseline(state.snapshot, baselineLots), command: transport.command }
+      : disabledValue),
+    [enabled, state, transport, baselineLots],
   );
   return (
     <FuelDemoContext.Provider value={value}>

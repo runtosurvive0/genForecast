@@ -99,6 +99,7 @@ import { number as n, date as fmtDate, shiftDate } from "@/lib/format";
 
 import { pageFromHash, pageHash, pageInfo, type Page } from "@/domain/navigation";
 import { FuelDemoProvider, useFuelDemo } from "@/domain/fuel-demo";
+import { useYardBaseline } from "@/domain/use-yard-baseline";
 import { FuelDemoControl } from "@/components/fuel-demo";
 import { Gen4castBrand, OperationsGroups, OperationsNavigation } from "@/components/operations-shell/OperationsNavigation";
 import { OperationsYard } from "@/features/stockyard/OperationsYard";
@@ -194,7 +195,8 @@ function App() {
     window.addEventListener('hashchange', update);
     return () => window.removeEventListener('hashchange', update);
   }, []);
-  return <FuelDemoProvider enabled={demoEnabled || route === 'demo-control'} role={route === 'demo-control' ? 'controller' : 'viewer'}>
+  const yardBaseline = useYardBaseline();
+  return <FuelDemoProvider enabled={demoEnabled || route === 'demo-control'} role={route === 'demo-control' ? 'controller' : 'viewer'} baselineLots={yardBaseline.data?.lots}>
     <WorkspaceApp page={route} initialLotId={initialLotId} demoEnabled={demoEnabled} onDemoEnabled={updateDemoEnabled}/>
   </FuelDemoProvider>;
 }

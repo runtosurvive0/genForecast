@@ -40,6 +40,8 @@ import { plantDestinations } from "./useAisDestinations";
 import { watchStatus } from "./vessel-watch-status";
 import { VesselWeatherPanel } from "./VesselWeatherPanel";
 import { useVesselWorkspace } from "./useVesselWorkspace";
+import { useFuelDemo } from "@/domain/fuel-demo";
+import { withDemoWatchlist } from "@/data/demo-fleet";
 import { useAccount } from "@/lib/account-context";
 import { authJson } from "@/lib/auth-client";
 import type { Records } from "./VoyageRegistry";
@@ -85,7 +87,15 @@ export function VesselTracking({
   pageNavigation?: ReactNode;
   berthFeed?: BerthFeed;
 }) {
-  const { workspace, save, error, setError } = useVesselWorkspace();
+  const { workspace: storedWorkspace, save: saveStored, error, setError } = useVesselWorkspace();
+  // 모의 선박은 화면에만 고정하고 계정 관심 목록에는 저장하지 않는다.
+  const save = (next: typeof storedWorkspace) =>
+    saveStored({ ...next, watchlist: withDemoWatchlist(next.watchlist, false) });
+  const demoOn = useFuelDemo().status !== "disabled";
+  const workspace = useMemo(
+    () => ({ ...storedWorkspace, watchlist: withDemoWatchlist(storedWorkspace.watchlist, demoOn) }),
+    [storedWorkspace, demoOn],
+  );
   const account = useAccount();
   const [registryOpen, setRegistryOpen] = useState<'voyages' | 'cargo' | null>(null);
   const [registryKey, setRegistryKey] = useState('');
@@ -549,7 +559,7 @@ export function VesselTracking({
   }
   function exportFile() {
     const url = URL.createObjectURL(
-      new Blob([JSON.stringify(workspace, null, 2)], {
+      new Blob([JSON.stringify({ ...workspace, watchlist: withDemoWatchlist(workspace.watchlist, false) }, null, 2)], {
         type: "application/json",
       }),
     );

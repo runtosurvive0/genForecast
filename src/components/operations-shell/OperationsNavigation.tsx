@@ -15,8 +15,8 @@ export function OperationsNavigation({page,onNavigate,planning,demo,onHelp,obser
   const reference = page==='yard'||page==='berth';
   const stream = demo.status!=='disabled';
   const snapshot = stream ? demo.snapshot : null;
-  const compatible = !!snapshot && !!baseline.data?.lots.length && baseline.data.lots.every(lot => lot.source_id && snapshot.material.lots[lot.source_id]);
-  const stock = compatible ? snapshot!.material.totalStock : baseline.data?.total_t ?? null;
+  // 데모 재고는 공급자에서 기준재고 합계에 맞춰지므로 운영 현황·저탄 화면과 같은 값을 쓴다.
+  const stock = snapshot ? snapshot.material.totalStock : baseline.data?.total_t ?? null;
   const output = snapshot ? Object.values(snapshot.units).reduce((sum,u)=>sum+u.mw,0) : null;
   const source = baseline.data?.as_of ? `재고 기준 ${baseline.data.as_of}` : '기준재고 미연결';
   return <div className="gf-rail-content">

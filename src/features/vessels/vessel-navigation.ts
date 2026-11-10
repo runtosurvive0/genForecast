@@ -122,12 +122,24 @@ export function mapFleet(
   const positions: MapPosition[] = [];
   for (const { vessel, voyage } of rows) {
     if (vessel.source === "demo") {
-      const sample: Shipment | undefined = shipments.find(
-        (s) =>
-          s.id === vessel.legacyId &&
-          s.plantId === voyage?.plantId &&
-          s.origin === voyage?.origin,
-      );
+      const sample: Shipment | undefined = vessel.legacyId
+        ? shipments.find(
+            (s) =>
+              s.id === vessel.legacyId &&
+              s.plantId === voyage?.plantId &&
+              s.origin === voyage?.origin,
+          )
+        : voyage && {
+            // 시연 모의 선박(demo-fleet): 표본 화물 대신 항차 자체로 표시한다.
+            id: vessel.id,
+            plantId: voyage.plantId,
+            vesselName: vessel.name,
+            origin: voyage.origin,
+            tons: voyage.cargoT,
+            arrivalAt: voyage.actualArrivalAt ?? voyage.plannedEta ?? "",
+            dischargeCompleteAt: "",
+            status: voyage.state === "arrived" ? "하역 중" : "항해 중",
+          };
       if (
         !sample ||
         !voyage?.position ||

@@ -244,11 +244,11 @@ test('운영 개요는 현황판으로 호기 출력·금일 순수요·저탄 �
     await expect(units).toContainText('5,370');
     await expect(units).toContainText('운전 10기');
     await expect(units.locator('.gf-os-unit').first()).toContainText('460');
-    // 막대 높이는 정격에 비례한다: 1,020MW 호기 760MW 채움이 600MW 호기 460MW보다 높다.
+    // 막대 높이는 정격에 비례한다: 1,020MW 호기 760MW 채움이 500MW 호기 460MW보다 높다.
     const fill = (i: number) => units.locator('.gf-os-unit').nth(i).locator('.gf-os-unit-track i').boundingBox();
     expect((await fill(8))!.height).toBeGreaterThan((await fill(0))!.height);
     const track = (i: number) => units.locator('.gf-os-unit').nth(i).locator('.gf-os-unit-track').boundingBox();
-    expect(Math.abs((await track(0))!.height / (await track(9))!.height - 600 / 1020)).toBeLessThan(0.03);
+    expect(Math.abs((await track(0))!.height / (await track(9))!.height - 500 / 1020)).toBeLessThan(0.03);
     // 운전 중인 호기 막대는 한 가지 색이다(묶음별 색은 뜻이 없다).
     expect(new Set(await units.locator('.gf-os-unit[data-status="running"] .gf-os-unit-track i').evaluateAll(els => els.map(e => getComputedStyle(e).backgroundColor))).size).toBe(1);
 
