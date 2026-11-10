@@ -21,6 +21,7 @@ import { SCREEN_QUESTIONS, type AssistantContext } from "@/domain/assistant-chec
 import { StackingOptions } from "@/components/stacking/StackingOptions";
 import { cargoFromScenario, stackingContext, stackingEligible, stackingFocusValue, type StackingResult } from "@/domain/stacking";
 import { fetchStacking } from "@/domain/stacking-api";
+import type { PlanReference } from "@/domain/plan-reference";
 import "./demo-forecast.css";
 
 type StackingView = { status: "loading" } | { status: "ready"; result: StackingResult } | { status: "error"; message: string };
@@ -67,8 +68,18 @@ function Panel({ title, note, children, className = "" }: { title: string; note?
   );
 }
 
-export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate, onOpenStacking }: {
+/** 저장 계획 최저 재고일수 문구. 값이 없을 때 0이나 표본 값으로 대신하지 않는다. */
+export function planRefText(plan: PlanReference | undefined): string {
+  if (!plan || plan.status === "loading") return "저장 계획 최저 재고일수 확인 중";
+  if (plan.status === "missing") return `저장 계획 최저 재고일수 미확인 · ${plan.reason}`;
+  const days = plan.minDays === null ? "미확정" : `${n(plan.minDays, 1)}일`;
+  return `저장 계획 최저 ${days} · ${plan.start}부터 ${plan.horizon}일 (통합 시뮬레이션)`;
+}
+
+export function DemoForecast({ theme, snapshot, status, plan, onAsk, onNavigate, onOpenStacking }: {
   theme: string; snapshot: FuelDemoSnapshot | null; status: FuelDemoStatus;
+  /** 저장 계획(통합 시뮬레이션)의 최저 재고일수. 이 화면의 가상 표본과 비교하는 참고값 */
+  plan?: PlanReference;
   onAsk: (question: string, context: AssistantContext) => void; onNavigate: (page: string) => void;
   onOpenStacking?: (value: string) => void;
 }) {
@@ -213,7 +224,11 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate, onOpe
       <header className="dfc-heading">
         <div>
           <h1>수급 예측</h1>
-          <p>계약 선박의 접안·하역과 호기별 발전 계획으로 저탄장 재고를 시간 단위로 계산합니다.</p>
+          <p className="dfc-sample-note" role="note" aria-label="가상 표본으로 계산하는 연습 화면" title="재고일수 공식(재고 ÷ 다음 7일 계획 소비 평균)은 통합 시뮬레이션과 같지만, 발전 계획·계약 선박이 가상 표본이고 시작 재고가 운전 데모 값이라 숫자가 다릅니다.">
+            <b className="dfc-sample-badge">가상 표본</b>
+            가상 발전 계획·계약 선박으로 저탄장 재고를 시간 단위로 계산하는 연습 화면입니다. 운영 판단은 저장 계획 기준입니다.
+            <button type="button" className="dfc-sample-link" onClick={() => onNavigate("simulation")}>통합 시뮬레이션 보기</button>
+          </p>
         </div>
         <Button variant="outline" size="sm" className="dfc-reset" onClick={resetAll} disabled={!changes.length && !adopted && !parsed}>
           <RotateCcw />
@@ -268,7 +283,7 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate, onOpe
               {adopted && <li className="dfc-adopted">적용한 대안: {adopted.title}</li>}
             </ul>
           ) : (
-            <span>기준 계획 · 변경한 조건 없음</span>
+            <span>표본 기준 · 변경한 조건 없음</span>
           )}
         </div>
       </section>
@@ -279,7 +294,8 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate, onOpe
             <div className={`dfc-kpi dfc-${k.risk}`}>
               <span>최저 재고일수</span>
               <strong>{k.minDays === null ? "-" : n(k.minDays, 1)}<small>일 · {riskLabel}</small></strong>
-              <p>{k.minDaysDate ?? "-"} · 기준 계획 {n(base.kpis.minDays ?? 0, 1)}일</p>
+              <p>{k.minDaysDate ?? "-"} · 표본 기준 {n(base.kpis.minDays ?? 0, 1)}일</p>
+              <p className="dfc-plan-ref" aria-label="저장 계획 참고값">{planRefText(plan)}</p>
             </div>
             <div className="dfc-kpi">
               <span>전체 고갈 시점</span>

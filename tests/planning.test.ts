@@ -11,6 +11,8 @@ import { forecastSummary } from "../src/features/plant/forecast-summary.ts";
 import { forecastDay } from "../src/features/plant/forecast-day.ts";
 import { sourceDescription } from "../src/domain/source-description.ts";
 import { minimumInventoryPoint } from "../src/domain/supply.ts";
+import { planReference } from "../src/domain/plan-reference.ts";
+import type { PlanningSnapshot } from "../src/domain/planning.ts";
 
 test('저장 계획은 오늘을 포함하면 오늘부터 조회하고, 미래·과거 결과는 날짜를 옮기지 않는다', () => {
   const run = { id:'rolling', name:'계획', period:'', start:'2026-11-01', end:'2027-02-06' };
@@ -262,4 +264,16 @@ test('이미 마침표가 있는 문장 뒤의 하이픈도 마침표가 겹치�
 test('기간이 없는 항목도 undefined 없이 이름을 만든다', async () => {
   const { planLabel } = await import('../src/domain/planning-labels.ts');
   assert.equal(planLabel({ name: '월간', id: 2, start: undefined as unknown as string, end: undefined as unknown as string }), '#2 월간');
+});
+
+test('planReference: 저장 계획 최저 재고일수를 참고값으로 요약하고, 없으면 0으로 채우지 않는다', () => {
+  const runs = [{ id: 'r1', name: '11월 계획', period: '', start: '2026-11-10', end: '2027-02-07' }];
+  const snap = { run_id: 'r1', start: '2026-11-10', horizon_days: 90, inventory: { kpis: { min_days: 4.3 } } } as unknown as PlanningSnapshot;
+  assert.deepEqual(planReference({ runs, current: snap, listLoading: false, loading: false, failed: '' }),
+    { status: 'ready', minDays: 4.3, start: '2026-11-10', horizon: 90, runName: '11월 계획' });
+  const unknownDays = { ...snap, inventory: { kpis: { min_days: null } } } as unknown as PlanningSnapshot;
+  assert.equal((planReference({ runs, current: unknownDays, listLoading: false, loading: false, failed: '' }) as { minDays: number | null }).minDays, null);
+  assert.deepEqual(planReference({ runs, current: null, listLoading: true, loading: false, failed: '' }), { status: 'loading' });
+  assert.deepEqual(planReference({ runs, current: null, listLoading: false, loading: false, failed: '401' }), { status: 'missing', reason: '401' });
+  assert.deepEqual(planReference({ runs: [], current: null, listLoading: false, loading: false, failed: '' }), { status: 'missing', reason: '저장된 계획이 없습니다.' });
 });
