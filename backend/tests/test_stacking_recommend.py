@@ -214,3 +214,32 @@ def test_does_not_mutate_inputs():
     snapshot = [dict(l) for l in lots]
     run(cargo(), lots)
     assert lots == snapshot
+
+
+def _mixed_grade_gap_lots():
+    lots = [lot("P1", 0, 100, grade="고열량"), lot("P1", 400, 420), lot("P2", 0, 400)]
+    return lots + full("P3", "P4", "P5", "P6") + full_sheds()
+
+
+def test_split_uses_usable_part_of_gap_beside_other_grade():
+    r = run(cargo(tonnes=45000), _mixed_grade_gap_lots())
+    first = r["options"][0]["placements"]
+    assert first == [
+        {"yard": 1, "target": "Pile 1", "from_m": 105, "to_m": 400, "tonnes": 44250},
+        {"yard": 1, "target": "Pile 2", "from_m": 400, "to_m": 405, "tonnes": 750},
+    ]
+
+
+def test_no_fit_largest_uses_usable_part_of_gap():
+    r = run(cargo(tonnes=60000), _mixed_grade_gap_lots())
+    assert r["options"] == []
+    assert r["no_fit"]["largest"] == {"yard": 1, "target": "Pile 1", "from_m": 105, "to_m": 400, "tonnes": 44250}
+
+
+def test_usable_part_shrinks_both_sides_of_other_grade():
+    lots = [lot("P1", 0, 100, grade="고열량"), lot("P1", 400, 420, grade="고열량")]
+    lots += full("P2", "P3", "P4", "P5", "P6") + full_sheds()
+    r = run(cargo(tonnes=60000), lots)
+    assert r["no_fit"]["largest"] == {"yard": 1, "target": "Pile 1", "from_m": 105, "to_m": 395, "tonnes": 43500}
+    r = run(cargo(tonnes=6000), lots)
+    assert r["options"][0]["placements"][0] == {"yard": 1, "target": "Pile 1", "from_m": 105, "to_m": 145, "tonnes": 6000}

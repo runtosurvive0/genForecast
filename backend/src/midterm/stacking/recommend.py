@@ -74,7 +74,20 @@ def _pile_label(pid: str) -> str:
     return f"Pile {int(m.group(1))}" if m else pid
 
 
-def _slots(space: dict, reachable: set[str], layout: dict) -> tuple[list[dict], list[str]]:
+def _usable(lots: list[dict], a: float, b: float, grade: str, min_gap: float) -> tuple[float, float]:
+    """Part of gap [a, b] kept min_gap away from coal of another grade."""
+    lo, hi = a, b
+    for seg in lots:
+        if seg["grade"] is None or seg["grade"] == grade:
+            continue
+        if seg["to_m"] <= a:
+            lo = max(lo, seg["to_m"] + min_gap)
+        elif seg["from_m"] >= b:
+            hi = min(hi, seg["from_m"] - min_gap)
+    return lo, hi
+
+
+def _slots(space: dict, reachable: set[str], grade: str, layout: dict) -> tuple[list[dict], list[str]]:
     slots: list[dict] = []
     gaps: list[str] = []
     for pid, pile in space["piles"].items():
@@ -84,9 +97,12 @@ def _slots(space: dict, reachable: set[str], layout: dict) -> tuple[list[dict], 
             gaps.append(f"구간 미확인: {_pile_label(pid)}")
             continue
         for a, b in pile["gaps"]:
+            lo, hi = _usable(pile["lots"], a, b, grade, layout["min_gap_m"])
+            if hi - lo <= 0:
+                continue
             slots.append({"kind": "pile", "pid": pid, "label": _pile_label(pid), "yard": pile["yard"],
-                          "from": a, "to": b, "t_per_m": pile["t_per_m"], "mock": pile["t_per_m_mock"],
-                          "lots": pile["lots"], "capacity": (b - a) * pile["t_per_m"]})
+                          "from": lo, "to": hi, "t_per_m": pile["t_per_m"], "mock": pile["t_per_m_mock"],
+                          "lots": pile["lots"], "capacity": (hi - lo) * pile["t_per_m"]})
     for name, shed in space["sheds"].items():
         if name not in reachable:
             continue
@@ -124,7 +140,7 @@ def _check(near: list[dict], grade: str, layout: dict) -> dict | None:
 
 
 def _place(slot: dict, tonnes: float, grade: str, layout: dict, whole: bool = False) -> dict | None:
-    """Placement of `tonnes` in the slot (or the whole slot) that keeps grades apart."""
+    """Placement of `tonnes` from the front of the slot's usable part (or all of it)."""
     if slot["kind"] == "shed":
         if tonnes > slot["capacity"] + 1e-9:
             return None
@@ -133,21 +149,17 @@ def _place(slot: dict, tonnes: float, grade: str, layout: dict, whole: bool = Fa
             return None
         return {"placement": {"yard": slot["yard"], "target": slot["label"], "from_m": None, "to_m": None,
                               "tonnes": _t(tonnes)}, "slot": slot, **check}
-    a, b = slot["from"], slot["to"]
-    if whole:
-        spans = [(a, b)]
-    else:
+    lo, hi = slot["from"], slot["to"]
+    if not whole:
         length = math.ceil(round(tonnes / slot["t_per_m"] / 0.5, 9)) * 0.5
-        if length > b - a:
+        if length > hi - lo:
             return None
-        spans = [(a, a + length), (b - length, b)]
-    min_gap = layout["min_gap_m"]
-    for lo, hi in spans:
-        check = _check(_pile_near(slot, lo, hi, min_gap), grade, layout)
-        if check is not None:
-            return {"placement": {"yard": slot["yard"], "target": slot["label"], "from_m": _t(lo), "to_m": _t(hi),
-                                  "tonnes": _t(tonnes)}, "slot": slot, **check}
-    return None
+        hi = lo + length
+    check = _check(_pile_near(slot, lo, hi, layout["min_gap_m"]), grade, layout)
+    if check is None:
+        return None
+    return {"placement": {"yard": slot["yard"], "target": slot["label"], "from_m": _t(lo), "to_m": _t(hi),
+                          "tonnes": _t(tonnes)}, "slot": slot, **check}
 
 
 def _option(parts: list[dict], cargo: dict) -> dict:
@@ -209,7 +221,7 @@ def recommend(cargo: dict, baseline: dict, layout: dict, routes: dict[int, set[s
     if grade is None:
         result["blocked"] = "고/저 구분 미확인"
         return result
-    slots, gaps = _slots(yard_space(lots, layout), routes.get(cargo["berth"], set()), layout)
+    slots, gaps = _slots(yard_space(lots, layout), routes.get(cargo["berth"], set()), grade, layout)
     result["gaps"] = gaps
     tonnes = cargo["tonnes"]
     built = [_option([p], cargo) for s in slots if (p := _place(s, tonnes, grade, layout))]
