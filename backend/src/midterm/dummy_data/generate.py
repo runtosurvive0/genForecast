@@ -20,6 +20,7 @@ DEFAULT_SEED = 20261110
 YEAR = 26
 LAST_SERIAL = {1: 41, 2: 22, 3: 38}
 ENTITIES = ('voyages', 'cargo', 'assays')
+STOCKED_FROM_STATUS = 'arrived'  # the only entered status replaced by 'completed' (unload restores it)
 
 ANTHRACITE_CAP = math.floor(0.05 * sum(LAST_SERIAL.values()))
 ANTHRACITE_WEIGHT = 0.2
@@ -135,8 +136,8 @@ class _Emitter:
         self.fill = {e: {'rows': 0, 'fields': 0} for e in ENTITIES}
         self.kept = 0
 
-    def emit(self, entity: str, key: str, proposal: dict) -> dict:
-        """Return the row as it will stand after commit."""
+    def emit(self, entity: str, key: str, proposal: dict, override: frozenset = frozenset()) -> dict:
+        """Return the row as it will stand after commit. `override` keys replace a stored value of a real row."""
         key_field = SCHEMA[entity]['key']
         row = self.current[entity].get(key)
         if row is None or row.get('data_origin') == 'dummy':
@@ -145,8 +146,10 @@ class _Emitter:
             self.changes[entity].append(change)
             return {**(row or {}), **change}
         real = _real(row, entity)
-        self.kept += sum(v is not None and real.get(k) is not None for k, v in proposal.items())
+        self.kept += sum(v is not None and real.get(k) is not None and k not in override
+                         for k, v in proposal.items())
         fill = {k: v for k, v in proposal.items() if v is not None and row.get(k) is None}
+        fill.update({k: proposal[k] for k in override if proposal.get(k) is not None and row.get(k) != proposal[k]})
         if not fill:
             return dict(row)
         self.fill[entity]['rows'] += 1
@@ -196,6 +199,7 @@ def generate(snapshot: dict, baseline: dict, *, seed: int = DEFAULT_SEED,
             baseline_yard[number] = str(LOCATIONS[location])
 
     known = {}
+    stocked = set(lots_by_number)  # the baseline holds their coal in the yard, so unloading is finished
     for number in numbers:
         coal = (real_cargo.get(number, (None, {}))[1].get('coal_name')) or baseline_coal.get(number)
         if coal:
@@ -221,10 +225,15 @@ def generate(snapshot: dict, baseline: dict, *, seed: int = DEFAULT_SEED,
             low, high = CAPESIZE_BL if capesize else PANAMAX_BL
             bl = round(low + d['bl'] * (high - low))
         view = real_voyages.get(number, (None, None))[1]
+        row = real_voyages.get(number, (None, None))[0]
+        # Entered as 'arrived' (or already turned 'completed' by an earlier run) although the yard holds its coal.
+        stocked_open = bool(view) and number in stocked and not view.get('actual_unload_end') and (
+            view.get('status') == STOCKED_FROM_STATUS or 'status' in dummy_keys(row, 'voyages'))
         info[number] = dict(berth_id=berth_id, serial=serial, spec=spec, coal=coal, profile=profile, d=d,
                             country=country, ports=ports, bl=bl, capesize=capesize, view=view,
                             sailing=timedelta(days=days[0] + d['sailing'] * (days[1] - days[0])),
-                            completed=view is None or bool(view.get('actual_unload_end')))
+                            stocked_open=stocked_open,
+                            completed=view is None or bool(view.get('actual_unload_end')) or stocked_open)
 
     times: dict[str, dict] = {}
     for berth_no, last in LAST_SERIAL.items():
@@ -235,8 +244,9 @@ def generate(snapshot: dict, baseline: dict, *, seed: int = DEFAULT_SEED,
                 continue
             view = item['view'] or {}
             spec = item['spec']
+            fixed = parse(view.get('actual_arrival') or view.get('planned_arrival')) if item['stocked_open'] else None
             slots[item['serial']] = Slot(
-                serial=item['serial'], dummy=item['view'] is None,
+                serial=item['serial'], dummy=item['view'] is None or item['stocked_open'], fixed_arrival=fixed,
                 actual={e: parse(view.get(f'actual_{e}')) for e in EVENTS if view.get(f'actual_{e}')},
                 planned={e: parse(view.get(f'planned_{e}')) for e in EVENTS if view.get(f'planned_{e}')},
                 duration=timedelta(hours=item['bl'] / spec['unload_tph'] / spec['work_hours_per_day'] * 24),
@@ -255,10 +265,11 @@ def generate(snapshot: dict, baseline: dict, *, seed: int = DEFAULT_SEED,
         voyage_row = real_voyages.get(number, (None, None))[0]
         voyage_key = voyage_row['voyage_no'] if voyage_row else f'DV-{number}'
         yard_options = item['spec']['yards']
+        unfinished = voyage_row is not None and not item['completed']
         low, high = DEMURRAGE[item['capesize']]
         proposal = dict(origin_port=_pick(item['ports'], d['port']) if item['ports'] else None,
                         loading_country=item['country'], destination_port=DESTINATION_PORT,
-                        berth_id=item['berth_id'],
+                        berth_id=None if unfinished else item['berth_id'],  # no berth for a ship still waiting
                         yard=baseline_yard.get(number) or _pick(yard_options, d['yard']),
                         laytime_hours=d['laytime'],
                         demurrage_usd_per_day=round((low + d['demurrage'] * (high - low)) / DEMURRAGE_STEP) * DEMURRAGE_STEP)
@@ -267,11 +278,15 @@ def generate(snapshot: dict, baseline: dict, *, seed: int = DEFAULT_SEED,
             proposal = dict(classification='actual', voyage_number=number, status='completed', **proposal,
                             **{f'{p}_{e}': iso(event_times[e]) for p in ('planned', 'actual') for e in EVENTS})
         else:
-            events = EVENTS if item['view'].get('status') == 'completed' else ('departure', 'arrival')
+            events = EVENTS if item['view'].get('status') == 'completed' or item['stocked_open'] else ('departure', 'arrival')
             filled = fill_chain({e: voyage_row.get(f'planned_{e}') for e in EVENTS},
                                 {e: event_times[e] for e in events})
             proposal.update({f'planned_{e}': filled.get(e) or iso(event_times[e]) for e in events})
-        voyage = out.emit('voyages', voyage_key, proposal)
+            if item['stocked_open']:
+                # Already stocked in the baseline: the ship has berthed and finished unloading in the past.
+                actual = fill_chain({e: voyage_row.get(f'actual_{e}') for e in EVENTS}, event_times)
+                proposal.update({f'actual_{e}': actual.get(e) for e in EVENTS}, status='completed')
+        voyage = out.emit('voyages', voyage_key, proposal, frozenset({'status'}) if item['stocked_open'] else frozenset())
         final_voyages[number] = voyage
 
         cargo_entry = real_cargo.get(number)
@@ -325,7 +340,9 @@ def _check(assays: list[dict], voyages: dict[str, dict], out: _Emitter, snapshot
         problems += [f"{assay['assay_id']}: {p}" for p in check_assay(assay)]
     for voyage in voyages.values():
         problems += order_problems(voyage)
-        if voyage['voyage_no'].startswith('DV-') and parse(voyage['actual_unload_end']) >= as_of:
+        filled = {k.strip() for k in str(voyage.get('dummy_fields') or '').split(',')}
+        generated = voyage['voyage_no'].startswith('DV-') or 'actual_unload_end' in filled
+        if generated and parse(voyage['actual_unload_end']) >= as_of:
             problems.append(f"{voyage['voyage_number']}: 더미 항차의 하역완료가 기준일 이후입니다.")
     merged = {row['voyage_no']: row for row in snapshot.get('voyages', [])
               if row.get('classification') != 'simulation'}

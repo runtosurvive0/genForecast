@@ -18,6 +18,7 @@ SYSTEM = {'data_origin', 'dummy_fields'}
 TIMES = ('departure', 'arrival', 'berth', 'unload_end')
 PANAMAX, CAPESIZE = (60000, 85000), (120000, 170000)
 CAPESIZE_COALS = {'AVRA', 'Glencore', 'Centennial'}
+STOCKED_KEY = 'V-test-26-3-034'  # the one entered 'arrived' voyage whose coal is in the baseline
 AS_OF = datetime.fromisoformat('2026-11-08T00:00:00+09:00')
 
 
@@ -95,6 +96,9 @@ def test_real_values_are_never_overwritten(fixture):
             checked += 1
             kept = {k for k, v in real[key].items() if v is not None and k not in SYSTEM}
             filled = set(change) - {SCHEMA[entity]['key']} - SYSTEM
+            if key == STOCKED_KEY:  # entered 'arrived', but the yard baseline holds it: status becomes completed
+                assert 'status' in filled
+                kept -= {'status'}
             assert not filled & kept, (key, filled & kept)
             assert change['data_origin'] == 'mixed'
             assert change['dummy_fields'] == ','.join(sorted(filled))
@@ -109,6 +113,8 @@ def test_real_arrived_voyages_get_no_actuals_or_unloading_assay(fixture):
     arrived = [v for v in fixture.snapshot['voyages'] if v['classification'] == 'actual' and v['status'] == 'arrived']
     assert len(arrived) == 11
     for voyage in arrived:
+        if voyage['voyage_no'] == STOCKED_KEY:
+            continue
         change = changes[voyage['voyage_no']]
         forbidden = {'status', 'planned_berth', 'planned_unload_end'} | {f'actual_{t}' for t in TIMES}
         assert not forbidden & set(change), voyage['voyage_number']
@@ -290,7 +296,7 @@ def test_assays_are_consistent_and_cargo_quality_comes_from_unloading(fixture):
             assert assays[f'DA-{number}-U']['sample_date'] == v['actual_unload_end'][:10]
             assert c['receipt_date'] == (v['actual_berth'] or v['planned_berth'])[:10]
             assert c['receipt_end_date'] == v['actual_unload_end'][:10]
-    assert len([a for a in assays if a.endswith('-U')]) == 90
+    assert len([a for a in assays if a.endswith('-U')]) == 91  # 90 + the stocked voyage
 
 
 def test_simulation_rows_untouched(fixture):
@@ -336,7 +342,7 @@ def test_plan_commits_cleanly_into_empty_registry(tmp_path, fixture):
         if row['voyage_no'] in real:
             for k, v in real[row['voyage_no']].items():
                 if v is not None and k not in SYSTEM | {'updated_at', 'updated_by'}:
-                    assert row[k] == v
+                    assert row[k] == v or (row['voyage_no'] == STOCKED_KEY and k == 'status')
     # Re-running on the loaded registry proposes the same values, so commit changes nothing.
     again = generate(after, plan.baseline)
     assert again.baseline is None
@@ -364,3 +370,31 @@ def test_crowded_berth_pushes_berthing_after_previous_unloading():
     for s in (1, 2):
         assert times[s + 1]['berth'] == times[s]['unload_end'] + BERTH_GAP
         assert times[s + 1]['unload_end'] - times[s + 1]['berth'] == timedelta(days=3)
+
+
+def test_stocked_voyage_is_completed_with_consistent_past_times(fixture):
+    plan = generate(fixture.snapshot, fixture.baseline)
+    again = generate(fixture.snapshot, fixture.baseline)
+    assert plan.changes == again.changes  # deterministic
+    change = _by_key(plan.changes['voyages'], 'voyages')[STOCKED_KEY]
+    assert change['status'] == 'completed' and change['data_origin'] == 'mixed'
+    assert {'status', 'actual_arrival', 'actual_berth', 'actual_unload_end'} <= set(change['dummy_fields'].split(','))
+    times = [_dt(change[f'actual_{t}']) for t in TIMES]
+    assert times == sorted(times) and times[-1] <= AS_OF
+    merged = _merged(fixture, plan)['voyages'][STOCKED_KEY]
+    assert merged['classification'] == 'actual' and merged['voyage_number'] == '26-3-034'
+
+
+def test_at_most_one_voyage_is_berthed_per_berth(fixture):
+    """arrived + berth_id + no unload end = at the berth now; two ships cannot be at one berth at once."""
+    merged = _merged(fixture, generate(fixture.snapshot, fixture.baseline))['voyages']
+    at_berth = {}
+    for v in merged.values():
+        if v['classification'] == 'actual' and v['status'] == 'arrived' and v['berth_id'] and not v['actual_unload_end']:
+            at_berth.setdefault(v['berth_id'], []).append(v['voyage_number'])
+    assert all(len(numbers) <= 1 for numbers in at_berth.values()), at_berth
+    # Every voyage whose coal sits in the yard baseline has finished unloading.
+    stocked = {lot['voyage_number'] for lot in fixture.baseline['lots']}
+    for v in merged.values():
+        if v['voyage_number'] in stocked:
+            assert v['status'] == 'completed' and v['actual_unload_end'], v['voyage_number']
