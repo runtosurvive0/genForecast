@@ -1,6 +1,9 @@
 import { docks, matchCargo } from "@/domain/berth-ais";
 import type { BerthFeed } from "@/domain/use-berth-feed";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { StackingOptions } from "@/components/stacking/StackingOptions";
+import { stackingFocusValue, type StackingResult } from "@/domain/stacking";
+import { fetchStacking } from "@/domain/stacking-api";
 import {
   ArrowRight,
   Clock3,
@@ -31,6 +34,7 @@ export interface OperationsBerthProps {
   snapshot: unknown | null;
   status: string;
   onOpenYard: (lotId?: string) => void;
+  onOpenStacking?: (value: string) => void;
   onNavigate: (page: string) => void;
 }
 type BerthId = 1 | 2 | 3;
@@ -79,12 +83,34 @@ const endpoints = [
 ];
 
 /** Destination choices inspect reachability without allocating cargo. */
+/** 원장과 연결된 하역 대기 항차의 적치 추천 1순위 한 줄. 실패하면 이유만 보인다. */
+function BerthStackingHint({ voyageNo, onOpenStacking }: { voyageNo: string; onOpenStacking?: (value: string) => void }) {
+  const [result, setResult] = useState<StackingResult | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    setResult(null); setError("");
+    fetchStacking({ voyage_no: voyageNo }, controller.signal)
+      .then(setResult)
+      .catch((e: unknown) => { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "알 수 없는 오류"); });
+    return () => controller.abort();
+  }, [voyageNo]);
+  if (error) return <p className="gf-ob-stack-hint">적치 추천을 불러오지 못했습니다: {error}</p>;
+  if (!result) return <p className="gf-ob-stack-hint" role="status">적치 추천 계산 중</p>;
+  return (
+    <div className="gf-ob-stack-hint">
+      <StackingOptions compact result={result} onOpenYard={onOpenStacking ? p => onOpenStacking(stackingFocusValue(p)) : undefined} />
+    </div>
+  );
+}
+
 export function OperationsBerth({
   feed,
   theme,
   snapshot,
   status,
   onOpenYard,
+  onOpenStacking,
   onNavigate,
 }: OperationsBerthProps) {
   const baseline = useYardBaseline();
@@ -559,6 +585,9 @@ export function OperationsBerth({
                             </dd>
                           </div>
                         </dl>
+                      )}
+                      {linked && linked.voyage.voyage_no != null && linked.voyage.status !== "unloading" && !linked.voyage.actual_unload_end && (
+                        <BerthStackingHint voyageNo={String(linked.voyage.voyage_no)} onOpenStacking={onOpenStacking} />
                       )}
                     </div>
                   );

@@ -1,6 +1,6 @@
 // 수급 예측: D+7~90 재고·고갈·접안을 계산하고, 상황 변경과 어시스턴트 지시를 바로 반영한다.
 // 어시스턴트는 ZGX의 LLM 해석을 먼저 쓰고, 쓸 수 없으면 규칙 기반 해석으로 대신한다.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Bot, RotateCcw, Sparkles, Check } from "lucide-react";
 import { Area, Bar, CartesianGrid, ComposedChart, Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
@@ -17,7 +17,12 @@ import { fromOperations, operationsKey } from "@/domain/demo-forecast/live";
 import type { FuelDemoSnapshot, FuelDemoStatus } from "@/domain/fuel-demo/types";
 import { AssistantSection } from "@/components/assistant-section/AssistantSection";
 import { SCREEN_QUESTIONS, type AssistantContext } from "@/domain/assistant-checks";
+import { StackingOptions } from "@/components/stacking/StackingOptions";
+import { cargoFromScenario, stackingContext, stackingEligible, stackingFocusValue, type StackingResult } from "@/domain/stacking";
+import { fetchStacking } from "@/domain/stacking-api";
 import "./demo-forecast.css";
+
+type StackingView = { status: "loading" } | { status: "ready"; result: StackingResult } | { status: "error"; message: string };
 
 const HORIZONS = [7, 30, 60, 90] as const;
 const EXAMPLES = [
@@ -61,10 +66,13 @@ function Panel({ title, note, children, className = "" }: { title: string; note?
   );
 }
 
-export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate }: {
+export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate, onOpenStacking }: {
   theme: string; snapshot: FuelDemoSnapshot | null; status: FuelDemoStatus;
   onAsk: (question: string, context: AssistantContext) => void; onNavigate: (page: string) => void;
+  onOpenStacking?: (value: string) => void;
 }) {
+  const [stackOpen, setStackOpen] = useState<string | null>(null);
+  const [stackViews, setStackViews] = useState<Record<string, StackingView>>({});
   const [horizon, setHorizon] = useState<number>(90);
   const [today, setToday] = useState(() => kstDay(new Date()));
   useEffect(() => {
@@ -188,6 +196,15 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate }: {
   const step = horizon > 30 ? 10 : horizon > 7 ? 5 : 1;
   const ticks = Array.from({ length: Math.floor(horizon / step) + 1 }, (_, i) => i * step);
   const shown = result.vessels.filter(v => v.eta < H && (v.finishedAt === null || v.finishedAt > -24)).sort((a, b) => a.eta - b.eta);
+  const openVessel = stackOpen ? shown.find(v => v.id === stackOpen && stackingEligible(v)) ?? null : null;
+  function toggleStacking(v: (typeof shown)[number]) {
+    if (stackOpen === v.id) { setStackOpen(null); return; }
+    setStackOpen(v.id);
+    setStackViews(views => ({ ...views, [v.id]: { status: "loading" } }));
+    fetchStacking(cargoFromScenario(v))
+      .then(result => setStackViews(views => ({ ...views, [v.id]: { status: "ready", result } })))
+      .catch((e: unknown) => setStackViews(views => ({ ...views, [v.id]: { status: "error", message: e instanceof Error ? e.message : "알 수 없는 오류" } })));
+  }
   const pct = (h: number) => `${(h / H) * 100}%`;
 
   return (
@@ -375,15 +392,31 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate }: {
                     </thead>
                     <tbody>
                       {shown.map(v => (
-                        <tr key={v.id} className={v.demurrageHours > 0 ? "dfc-row-dem" : ""}>
+                        <Fragment key={v.id}>
+                        <tr className={v.demurrageHours > 0 ? "dfc-row-dem" : ""}>
                           <td><strong>{v.name.replace("GEN4CAST ", "")}</strong><small>{v.origin} · {v.grade === "high" ? "고열량" : "저열량"} {v.cv}</small></td>
                           <td className="dfc-num">{n(v.cargo, 0)}</td>
                           <td>{hourLabel(v.eta)} → {hourLabel(v.berthedAt)}</td>
                           <td>{hourLabel(v.finishedAt)}</td>
                           <td>{v.assignedBerth ? `${v.assignedBerth}부두` : "-"} · {v.assignedYard}{v.movedYard && <em className="dfc-moved"> 변경</em>}</td>
                           <td className="dfc-num">{v.waitHours > 0 ? `${n(v.waitHours, 0)}h` : "-"} · {v.demurrageUsd > 0 ? `${n(v.demurrageUsd, 0)}$` : "-"}</td>
-                          <td><span className={`dfc-state dfc-s-${v.state}`}>{v.state}</span></td>
+                          <td><span className={`dfc-state dfc-s-${v.state}`}>{v.state}</span>
+                            {stackingEligible(v) && (
+                              <button type="button" className="dfc-stack-btn" aria-expanded={stackOpen === v.id} onClick={() => toggleStacking(v)}>적치 추천</button>
+                            )}</td>
                         </tr>
+                        {stackOpen === v.id && (
+                          <tr className="dfc-stack-row"><td colSpan={7}>
+                            <p className="dfc-stack-note">시나리오 가정 · 현재 기준재고 기준(도착 시 재고가 달라질 수 있음)</p>
+                            {(() => {
+                              const view = stackViews[v.id];
+                              if (!view || view.status === "loading") return <p className="dfc-stack-note" role="status">적치 추천을 계산하는 중입니다.</p>;
+                              if (view.status === "error") return <p className="dfc-stack-note dfc-stack-error">적치 추천을 불러오지 못했습니다: {view.message}</p>;
+                              return <StackingOptions result={view.result} onOpenYard={onOpenStacking ? p => onOpenStacking(stackingFocusValue(p)) : undefined} />;
+                            })()}
+                          </td></tr>
+                        )}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -395,7 +428,7 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate }: {
 
         <div className="dfc-side">
         <AssistantSection screen="forecast" params={{ live: live ? ["stock", "ships", "units"] : [] }}
-          context={{ screen: "forecast" }} questions={SCREEN_QUESTIONS.forecast} onAsk={onAsk} onNavigate={onNavigate} />
+          context={openVessel ? { screen: "forecast", selection: stackingContext(openVessel) } : { screen: "forecast" }} questions={SCREEN_QUESTIONS.forecast} onAsk={onAsk} onNavigate={onNavigate} />
         <aside className="dfc-panel dfc-assist" aria-label="조건 해석">
           <header><h2><Bot size={15} />조건 해석</h2><span>{parsed?.source === "llm" ? "LLM 해석" : "LLM · 규칙 해석"}</span></header>
           <div className="dfc-assist-body">

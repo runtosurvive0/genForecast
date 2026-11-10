@@ -303,3 +303,16 @@ def test_numbers_only_in_failed_tool_results_are_still_rejected(monkeypatch, tmp
     llm = FakeLlm([LlmTurn([ToolCall('c1', 'stock_snapshot', {'at': None})], None), LlmTurn([], bad), LlmTurn([], bad)])
     out = ask('재고?', [], tmp_ctx, llm)
     assert out['answer'] == '아래 근거 표를 확인해 주세요.'
+
+
+def test_agent_numbers_from_stacking_result_pass(monkeypatch, tmp_ctx):
+    result = {'ok': True, 'source': 'scenario', 'as_of': '2026-11-08', 'data': {
+        'blocked': None, 'options': [{'rank': 1, 'placements': [
+            {'yard': 1, 'target': 'Pile 2', 'from_m': 120, 'to_m': 160, 'tonnes': 6000}]}]}}
+    monkeypatch.setattr('midterm.assistant.agent.run_tool', lambda name, args, ctx: result)
+    answer = '120m 지점부터 6,000t을 내리면 됩니다.'
+    llm = FakeLlm([LlmTurn([ToolCall('c1', 'recommend_stacking', {'berth': 1})], None),
+                   LlmTurn([], final(answer, facts=[fact(6000, 'c1', 'scenario', '2026-11-08'),
+                                                    fact(120, 'c1', 'scenario', '2026-11-08')]))])
+    out = ask('어디에 쌓을까?', [], tmp_ctx, llm)
+    assert out['answer'] == answer and len(llm.calls) == 2

@@ -5,6 +5,7 @@ from datetime import date
 from midterm import milp_store, stock_baseline, voyage_registry
 from midterm.baseline_quality import QUALITY_FIELDS, match_lot_quality
 from midterm.fleet import load_coal_units
+from midterm.stacking import load_layout, yard_space
 from midterm.supply import KST
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,20 @@ def _grouped(id, kind, title_text, detail, targets, action):
 
 def _lot_label(row):
     return f"{row.get('location')} · {row.get('coal_name')} · {row.get('voyage_number') or '항차 미확인'}"
+
+
+def _stacking_items(lots):
+    """적치 추천이 모의 값을 쓴다는 알림과, 구간을 모르는 원탄(추천에서 빠지는 Pile)."""
+    items = [_item('stacking.mock_layout', 'dummy', '적치 추천은 모의 Pile 길이·칸 용량을 씁니다',
+                   'Pile 길이, 구간 정보가 없는 Pile의 m당 톤수, Shed 칸 용량과 반입 경로는 모의 값입니다.', count=1)]
+    if lots:
+        space = yard_space(lots, load_layout())['piles']
+        unplaced = [{'label': _lot_label(r), 'reason': '구간 미확인'} for r in lots
+                    if space.get(str(r.get('location') or '').strip().upper(), {}).get('unplaced')]
+        items.append(_grouped('stacking.unplaced', 'missing', '구간을 모르는 원탄',
+                              'Pile의 시작·끝 위치(m)가 없는 원탄이 있는 Pile은 적치 추천에서 빠집니다.',
+                              unplaced, {'page': 'inventory', 'label': '재고 원장에서 확인'}))
+    return items
 
 
 def _blend(params, ctx):
@@ -100,6 +115,7 @@ def _blend(params, ctx):
                            f"기준재고가 {age}일 전({baseline['as_of']}) 기준입니다",
                            f'기준일이 {BASELINE_STALE_DAYS}일을 넘게 지났습니다. 현재 재고와 다를 수 있습니다.',
                            action={'page': 'inventory', 'label': '재고 원장에서 갱신'}, count=1))
+    items.extend(_stacking_items(lots))
     return [i for i in items if i], {'lots': details}
 
 
@@ -181,10 +197,11 @@ def _planning_input(params, ctx):
 def _forecast(params, ctx):
     live = params.get('live') or []
     sample = [{'label': name, 'reason': '표본 자료 사용'} for key, name in LIVE_INPUTS.items() if key not in live]
-    if not sample:
-        return [], None
-    return [_item('forecast.sample_inputs', 'sample', f'표본 자료로 계산하는 입력 {len(sample)}건',
-                  '운전 연결값이 없는 입력은 표본 값으로 계산합니다.', sample)], None
+    items = _stacking_items([])
+    if sample:
+        items.append(_item('forecast.sample_inputs', 'sample', f'표본 자료로 계산하는 입력 {len(sample)}건',
+                           '운전 연결값이 없는 입력은 표본 값으로 계산합니다.', sample))
+    return items, None
 
 
 def _scenario(params, ctx):

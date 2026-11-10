@@ -10,3 +10,6 @@
 {"id": "q10_delay_load", "question": "첫 번째 입항 예정 선박이 2일 늦고 같은 기간 부하가 10% 늘면 30일 최소 재고일수는 어떻게 돼?", "expect_tools": ["simulate_scenario"], "expect_gap": false, "numeric": []}
 {"id": "q11_outage", "question": "하역 부두 설비가 이틀 동안 정지하면 재고 전망은 어떻게 돼?", "expect_tools": [], "expect_gap": true, "numeric": []}
 {"id": "q12_strategy", "question": "상탄 전략을 저열량탄 우선으로 바꾸면 재고일수가 어떻게 달라져?", "expect_tools": [], "expect_gap": true, "numeric": []}
+{"id": "q_stack_candidates", "question": "지금 하역 대기 중인 항차가 있어?", "expect_tools": ["stacking_candidates"], "expect_gap": false, "numeric": []}
+{"id": "q_stack_cargo", "question": "저열량탄 30,000톤을 2부두에서 내리면 어디에 쌓으면 돼?", "expect_tools": ["recommend_stacking"], "expect_gap": false, "numeric": []}
+{"id": "q_blend", "question": "발열량 5,500으로 10,000톤 혼탄하려면?", "expect_tools": ["recommend_blend"], "expect_gap": false, "numeric": []}

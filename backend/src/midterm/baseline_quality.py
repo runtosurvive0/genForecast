@@ -29,3 +29,13 @@ def match_lot_quality(row, register):
     if not assay:
         return {'assay': None, 'cargo_no': cargo_no, 'reason': NO_ASSAY}
     return {'assay': assay, 'cargo_no': cargo_no, 'reason': None}
+
+
+def blend_lots(rows, register):
+    """기준재고 원탄 행을 혼탄 계산 입력(lots)으로 바꾼다. 성분은 항차 원장의 분석에서 맞춘다."""
+    lots = []
+    for row in rows:
+        assay = match_lot_quality(row, register)['assay'] or {}
+        lots.append({'id': row['source_id'], 'available_t': row['tonnes'], 'gcv_arb': assay.get('gcv_arb'),
+                     'tm_ar': assay.get('tm_ar'), 'sulfur_ar': assay.get('sulfur_ar')})
+    return lots

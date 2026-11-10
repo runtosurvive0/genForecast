@@ -25,8 +25,8 @@ def _rows():
 
 def test_question_set_format():
     rows = _rows()
-    assert len(rows) == 12
-    assert len({r["id"] for r in rows}) == 12
+    assert len(rows) == 15
+    assert len({r["id"] for r in rows}) == 15
     for r in rows:
         assert set(r) == {"id", "question", "expect_tools", "expect_gap", "numeric"}
         assert isinstance(r["id"], str) and isinstance(r["question"], str) and r["question"]

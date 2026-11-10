@@ -131,7 +131,8 @@ def test_waiting_vessels_same_with_or_without_request(monkeypatch, tmp_registry)
 def test_tool_schemas_cover_registry():
     schemas = tool_schemas()
     assert [s['name'] for s in schemas] == list(TOOLS)
-    assert set(TOOLS) == {'list_voyages', 'waiting_vessels', 'stock_snapshot', 'plan_for_day', 'simulate_scenario', 'screen_checks'}
+    assert set(TOOLS) == {'list_voyages', 'waiting_vessels', 'stock_snapshot', 'plan_for_day', 'simulate_scenario', 'screen_checks',
+                          'recommend_stacking', 'stacking_candidates', 'recommend_blend'}
     assert all(s['description'] and s['parameters']['type'] == 'object' for s in schemas)
 
 
@@ -213,3 +214,101 @@ def test_screen_checks_tool_result(monkeypatch, tmp_path, screen, source):
 def test_screen_checks_tool_rejects_bad_args(tmp_path):
     assert run_tool('screen_checks', {'screen': 'nope'}, ctx(tmp_path / 'x.db'))['ok'] is False
     assert run_tool('screen_checks', {'screen': 'blend', 'yard': 4}, ctx(tmp_path / 'x.db'))['ok'] is False
+
+
+# ---------------------------------------------------------------- 적치·혼탄 추천 도구
+STACK_AS_OF = '2026-11-08'
+
+
+@pytest.fixture
+def stack_db(tmp_path):
+    from midterm.stock_baseline import save_baseline
+    path = tmp_path / 'stack.sqlite3'
+    commit({
+        'ships': [{'ship_code': 'S1', 'name': '한빛호'}],
+        'voyages': [
+            {'voyage_no': 'V1', 'ship_code': 'S1', 'voyage_number': '26-1-005', 'status': 'arrived',
+             'berth_id': 'BD-1', 'yard': '1', 'planned_arrival': '2026-11-12T09:00'},
+            {'voyage_no': 'V2', 'ship_code': 'S1', 'voyage_number': '26-2-006', 'status': 'arrived',
+             'planned_arrival': '2026-11-13T09:00'},
+            {'voyage_no': 'V0', 'ship_code': 'S1', 'voyage_number': '26-1-001', 'status': 'arrived'},
+        ],
+        'cargo': [{'cargo_no': f'C{v}', 'voyage_no': f'V{v}', 'destination_plant_id': 'dangjin',
+                   'coal_name': 'Glencore', 'planned_t': 5000} for v in (1, 2)]
+        + [{'cargo_no': 'C0', 'voyage_no': 'V0', 'destination_plant_id': 'dangjin', 'coal_name': '탄',
+            'planned_t': 1000}],
+        'assays': [{'assay_id': 'A0', 'cargo_no': 'C0', 'stage': 'unloading', 'result_status': 'confirmed',
+                    'gcv_arb': 5800, 'tm_ar': 12, 'sulfur_ar': 0.5}],
+    }, 0, 'tester', 'manual', path)
+    save_baseline({'as_of': STACK_AS_OF, 'lots': [
+        {'source_id': 'L1', 'location': 'P1', 'coal_name': '탄', 'tonnes': 1000, 'voyage_number': '26-1-001',
+         'grade': '저열량'},
+        {'source_id': 'L2', 'location': 'P6', 'coal_name': '탄', 'tonnes': 800, 'voyage_number': '26-1-001',
+         'grade': '고열량'},
+    ]}, 0, 'tester', path)
+    return path
+
+
+SCENARIO_ARGS = {'vessel_name': '선박', 'coal_name': '탄', 'grade': '저', 'cv': 4800, 'tonnes': 6000, 'berth': 1}
+
+
+def test_recommend_stacking_tool_cargo_args(stack_db):
+    r = run_tool('recommend_stacking', SCENARIO_ARGS, ctx(stack_db))
+    assert r['ok'] and r['source'] == 'scenario' and r['as_of'] == STACK_AS_OF
+    assert r['data']['blocked'] is None and len(r['data']['options']) >= 1
+    assert r['data']['cargo']['source'] == 'scenario'
+
+
+def test_recommend_stacking_tool_voyage_blocked(stack_db):
+    r = run_tool('recommend_stacking', {'voyage_no': 'V2'}, ctx(stack_db))
+    assert r['ok'] and r['source'] == 'registry' and r['data']['blocked'] == '부두 미배정'
+    assert r['data']['options'] == [] and r['data']['cargo'] is None
+    ok = run_tool('recommend_stacking', {'voyage_no': 'V1'}, ctx(stack_db))
+    assert ok['ok'] and ok['data']['cargo']['ref'] == 'V1' and ok['data']['options']
+
+
+def test_recommend_stacking_tool_bad_args(stack_db):
+    assert not run_tool('recommend_stacking', {**SCENARIO_ARGS, 'tonnes': 0}, ctx(stack_db))['ok']
+    assert not run_tool('recommend_stacking', {'voyage_no': 'V1', 'tonnes': 5}, ctx(stack_db))['ok']
+    assert not run_tool('recommend_stacking', {}, ctx(stack_db))['ok']
+
+
+def test_recommend_stacking_tool_no_baseline(tmp_path):
+    r = run_tool('recommend_stacking', SCENARIO_ARGS, ctx(tmp_path / 'empty.sqlite3'))
+    assert r['ok'] and r['data']['blocked'] == '기준재고 없음'
+
+
+def test_stacking_candidates_tool(stack_db):
+    r = run_tool('stacking_candidates', {}, ctx(stack_db))
+    assert r['ok'] and r['source'] == 'actual' and r['as_of'] == STACK_AS_OF
+    assert [i['voyage_no'] for i in r['data']['items']] == ['V1']
+
+
+def test_recommend_blend_tool_uses_baseline_lots(stack_db):
+    args = {'tonnes': 500, 'target_gcv_arb': 5800, 'gcv_tolerance': 100, 'max_tm_ar': 20, 'max_sulfur_ar': 1}
+    r = run_tool('recommend_blend', args, ctx(stack_db))
+    assert r['ok'] and r['source'] == 'actual' and r['as_of'] == STACK_AS_OF
+    assert r['data']['baseline_revision'] >= 1
+    assert run_tool('recommend_blend', {**args, 'lot_ids': ['L1']}, ctx(stack_db))['ok']
+    assert not run_tool('recommend_blend', {**args, 'lot_ids': ['NOPE']}, ctx(stack_db))['ok']
+
+
+def test_recommend_blend_tool_too_many_lots(monkeypatch, stack_db):
+    rows = [{'source_id': f'L{i}', 'location': 'P1', 'coal_name': '탄', 'tonnes': 1, 'voyage_number': None}
+            for i in range(101)]
+    monkeypatch.setattr('midterm.assistant.tools.read_baseline',
+                        lambda path: {'revision': 1, 'as_of': STACK_AS_OF, 'lots': rows})
+    args = {'tonnes': 5, 'target_gcv_arb': 5800, 'gcv_tolerance': 100, 'max_tm_ar': 20, 'max_sulfur_ar': 1}
+    r = run_tool('recommend_blend', args, ctx(stack_db))
+    assert not r['ok'] and 'lot_ids' in r['error']
+
+
+def test_new_tools_do_not_write(monkeypatch, stack_db):
+    from midterm import stock_baseline, voyage_registry
+
+    def boom(*a, **k):
+        raise AssertionError('write attempted')
+    monkeypatch.setattr(stock_baseline, 'save_baseline', boom)
+    monkeypatch.setattr(voyage_registry, 'commit', boom)
+    assert run_tool('stacking_candidates', {}, ctx(stack_db))['ok']
+    assert run_tool('recommend_stacking', SCENARIO_ARGS, ctx(stack_db))['ok']

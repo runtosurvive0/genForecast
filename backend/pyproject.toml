@@ -36,3 +36,4 @@ testpaths = ["tests"]
 
 [tool.setuptools.package-data]
 "midterm.dummy_data" = ["*.json"]
+"midterm.stacking" = ["*.json"]
