@@ -91,6 +91,8 @@ import { PlanningJobIndicator } from "@/components/planning-job/PlanningJobProgr
 import { usePlanningJob } from "@/domain/use-planning-job";
 import { useAccount } from "@/lib/account-context";
 import { usePlanning, initialPlanningQuery } from "@/domain/use-planning";
+import { planReference } from "@/domain/plan-reference";
+import { SampleNotice } from "@/components/sample-notice/SampleNotice";
 import type { SupplyTarget } from "@/domain/supply";
 import { MidtermDashboard } from "@/features/plant/MidtermDashboard";
 import { OutageSchedule } from '@/features/plant/OutageSchedule';
@@ -222,7 +224,7 @@ function WorkspaceApp({page,initialLotId,initialStack,demoEnabled,onDemoEnabled}
   );
   const isBackendSupplyView = ["overview", "fuel", "units", "simulation", "procurement", "costs"].includes(page) && overviewSource === "milp";
   const isMilpOverview = (page === "overview" && overviewSource === "milp") || page === "simulation";
-  const planning = usePlanning(overviewSource === "milp" || ["simulation", "procurement", "costs", "connections", "units"].includes(page));
+  const planning = usePlanning(overviewSource === "milp" || ["simulation", "procurement", "costs", "connections", "units", "forecast"].includes(page));
   const [supplyTarget, setSupplyTarget] = useState<SupplyTarget | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
@@ -818,7 +820,7 @@ function WorkspaceApp({page,initialLotId,initialStack,demoEnabled,onDemoEnabled}
           {page === 'procurement' && <><div className="gf-workflow-tabs"><button onClick={()=>navigate('simulation')}><ArrowRight size={14}/>시뮬레이션 결과로 돌아가기</button></div><ProcurementWorkspace planning={planning} demoSnapshot={demo.snapshot} demoStatus={demo.status} demoCatalog={demo.catalog}/></>}
           {page === 'connections' && <ConnectionsWorkspace planning={planning} status={demo.status} receivedAt={demo.receivedAt} onNavigate={navigateFromScreen}/>}
           {page === 'members' && <MemberManagement/>}
-          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status} onAsk={openAssistant} onNavigate={navigateFromScreen} onOpenStacking={openStacking}/>}
+          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status} plan={planReference(planning)} onAsk={openAssistant} onNavigate={navigateFromScreen} onOpenStacking={openStacking}/>}
           {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
           {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
           {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onAsk={openAssistant} onOpenYard={id=>navigate('yard',id)}/>}
@@ -1004,6 +1006,9 @@ function WorkspaceApp({page,initialLotId,initialStack,demoEnabled,onDemoEnabled}
 
           {page === "scenario" && (
             <>
+              <SampleNotice title="합성 표본으로 비교하는 화면">
+                여러 발전소를 묶은 시연용 합성 표본으로 부하·입항 지연 영향을 비교합니다. 설비 용량·재고 숫자는 저장 계획이나 다른 화면의 값과 다르며 실제 운영 정보가 아닙니다.
+              </SampleNotice>
               <AssistantSection screen="scenario" params={{}} context={{ screen: "scenario" }} questions={SCREEN_QUESTIONS.scenario} onAsk={openAssistant} onNavigate={navigateFromScreen} />
               <div className="scenario-layout">
                 <Panel

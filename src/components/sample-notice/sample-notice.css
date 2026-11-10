@@ -1,0 +1,8 @@
+.gf-sample-notice { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid color-mix(in oklab, var(--amber) 45%, var(--border)); border-radius: 8px; background: color-mix(in oklab, var(--amber) 8%, transparent); color: var(--foreground); }
+.gf-sample-notice > svg { flex: none; margin-top: 2px; color: var(--amber); }
+.gf-sample-notice > div { flex: 1; min-width: 0; }
+.gf-sample-notice strong { display: block; font-size: 13px; font-weight: 600; }
+.gf-sample-notice p { margin: 2px 0 0; font-size: 12px; line-height: 1.55; color: var(--muted-foreground); }
+.gf-sample-notice button { flex: none; align-self: center; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font-size: 12px; cursor: pointer; }
+.gf-sample-notice button:hover { background: var(--muted); }
+@media (max-width: 640px) { .gf-sample-notice { flex-wrap: wrap; } .gf-sample-notice button { margin-left: 26px; } }
