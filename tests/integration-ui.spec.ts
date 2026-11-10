@@ -1095,3 +1095,120 @@ test('berth dock list keeps the signal label clear of the vessel column at every
     expect(clashes, `${size.width}px`).toEqual([]);
   }
 });
+
+// ---------------------------------------------------------------- 적치 추천
+const stackingFixture={as_of:'2026-11-10',cargo:{source:'scenario',ref:'V-26043',vessel_name:'GEN4CAST OCEAN',coal_name:null,grade:'저',cv:5000,tonnes:70000,berth:3,destination_yard:3},
+  options:[{rank:1,placements:[{yard:3,target:'Pile 7',from_m:120,to_m:586.5,tonnes:70000}],reasons:['3저탄장(목적지)','한 곳에 모두 적치'],warnings:[],assumptions:['반입 경로 모의 설비','Pile 길이 모의 값']},
+    {rank:2,placements:[{yard:3,target:'Shed A 3칸',from_m:null,to_m:null,tonnes:30000},{yard:3,target:'Pile 8',from_m:0,to_m:266.5,tonnes:40000}],reasons:['3저탄장(목적지)'],warnings:['옆 구간에 40일 된 원탄'],assumptions:['Shed 칸 용량 모의 값']}],
+  no_fit:null,gaps:[],blocked:null};
+async function openForecastVessels(page:import('@playwright/test').Page){
+  await page.route('**/api/assistant/checks?**',r=>r.fulfill({json:{screen:'forecast',as_of:'2026-11-10T09:00:00+09:00',items:[],errors:[]}}));
+  await page.goto('/#forecast');
+  await page.getByRole('tablist',{name:'접안·선박 보기',exact:true}).getByRole('tab',{name:'선박 목록',exact:true}).click();
+  return page.getByRole('region',{name:'선박별 예측 표',exact:true});
+}
+
+test('forecast vessel list offers stacking only for waiting cargo',async({page})=>{
+  await page.setViewportSize({width:1920,height:1080});
+  const table=await openForecastVessels(page);
+  await expect(table.locator('thead th')).toHaveCount(7);
+  await expect(table.getByRole('row').filter({hasText:'OCEAN'}).getByRole('button',{name:'적치 추천'})).toBeVisible();
+  await expect(table.getByRole('row').filter({hasText:'HORIZON'}).getByRole('button',{name:'적치 추천'})).toHaveCount(0);
+});
+
+test('stacking recommendation expands under the row with assumptions and opens the yard focus',async({page})=>{
+  let body:any=null;
+  await page.route('**/api/stacking/recommend',r=>{body=r.request().postDataJSON();return r.fulfill({json:stackingFixture});});
+  await page.setViewportSize({width:1920,height:1080});
+  const table=await openForecastVessels(page);
+  const btn=table.getByRole('row').filter({hasText:'OCEAN'}).getByRole('button',{name:'적치 추천'});
+  await btn.click();
+  await expect(btn).toHaveAttribute('aria-expanded','true');
+  const row=table.locator('.dfc-stack-row');
+  await expect(row).toContainText('3저탄장 Pile 7 · 120~586.5 m');
+  await expect(row).toContainText('시나리오 가정');
+  await expect(row).toContainText('모의 값 사용');
+  await expect(row).toContainText('2안');
+  expect(body.grade).toBe('저'); expect(body.tonnes).toBe(70000); expect(body.destination_yard).toBe(3); expect(body.source).toBe('scenario');
+  await row.getByRole('button',{name:'저탄장에서 보기'}).first().click();
+  await expect(page).toHaveURL(/#yard\?stack=P7%3A120-586\.5$/);
+});
+
+test('stacking no-fit and blocked messages',async({page})=>{
+  let reply:any={...stackingFixture,options:[],no_fit:{message:'들어갈 빈 곳 없음',largest:{yard:3,target:'Pile 6',from_m:10,to_m:60,tonnes:7500}}};
+  await page.route('**/api/stacking/recommend',r=>r.fulfill({json:reply}));
+  const table=await openForecastVessels(page);
+  const btn=table.getByRole('row').filter({hasText:'OCEAN'}).getByRole('button',{name:'적치 추천'});
+  await btn.click();
+  await expect(table.locator('.dfc-stack-row')).toContainText('들어갈 빈 곳 없음');
+  await expect(table.locator('.dfc-stack-row')).toContainText('가장 큰 빈 곳: 3저탄장 Pile 6 · 10~60 m');
+  reply={...stackingFixture,cargo:null,options:[],blocked:'기준재고 없음'};
+  await btn.click(); await btn.click();
+  await expect(table.locator('.dfc-stack-row')).toContainText('적치 추천 불가: 기준재고 없음');
+});
+
+test('stacking row fits 390px and dark mode',async({page})=>{
+  await page.route('**/api/stacking/recommend',r=>r.fulfill({json:stackingFixture}));
+  await page.setViewportSize({width:390,height:844});
+  const table=await openForecastVessels(page);
+  await table.getByRole('row').filter({hasText:'OCEAN'}).getByRole('button',{name:'적치 추천'}).click();
+  await expect(table.locator('.dfc-stack-row')).toContainText('Pile 7');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.getByRole('button',{name:'다크 모드로 전환',exact:true}).click();
+  const colors=await table.locator('.dfc-stack-row td').evaluate(el=>{const s=getComputedStyle(el);return [s.color,s.backgroundColor];});
+  expect(colors[0]).not.toBe(colors[1]);
+});
+
+async function berthWithRegistry(page:import('@playwright/test').Page,status:string){
+  const mmsi='440000011', stamp=new Date().toISOString(), lon=126.507,lat=37.06624;
+  await page.route('**/api/vessels/map?**',route=>route.fulfill({json:{type:'FeatureCollection',visibleCount:1,fetchedAt:stamp,lastReceivedAt:stamp,
+    features:[{type:'Feature',id:mmsi,geometry:{type:'Point',coordinates:[lon,lat]},properties:{kind:'vessel',mmsi,name:'TEST BULKER',fresh:true,count:1}}]}}));
+  await page.route('**/api/vessels/map/'+mmsi,route=>route.fulfill({json:{id:mmsi,name:'TEST BULKER',mmsi,imo:'',source:'aisstream',
+    ais:{updatedAt:stamp,shipType:70,navStatus:5,destination:'',position:{longitude:lon,latitude:lat,observedAt:stamp,sogKn:0,cogDeg:null}}}}));
+  await page.route('**/api/voyage-registry/records',route=>route.fulfill({json:{ships:[{ship_code:'s',mmsi}],voyages:[{voyage_no:'v1',ship_code:'s',voyage_number:'26-2-001',status}],cargo:[{voyage_no:'v1',destination_plant_id:'dangjin',coal_name:'Test cargo',received_t:null}]}}));
+}
+
+test('berth shows a one-line stacking hint only for a linked waiting voyage',async({page})=>{
+  const bodies:any[]=[];
+  await page.route('**/api/stacking/recommend',r=>{bodies.push(r.request().postDataJSON());return r.fulfill({json:{...stackingFixture,cargo:{...stackingFixture.cargo,source:'registry',ref:'v1'}}});});
+  await berthWithRegistry(page,'arrived');
+  await page.goto('/#berth');
+  const detail=page.locator('#gf-berth-detail');
+  await expect(detail).toContainText('TEST BULKER');
+  await expect(detail.locator('.gf-ob-stack-hint')).toContainText('적치 추천');
+  await expect(detail.locator('.gf-ob-stack-hint')).toContainText('3저탄장 Pile 7 · 120~586.5 m');
+  expect(bodies).toEqual([{voyage_no:'v1'}]);
+});
+
+test('berth does not request stacking while the linked voyage is unloading',async({page})=>{
+  let calls=0;
+  await page.route('**/api/stacking/recommend',r=>{calls++;return r.fulfill({json:stackingFixture});});
+  await berthWithRegistry(page,'unloading');
+  await page.goto('/#berth');
+  await expect(page.locator('#gf-berth-detail')).toContainText('26-2-001');
+  await expect(page.locator('.gf-ob-stack-hint')).toHaveCount(0);
+  expect(calls).toBe(0);
+});
+
+test('yard highlights the proposed segment from the stack address',async({page})=>{
+  for(const size of [{width:1920,height:1080},{width:390,height:844}]){
+    await page.setViewportSize(size);
+    await page.goto('/#yard?stack=P7%3A120-586.5');
+    const focus=page.getByRole('region',{name:'적치 추천 위치'});
+    await expect(focus).toContainText('적치 추천');
+    await expect(focus).toContainText('Pile 7 · 120~586.5 m');
+    await expect(page.locator('.gf-oy-pile[data-proposed="true"]')).toContainText('Pile 7');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${size.width}px`).toBe(true);
+  }
+  await page.goto('/#yard?stack=A3');
+  await expect(page.getByRole('region',{name:'적치 추천 위치'})).toContainText('Shed A 3칸');
+});
+
+test('invalid stack address is ignored',async({page})=>{
+  const errors:string[]=[]; page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/#yard?stack=bad');
+  await expect(page.locator('.gf-oy-pile').first()).toBeVisible();
+  await expect(page.getByRole('region',{name:'적치 추천 위치'})).toHaveCount(0);
+  await expect(page.locator('.gf-oy-pile[data-proposed="true"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

@@ -17,11 +17,15 @@ import {
 } from "@/domain/fuel-reference";
 import { useYardBaseline } from "@/domain/use-yard-baseline";
 import { yardBaselineLots } from "@/domain/yard-baseline-lots.js";
+import { parseStackingFocus, type StackingFocus } from "@/domain/stacking";
+import stackingLayout from "@/data/fuel-reference/stacking-layout.json";
 import "./operations-yard.css";
 
 type YardId = 1 | 2 | 3;
 export interface OperationsYardProps {
   initialLotId: string | null;
+  /** 적치 추천 위치(#yard?stack=P3:130-210.5 또는 A3). 형식이 틀리면 무시한다. */
+  initialStack?: string | null;
   onOpenSupply: (id: string) => void;
   theme: "light" | "dark";
   snapshot: unknown | null;
@@ -50,8 +54,14 @@ const groupOf = (lot: FuelReferenceLot) =>
     : `Pile ${lot.pile}`;
 
 /** Photograph inventory and local demo material share selections, never the operational DB ledger. */
+const focusYard = (f: StackingFocus): YardId => ("pile" in f ? (Number(f.pile.slice(1)) <= 4 ? 1 : 2) : 3);
+const focusGroup = (f: StackingFocus) => ("pile" in f ? `Pile ${f.pile.slice(1)}` : `${f.cell[0]} Shed`);
+const pileLength = (pile: string): number | null =>
+  (stackingLayout.piles as Record<string, { length_m: number }>)[pile]?.length_m ?? null;
+
 export function OperationsYard({
   initialLotId,
+  initialStack = null,
   onOpenSupply,
   theme,
   snapshot,
@@ -65,7 +75,8 @@ export function OperationsYard({
   const baselineDetails = useMemo(() => Object.fromEntries((baseline.data?.lots ?? []).filter(row => row.source_id).map(row => [row.source_id!, {coal:row.coal_name,voyage:row.voyage_number ?? '',days:row.age_days ?? null}])), [baseline.data]);
   const mappingComplete = !!baseline.data;
   const initialLot = referenceLots.find(lot => lot.id === initialLotId);
-  const [yard, setYard] = useState<YardId>(initialLot?.yard ?? 1);
+  const stackFocus = useMemo(() => parseStackingFocus(initialStack), [initialStack]);
+  const [yard, setYard] = useState<YardId>(initialLot?.yard ?? (stackFocus ? focusYard(stackFocus) : 1));
   const [inventoryQuery, setInventoryQuery] = useState('');
   const [manualLots, setManualLots] = useState<ManualYardLot[] | null>(null);
   const [manualError, setManualError] = useState(false);
@@ -328,6 +339,27 @@ export function OperationsYard({
               <h2>{yard === 3 ? "Shed" : "Pile"}별 재고</h2>
               <span>구역 · 잔량</span>
             </div>
+            {stackFocus && focusYard(stackFocus) === yard && (() => {
+              const f = stackFocus;
+              const label = "pile" in f ? `Pile ${f.pile.slice(1)} · ${f.from_m}~${f.to_m} m` : `Shed ${f.cell[0]} ${f.cell.slice(1)}칸`;
+              const length = "pile" in f ? pileLength(f.pile) : null;
+              const pct = (m: number) => `${Math.min(100, Math.max(0, (m / (length ?? 1)) * 100))}%`;
+              const stacked = "pile" in f ? (baseline.data?.lots ?? []).filter(row => row.location === f.pile && row.tonnes > 0 && row.start_m != null && row.end_m != null) : [];
+              return (
+                <section className="gf-oy-stack-focus" aria-label="적치 추천 위치">
+                  <h3>적치 추천</h3>
+                  <p>{label}</p>
+                  {"pile" in f && length && (
+                    <div className="gf-oy-stack-bar" aria-hidden="true">
+                      {stacked.map((row, i) => <i key={i} className="is-stacked" style={{ left: pct(row.start_m!), width: `calc(${pct(row.end_m!)} - ${pct(row.start_m!)})` }} />)}
+                      <i className="is-proposed" style={{ left: pct(f.from_m), width: `calc(${pct(f.to_m)} - ${pct(f.from_m)})` }} />
+                    </div>
+                  )}
+                  {"pile" in f && length && <span className="gf-oy-stack-scale"><span>0 m</span><span>{length} m</span></span>}
+                  <small>추천은 제안입니다. 적치 위치 저장은 재고 원장에서 합니다.</small>
+                </section>
+              );
+            })()}
             {groups.map((group) => {
               const items = lots.filter((lot) => groupOf(lot) === group);
               const groupTotal = sum(items);
@@ -336,6 +368,7 @@ export function OperationsYard({
                   key={group}
                   type="button"
                   className="gf-oy-pile"
+                  data-proposed={stackFocus && focusGroup(stackFocus) === group ? "true" : undefined}
                   aria-pressed={!!selected && groupOf(selected) === group}
                   onClick={() =>
                     choose(

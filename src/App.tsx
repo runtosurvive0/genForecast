@@ -177,6 +177,7 @@ function App() {
   const [hash, setHash] = useState(() => location.hash);
   const route = pageFromHash(hash);
   const initialLotId = new URLSearchParams(hash.split('?')[1]).get('lot');
+  const initialStack = new URLSearchParams(hash.split('?')[1]).get('stack');
   const [demoEnabled, setDemoEnabled] = useState(() => {
     try { return new URLSearchParams(location.search).get('demo') === '1' || localStorage.getItem('gen4cast.demo-connection') === '1'; }
     catch { return new URLSearchParams(location.search).get('demo') === '1'; }
@@ -197,10 +198,10 @@ function App() {
   }, []);
   const yardBaseline = useYardBaseline();
   return <FuelDemoProvider enabled={demoEnabled || route === 'demo-control'} role={route === 'demo-control' ? 'controller' : 'viewer'} baselineLots={yardBaseline.data?.lots}>
-    <WorkspaceApp page={route} initialLotId={initialLotId} demoEnabled={demoEnabled} onDemoEnabled={updateDemoEnabled}/>
+    <WorkspaceApp page={route} initialLotId={initialLotId} initialStack={initialStack} demoEnabled={demoEnabled} onDemoEnabled={updateDemoEnabled}/>
   </FuelDemoProvider>;
 }
-function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;initialLotId:string|null;demoEnabled:boolean;onDemoEnabled:(enabled:boolean)=>void}) {
+function WorkspaceApp({page,initialLotId,initialStack,demoEnabled,onDemoEnabled}:{page:Page;initialLotId:string|null;initialStack:string|null;demoEnabled:boolean;onDemoEnabled:(enabled:boolean)=>void}) {
   const demo = useFuelDemo();
   const berthFeed = useBerthFeed(demo.status === "disabled", page === "berth");
   const scenePage = page === 'yard' || page === 'berth';
@@ -362,6 +363,11 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
     if (location.hash !== hash) location.hash = hash;
     setMobileOpen(false);
     setAlertsOpen(false);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
+  // 적치 추천 위치를 저탄장 화면에 강조해 연다(#yard?stack=P3:130-210.5).
+  const openStacking = (value: string) => {
+    if (value) location.hash = pageHash('yard') + '?stack=' + encodeURIComponent(value);
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   async function calculate(scenario = draft, plantId = scope, days = horizon) {
@@ -803,16 +809,16 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
               </Button>
             </div>
           )}
-          {page === 'yard' && <OperationsYard key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} onOpenLedger={()=>navigate('inventory')} onOpenSupply={id=>{setBlendView('diagram');navigate('blend',id);}} onNavigate={navigateFromScreen}/>}
+          {page === 'yard' && <OperationsYard key={`${initialLotId}|${initialStack}`} initialLotId={initialLotId} initialStack={initialStack} theme={theme} snapshot={demo.snapshot} status={demo.status} onOpenLedger={()=>navigate('inventory')} onOpenSupply={id=>{setBlendView('diagram');navigate('blend',id);}} onNavigate={navigateFromScreen}/>}
           {page === 'inventory' && <InventoryWorkspace mode="inventory" standalone onBack={()=>navigate('yard')}/>}
-          {page === 'berth' && <OperationsBerth feed={berthFeed} theme={theme} snapshot={demo.snapshot} status={demo.status} onOpenYard={id=>navigate('yard',id)} onNavigate={navigateFromScreen}/>}
+          {page === 'berth' && <OperationsBerth feed={berthFeed} theme={theme} snapshot={demo.snapshot} status={demo.status} onOpenYard={id=>navigate('yard',id)} onOpenStacking={openStacking} onNavigate={navigateFromScreen}/>}
           {page === 'demo-control' && <FuelDemoControl theme={theme} onPlay={() => onDemoEnabled(true)}/>}
           {page === 'units' && <UnitsWorkspace planning={planning} snapshot={demo.snapshot} status={demo.status} onNavigate={navigateFromScreen}/>}
           {page === 'costs' && <AnalysisWorkspace planning={planning}/>}
           {page === 'procurement' && <><div className="gf-workflow-tabs"><button onClick={()=>navigate('simulation')}><ArrowRight size={14}/>시뮬레이션 결과로 돌아가기</button></div><ProcurementWorkspace planning={planning} demoSnapshot={demo.snapshot} demoStatus={demo.status} demoCatalog={demo.catalog}/></>}
           {page === 'connections' && <ConnectionsWorkspace planning={planning} status={demo.status} receivedAt={demo.receivedAt} onNavigate={navigateFromScreen}/>}
           {page === 'members' && <MemberManagement/>}
-          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status} onAsk={openAssistant} onNavigate={navigateFromScreen}/>}
+          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status} onAsk={openAssistant} onNavigate={navigateFromScreen} onOpenStacking={openStacking}/>}
           {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
           {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
           {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onAsk={openAssistant} onOpenYard={id=>navigate('yard',id)}/>}
