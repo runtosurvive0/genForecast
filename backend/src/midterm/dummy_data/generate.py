@@ -14,7 +14,8 @@ from midterm.voyage_registry import KST, SCHEMA, dummy_keys
 
 from .profiles import load_berths, load_profiles
 from .quality import cargo_summary, check_assay, make_loading_assay, make_unloading_assay
-from .schedule import EVENTS, Slot, fill_chain, iso, order_problems, overlap_problems, parse, plan_berth
+from .schedule import (BERTH_GAP, EVENTS, Slot, fill_chain, iso, order_problems, overlap_problems, parse,
+                       plan_berth)
 
 DEFAULT_SEED = 20261110
 YEAR = 26
@@ -47,6 +48,13 @@ COUNTRIES = (
 )
 OTHER_SAILING_DAYS = (18, 22)
 GRADE_LABEL = {'high_cv': '고열', 'low_cv': '저열'}
+# 기준일(또는 오늘) 뒤로 이어지는 계획 항차. 시연용 가정값: 부두별·저탄장별 하루 입하 목표(t/일)를
+# 계획 운전의 저탄장별 소비(1저탄장 약 4천, 2·3저탄장 약 1.9만 t/일)에 맞춘다.
+FUTURE_DAYS = 100
+FUTURE_LEAD = timedelta(days=1)
+FUTURE_DAILY_T = {'BD-1': {'1': 4000, '2': 10000}, 'BD-2': {'2': 9000, '3': 7000}, 'BD-3': {'3': 12000}}
+FUTURE_INTERVAL_JITTER = (0.85, 1.15)
+FUTURE_STATUSES = ('planned', 'underway')
 TEMPERATURE = dict(base=25.0, age_cap=180, age_rise=25.0, low_cv=8.0, noise=2.0, low=25.0, high=60.0)
 
 
@@ -55,6 +63,7 @@ class DummyPlan:
     changes: dict          # {'voyages': [...], 'cargo': [...], 'assays': [...]} — commit에 그대로 넣는 형식
     baseline: dict | None  # {'as_of': ..., 'lots': [...]} 보완본, 바뀐 것이 없으면 None
     stats: dict            # {'create': {...}, 'fill': {...}, 'kept_real_values': int, ...}
+    stale: dict | None = None  # 이번에 다시 만들지 않은 지난 실행의 계획 항차(통째 더미 행) 키. load가 먼저 지운다
 
 
 def voyage_numbers() -> list[str]:
@@ -161,7 +170,9 @@ class _Emitter:
 
 
 def generate(snapshot: dict, baseline: dict, *, seed: int = DEFAULT_SEED,
-             profiles: dict | None = None, berths: dict | None = None) -> DummyPlan:
+             profiles: dict | None = None, berths: dict | None = None, today: date | None = None,
+             future_days: int = FUTURE_DAYS) -> DummyPlan:
+    """today: 계획 항차를 시작할 날. 비우면 기준재고 기준일, 기준일보다 앞이면 기준일을 쓴다."""
     coals = (profiles or load_profiles())['coals']
     berth_specs = (berths or load_berths())['berths']
     if not baseline or not baseline.get('as_of'):
@@ -326,12 +337,118 @@ def generate(snapshot: dict, baseline: dict, *, seed: int = DEFAULT_SEED,
                           report_no=f'DUMMY-{assay_key}', **d[stage])
             generated_assays.append(out.emit('assays', assay_key, values))
 
+    start = datetime.combine(max(as_of_day, today or as_of_day), time(0), KST)
+    berth_ends = {}
+    for number in numbers:
+        events = times[number]
+        end = events.get('unload_end') or events.get('arrival')
+        berth_id = info[number]['berth_id']
+        if end and (berth_id not in berth_ends or end > berth_ends[berth_id]):
+            berth_ends[berth_id] = end
+    taken = {view.get('voyage_number') for row in snapshot.get('voyages', [])
+             if (view := _real(row, 'voyages')) and view.get('voyage_number')}
+    future = _future_voyages(out, berth_specs, coals, coal_of, seed, start, berth_ends, taken, future_days)
+    final_voyages.update(future['voyages'])
+    generated_assays += future['assays']
     _check(generated_assays, final_voyages, out, snapshot, as_of)
     filled_baseline, baseline_fill = _fill_baseline(baseline, final_voyages, coals, seed, as_of_day)
     coal_counts = Counter(coal_of.values())
     stats = dict(create=out.create, fill=out.fill, kept_real_values=out.kept, baseline_fill=baseline_fill,
                  coal_counts={name: coal_counts[name] for name in sorted(coal_counts)})
-    return DummyPlan(changes=out.changes, baseline=filled_baseline, stats=stats)
+    stats['future_voyages'] = len(future['voyages'])
+    return DummyPlan(changes=out.changes, baseline=filled_baseline, stats=stats, stale=_stale_future(snapshot, out))
+
+
+def _future_voyages(out: _Emitter, berth_specs: dict, coals: dict, coal_of: dict[str, str], seed: int,
+                    start: datetime, berth_ends: dict[str, datetime], taken: set[str],
+                    future_days: int = FUTURE_DAYS) -> dict:
+    """start 다음 날부터 future_days일 동안 부두마다 이어지는 예정·항해 중 항차와 입고 전 화물을 만든다.
+
+    입항 간격은 선적량 / 부두 하루 입하 목표에 흔들림을 곱한 값이고, 접안은 앞 배 하역이 끝난 뒤에만 한다.
+    출항한 배(underway)만 선적 분석이 있고, 예정 배의 화물 품질은 계약(선적) 품질 가정값이다."""
+    horizon_end = start + timedelta(days=future_days)
+    voyages, assays = {}, []
+    for berth_id in sorted(FUTURE_DAILY_T):
+        spec, targets = berth_specs[berth_id], FUTURE_DAILY_T[berth_id]
+        berth_no = int(berth_id.split('-')[1])
+        rng = random.Random(f'{seed}:future:{berth_id}')
+        pool = sorted(coal for number, coal in coal_of.items()
+                      if number.split('-')[1] == str(berth_no) and coal in coals and not coals[coal].get('anthracite'))
+        pool = pool or sorted(name for name in coals if not coals[name].get('anthracite'))
+        yards, daily = sorted(targets), sum(targets.values())
+        serial = {YEAR: LAST_SERIAL[berth_no]}
+        arrival = start + FUTURE_LEAD
+        previous_end = max(berth_ends.get(berth_id, start), start)
+        while arrival < horizon_end:
+            coal = rng.choice(pool)
+            profile = coals[coal]
+            d = _draws(seed, f'future:{berth_id}:{iso(arrival)}', coal, profile)
+            capesize = coal in CAPESIZE_COALS and d['capesize'] < CAPESIZE_SHARE and spec['max_dwt'] >= CAPESIZE_BL[1]
+            low, high = CAPESIZE_BL if capesize else PANAMAX_BL
+            bl = round(low + d['bl'] * (high - low))
+            country, ports, days = _country(profile['origin'])
+            sailing = timedelta(days=days[0] + d['sailing'] * (days[1] - days[0]))
+            duration = timedelta(hours=bl / spec['unload_tph'] / spec['work_hours_per_day'] * 24)
+            arrival_at = parse(iso(arrival))
+            berth = parse(iso(max(arrival_at + timedelta(hours=d['wait']), previous_end + BERTH_GAP)))
+            end = parse(iso(berth + duration))
+            departure = parse(iso(arrival_at - sailing))
+            year = arrival_at.year % 100
+            serial[year] = serial.get(year, 0) + 1
+            while f'{year}-{berth_no}-{serial[year]:03}' in taken:
+                serial[year] += 1
+            number = f'{year}-{berth_no}-{serial[year]:03}'
+            underway = departure <= start
+            share = d['yard'] * daily
+            yard = yards[-1]
+            for name in yards:
+                if share < targets[name]:
+                    yard = name
+                    break
+                share -= targets[name]
+            dem_low, dem_high = DEMURRAGE[capesize]
+            planned = dict(zip(EVENTS, (departure, arrival_at, berth, end)))
+            proposal = dict(classification='actual', voyage_number=number, status='underway' if underway else 'planned',
+                            origin_port=_pick(ports, d['port']) if ports else None, loading_country=country,
+                            destination_port=DESTINATION_PORT, berth_id=None, yard=yard, laytime_hours=d['laytime'],
+                            demurrage_usd_per_day=round((dem_low + d['demurrage'] * (dem_high - dem_low))
+                                                        / DEMURRAGE_STEP) * DEMURRAGE_STEP,
+                            **{f'planned_{e}': iso(planned[e]) for e in EVENTS},
+                            **{f'actual_{e}': None for e in EVENTS})
+            if underway:
+                proposal['actual_departure'] = iso(departure)
+            voyage_key, cargo_key = f'DV-{number}', f'DC-{number}'
+            voyages[number] = out.emit('voyages', voyage_key, proposal)
+            out.emit('cargo', cargo_key, dict(
+                voyage_no=voyage_key, destination_plant_id=DESTINATION_PLANT, supplier=coal, origin_country=country,
+                coal_name=coal, **cargo_summary(d['loading']), mine=None, bl_t=bl, planned_t=bl, received_t=None,
+                receipt_date=None, receipt_end_date=None))
+            if underway:
+                sample_day = iso(departure)[:10]
+                assay_key = f'DA-{number}-L'
+                assays.append(out.emit('assays', assay_key, dict(
+                    cargo_no=cargo_key, stage='loading', sample_date=sample_day,
+                    analysis_date=(date.fromisoformat(sample_day) + ASSAY_LAG).isoformat(),
+                    report_no=f'DUMMY-{assay_key}', **d['loading'])))
+            previous_end = end
+            low_j, high_j = FUTURE_INTERVAL_JITTER
+            arrival = arrival_at + timedelta(days=bl / daily * (low_j + rng.random() * (high_j - low_j)))
+    return {'voyages': voyages, 'assays': assays}
+
+
+def _stale_future(snapshot: dict, out: _Emitter) -> dict | None:
+    """지난 실행이 만든 계획 항차 중 이번에 다시 만들지 않은 통째 더미 행(하위 화물·분석 포함)."""
+    emitted = {row['voyage_no'] for row in out.changes['voyages']}
+    voyages = {row['voyage_no'] for row in snapshot.get('voyages', [])
+               if row.get('data_origin') == 'dummy' and row.get('status') in FUTURE_STATUSES
+               and row['voyage_no'] not in emitted}
+    if not voyages:
+        return None
+    cargo = {row['cargo_no'] for row in snapshot.get('cargo', [])
+             if row['voyage_no'] in voyages and row.get('data_origin') == 'dummy'}
+    assays = sorted(row['assay_id'] for row in snapshot.get('assays', [])
+                    if row['cargo_no'] in cargo and row.get('data_origin') == 'dummy')
+    return {'assays': assays, 'cargo': sorted(cargo), 'voyages': sorted(voyages)}
 
 
 def _check(assays: list[dict], voyages: dict[str, dict], out: _Emitter, snapshot: dict, as_of: datetime) -> None:
@@ -340,6 +457,10 @@ def _check(assays: list[dict], voyages: dict[str, dict], out: _Emitter, snapshot
         problems += [f"{assay['assay_id']}: {p}" for p in check_assay(assay)]
     for voyage in voyages.values():
         problems += order_problems(voyage)
+        if voyage.get('status') in FUTURE_STATUSES:
+            if parse(voyage['planned_unload_end']) <= as_of:
+                problems.append(f"{voyage['voyage_number']}: 계획 항차의 하역완료 예정이 기준일 이전입니다.")
+            continue
         filled = {k.strip() for k in str(voyage.get('dummy_fields') or '').split(',')}
         generated = voyage['voyage_no'].startswith('DV-') or 'actual_unload_end' in filled
         if generated and parse(voyage['actual_unload_end']) >= as_of:

@@ -3675,3 +3675,28 @@ test('opening raw data and calculation basis keeps the vessel map size on wide s
     expect(Math.abs((await canvas.boundingBox())!.height - before.height)).toBeLessThan(2);
   }
 });
+
+test("supply ledger keeps stock at zero and shows the unburned shortage separately", async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (/^\/api\/(auth|me|admin)\//.test(url.pathname)) return route.fallback();
+    if (url.pathname === "/api/runs") return route.fulfill({ json: [{ id: "부족 계획", name: "부족 계획", period: "2027-01-01 ~ 2027-12-31" }] });
+    if (url.pathname === "/api/supply/records") return route.fulfill({ json: { vessels: [], transfers: [] } });
+    if (!url.pathname.startsWith("/api/planning/")) return route.fallback();
+    const result = suppliedPlanningFixture("부족 계획", url.searchParams.get("start")!, Number(url.searchParams.get("horizon")));
+    result.classification = "operational";
+    const first = result.inventory.daily[0].groups.g14;
+    result.inventory.daily[0].groups.g14 = { ...first, stock: 0, shortage: 12345 };
+    return route.fulfill({ json: result });
+  });
+  await page.goto("/#simulation");
+  await page.getByRole("button", { name: "7일", exact: true }).click();
+  await page.locator(".gf-forecast-chart").getByRole("button", { name: "수급 원장" }).click();
+  const forecast = page.getByRole("region", { name: "발전 수급 전망 상세" });
+  const shortCell = forecast.locator("tbody tr").first().locator("td.gf-supply-ledger__short");
+  await expect(shortCell).toHaveCount(1);
+  await expect(shortCell).toContainText("부족 12,345");
+  await expect(forecast.locator("td.gf-supply-ledger__short")).toHaveCount(1);
+  await expect(forecast).not.toContainText("-12,345");
+  await expect(forecast).toContainText("계획 항차");
+});

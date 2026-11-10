@@ -108,6 +108,19 @@ test("negative stock is shortage and does not inflate receiving headroom", () =>
   assert.equal(result.shortage, true);
   assert.equal(result.headroom, null);
 });
+test("stock held at zero with a server shortage is still a planned shortage", () => {
+  const result = reviewReceipt(
+    [{ day: "2027-01-02", stock: 0, days: 0, shortage: 1920 }],
+    base,
+  );
+  assert.equal(result.stock, 0);
+  assert.equal(result.shortage, true);
+  const ok = reviewReceipt(
+    [{ day: "2027-01-02", stock: 0, days: 0, shortage: 0 }],
+    base,
+  );
+  assert.equal(ok.shortage, false);
+});
 test("invalid numeric assumptions and date inputs are withheld", () => {
   const result = reviewReceipt(rows, {
     ...base,

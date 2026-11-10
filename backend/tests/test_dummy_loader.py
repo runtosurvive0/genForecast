@@ -26,6 +26,11 @@ def tmp_db(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture(autouse=True)
+def fixed_today(monkeypatch):
+    monkeypatch.setattr(loader, '_now', lambda: datetime(2026, 11, 10, 9, 0, tzinfo=KST))
+
+
 def _rows(snap):
     return {e: {row[SCHEMA[e]['key']]: {k: v for k, v in row.items() if k not in IGNORED} for row in snap[e]}
             for e in ENTITIES}
@@ -46,8 +51,9 @@ def test_check_does_not_write(tmp_db, tmp_path):
     size = tmp_db.stat().st_size
     result = loader.check(tmp_db)
     assert tmp_db.stat().st_mtime_ns == mtime and tmp_db.stat().st_size == size
-    assert result['create']['voyages'] == 89
-    assert result['create']['cargo'] == 90  # 89 dummy voyages + one real voyage without cargo
+    assert result['future_voyages'] > 30 and result['stale_voyages'] == 0
+    assert result['create']['voyages'] == 89 + result['future_voyages']
+    assert result['create']['cargo'] == 90 + result['future_voyages']  # + one real voyage without cargo
     assert result['create']['assays'] > 0
     assert result['fill_rows'] > 0 and result['fill_fields'] >= result['fill_rows']
     assert result['kept_real_values'] > 0 and result['baseline_fill'] > 0
@@ -86,7 +92,7 @@ def test_load_fills_blanks_only_and_creates_backup(tmp_db, tmp_path):
                 if value is not None and (key, field) != ('V-test-26-3-034', 'status'):  # stocked: arrived -> completed
                     assert new[entity][key][field] == value, (entity, key, field)
     assert new['voyages']['V-test-26-3-034']['status'] == 'completed'
-    assert len(new['voyages']) == len(old['voyages']) + 89
+    assert len(new['voyages']) == len(old['voyages']) + 89 + result['future_voyages']
     audit = _audit(tmp_db, after['revision'])
     assert audit and {(a, o) for a, o, _ in audit} == {('dummy-seed', 'dummy-data')}
 
@@ -94,7 +100,7 @@ def test_load_fills_blanks_only_and_creates_backup(tmp_db, tmp_path):
     assert result['baseline_revision'] == base_after['revision'] == base_before['revision'] + 1
     assert base_after['actor'] == 'dummy-seed' and base_after['as_of'] == base_before['as_of']
     assert all(lot['temperature_c'] is not None and lot['dummy_fields'] for lot in base_after['lots'])
-    assert result['create']['voyages'] == 89
+    assert result['create']['voyages'] == 89 + result['future_voyages']
 
 
 def test_second_load_is_noop(tmp_db):
@@ -120,7 +126,7 @@ def test_backup_same_second_gets_suffix(tmp_db, tmp_path, monkeypatch):
 def test_unload_restores_original_snapshot(tmp_db):
     before = snapshot(tmp_db)
     base_before = read_baseline(tmp_db)
-    loader.load(tmp_db)
+    future = loader.load(tmp_db)['future_voyages']
     loaded = snapshot(tmp_db)['revision']
     result = loader.unload(tmp_db)
 
@@ -130,7 +136,7 @@ def test_unload_restores_original_snapshot(tmp_db):
                for e in ('voyages', 'cargo', 'assays') for row in after[e])
     assert after['revision'] == result['registry_revision'] == loaded + 2  # clear commit + purge
     assert result['kept_required'] == [] and result['kept_parents'] == []
-    assert result['purged']['voyages'] == 89 and result['cleared']['rows'] > 0
+    assert result['purged']['voyages'] == 89 + future and result['cleared']['rows'] > 0
     audit = _audit(tmp_db, after['revision'])
     assert audit and all(o == 'dummy-data' and j == 'null' for _, o, j in audit)
     base_after = read_baseline(tmp_db)
@@ -285,7 +291,7 @@ def test_cli_requires_yes(tmp_db, capsys):
     assert main(['load', '--db', str(tmp_db)]) == 0
     out = capsys.readouterr().out
     assert '--yes' in out and str(tmp_db) in out
-    assert _json_line(out)['create']['voyages'] == 89
+    assert _json_line(out)['create']['voyages'] == 89 + _json_line(out)['future_voyages']
     assert snapshot(tmp_db)['revision'] == 1 and _baseline_revision(tmp_db) == 1
 
     assert main(['load', '--db', str(tmp_db), '--yes']) == 0
@@ -294,7 +300,7 @@ def test_cli_requires_yes(tmp_db, capsys):
 
     assert main(['unload', '--db', str(tmp_db)]) == 0
     out = capsys.readouterr().out
-    assert '--yes' in out and _json_line(out)['purged']['voyages'] == 89
+    assert '--yes' in out and _json_line(out)['purged']['voyages'] == 89 + loaded['future_voyages']
     assert snapshot(tmp_db)['revision'] == 2
 
     assert main(['check', '--db', str(tmp_db)]) == 0
@@ -413,3 +419,23 @@ def test_unload_clears_dummy_values_carried_to_a_later_day(tmp_db):
 
     again = loader.unload(tmp_db)
     assert again['baseline_cleared'] == 0 and again['baseline_revision'] == result['baseline_revision']
+
+
+def test_reload_later_purges_planned_voyages_left_outside_the_new_window(tmp_db, monkeypatch):
+    first = loader.load(tmp_db)
+    old = {v['voyage_no'] for v in snapshot(tmp_db)['voyages'] if v['status'] in ('planned', 'underway')}
+    assert len(old) == first['future_voyages']
+    monkeypatch.setattr(loader, '_now', lambda: datetime(2026, 12, 20, 9, 0, tzinfo=KST))
+    preview = loader.check(tmp_db)
+    second = loader.load(tmp_db)
+    assert second['stale_voyages'] == preview['stale_voyages'] > 0
+    rows = snapshot(tmp_db)
+    future = [v for v in rows['voyages'] if v['status'] in ('planned', 'underway')]
+    assert len(future) == second['future_voyages']
+    start = datetime(2026, 12, 20, tzinfo=KST)
+    assert all(datetime.fromisoformat(v['planned_unload_end']) > start for v in future)
+    voyages = {v['voyage_no'] for v in rows['voyages']}
+    assert all(c['voyage_no'] in voyages for c in rows['cargo'])
+    # 다 지우면 처음과 같아진다.
+    loader.unload(tmp_db)
+    assert not [v for v in snapshot(tmp_db)['voyages'] if v['data_origin'] == 'dummy']
