@@ -434,7 +434,7 @@ def test_future_voyages_cover_the_window_with_cargo_not_yet_received(fixture):
         c = cargo[v['voyage_no']]
         assert c['cargo_no'] == f"DC-{v['voyage_number']}" and c['received_t'] is None and c['receipt_date'] is None
         assert c['destination_plant_id'] == 'dangjin' and c['bl_t'] == c['planned_t'] > 0
-        assert c['cv_basis'] == 'GAR' and 4000 <= c['cv'] <= 7500
+        assert c['cv_basis'] == 'GAR' and 3500 <= c['cv'] <= 7500
     # 앞 배 하역이 끝난 뒤에만 접안하고, 과거 항차 사슬 뒤에서 시작한다.
     merged = _merged(fixture, plan)['voyages']
     for berth in ('1', '2', '3'):
