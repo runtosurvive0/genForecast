@@ -7,6 +7,7 @@ import re
 from midterm.stacking.space import SHED_CELLS, yard_space
 
 MAX_OPTIONS = 3
+_EPS = 1e-9  # metres; keeps edges exactly min_gap away from counting as touching
 SHED_YARD = 3
 _PILE = re.compile(r"^P(\d+)$")
 _SOURCES = ("scenario", "registry")
@@ -117,7 +118,7 @@ def _slots(space: dict, reachable: set[str], grade: str, layout: dict) -> tuple[
 
 
 def _pile_near(slot: dict, a: float, b: float, min_gap: float) -> list[dict]:
-    return [s for s in slot["lots"] if max(s["from_m"] - b, a - s["to_m"], 0) < min_gap]
+    return [s for s in slot["lots"] if max(s["from_m"] - b, a - s["to_m"], 0) < min_gap - _EPS]
 
 
 def _check(near: list[dict], grade: str, layout: dict) -> dict | None:

@@ -243,3 +243,12 @@ def test_usable_part_shrinks_both_sides_of_other_grade():
     assert r["no_fit"]["largest"] == {"yard": 1, "target": "Pile 1", "from_m": 105, "to_m": 395, "tonnes": 43500}
     r = run(cargo(tonnes=6000), lots)
     assert r["options"][0]["placements"][0] == {"yard": 1, "target": "Pile 1", "from_m": 105, "to_m": 145, "tonnes": 6000}
+
+
+def test_usable_edge_survives_float_rounding():
+    # (123.2 + 5) - 123.2 < 5 in binary floating point; the usable edge must still count as clear.
+    lots = [lot("P1", 0, 123.2, grade="고열량")] + full("P2", "P3", "P4", "P5", "P6") + full_sheds()
+    r = run(cargo(tonnes=6000), lots)
+    first = r["options"][0]["placements"][0]
+    assert first["target"] == "Pile 1"
+    assert first["from_m"] == pytest.approx(128.2)
