@@ -234,6 +234,8 @@
   padding: 0 14px 10px;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
 }
 .gf-oy-piles .gf-oy-section-head,
 .gf-oy-detail .gf-oy-section-head {
@@ -249,7 +251,8 @@
   border-radius: 5px;
   background: transparent;
   text-align: left;
-  flex: 1;
+  /* Grow to fill spare room, but never shrink below the content (caption used to spill onto the next Pile). */
+  flex: 1 0 auto;
   min-height: 38px;
 }
 .gf-oy-pile:hover {

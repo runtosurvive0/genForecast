@@ -1058,3 +1058,40 @@ test('통합 시뮬레이션은 도우미 섹션이 빠진 자료 여러 건으�
   const button = (await watch.getByRole('button', { name: '부족 시점·반입 가능 여부 검토' }).boundingBox())!;
   expect(button.y + button.height).toBeLessThanOrEqual(1080);
 });
+
+test('yard Pile list keeps each caption inside its own button at 1920 and 1366 widths', async ({page}) => {
+  for (const size of [{width:1920,height:1080},{width:1366,height:768}]) {
+    await page.setViewportSize(size); await page.goto('/#yard');
+    const piles = page.locator('.gf-oy-pile');
+    await expect(piles.first()).toBeVisible();
+    const boxes = await piles.evaluateAll(buttons => buttons.map(button => {
+      const caption = button.querySelector('.gf-oy-pile-caption')!.getBoundingClientRect();
+      const box = button.getBoundingClientRect();
+      return {top: box.top, bottom: box.bottom, captionBottom: caption.bottom};
+    }));
+    expect(boxes.length, `${size.width}px`).toBeGreaterThan(1);
+    for (const [index, box] of boxes.entries()) {
+      expect(box.captionBottom, `${size.width}px Pile ${index + 1} caption`).toBeLessThanOrEqual(box.bottom + 0.5);
+      if (index + 1 < boxes.length) expect(box.bottom, `${size.width}px Pile ${index + 1}`).toBeLessThanOrEqual(boxes[index + 1].top + 0.5);
+    }
+  }
+});
+
+test('berth dock list keeps the signal label clear of the vessel column at every width', async ({page}) => {
+  for (const size of [{width:1920,height:1080},{width:1366,height:768},{width:1200,height:900},{width:1000,height:900},{width:390,height:844}]) {
+    await page.setViewportSize(size); await page.goto('/#berth');
+    const docks = page.locator('.gf-ob-dock');
+    await expect(docks.first()).toBeVisible();
+    const clashes = await docks.evaluateAll(buttons => buttons.flatMap((button, index) => {
+      const id = button.querySelector('.gf-ob-dock-id')!, vessel = button.querySelector('.gf-ob-dock-vessel')!;
+      const a = id.getBoundingClientRect(), b = vessel.getBoundingClientRect();
+      const labelWidth = Math.max(...[...id.children].map(child => (child as HTMLElement).scrollWidth));
+      const sideBySide = Math.abs(a.top - b.top) < a.height / 2;
+      const issues: string[] = [];
+      if (labelWidth > a.width + 0.5) issues.push(`dock ${index + 1}: label ${labelWidth}px > column ${a.width}px`);
+      if (sideBySide && a.right > b.left + 0.5) issues.push(`dock ${index + 1}: id ends ${a.right} after vessel starts ${b.left}`);
+      return issues;
+    }));
+    expect(clashes, `${size.width}px`).toEqual([]);
+  }
+});

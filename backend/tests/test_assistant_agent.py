@@ -264,3 +264,42 @@ def test_context_block_appended_to_system(tmp_ctx):
     plain = RecordingSystemLlm([LlmTurn([], final('ok'))])
     ask('질문', [], tmp_ctx, plain)
     assert plain.systems[0] == SYSTEM
+
+
+# ---------------------------------------------------------------- 숫자 재작성 요청이 답에 새지 않는다
+def test_number_rewrite_is_a_server_note_not_a_user_turn(tmp_ctx, fake_dashboard):
+    bad = final('재고는 98,000 t', facts=[fact(123456, 'c1')])
+    good = final('재고는 123,456 t입니다.', facts=[fact(123456, 'c1')])
+    llm = RecordingSystemLlm([LlmTurn([ToolCall('c1', 'stock_snapshot', {'at': None})], None),
+                              LlmTurn([], bad), LlmTurn([], good)])
+    out = ask('재고?', [], tmp_ctx, llm)
+    assert out['answer'] == '재고는 123,456 t입니다.'
+    retry = llm.calls[2]
+    # 초안과 정정 요청을 대화에 넣지 않는다: 모델이 "맞습니다… 정정하면"으로 답을 시작하던 원인.
+    assert retry[-1]['role'] == 'tool'
+    assert not any(m['role'] == 'assistant' and m.get('content') for m in retry)
+    assert not any('근거 없는' in str(m.get('content')) for m in retry)
+    assert '98,000' in llm.systems[2] and '정정' in llm.systems[2]
+    assert llm.systems[0] == llm.systems[1]
+
+
+# ---------------------------------------------------------------- 도구 결과 문자열 속 숫자 허용
+def test_numbers_inside_tool_result_strings_pass_without_rewrite(monkeypatch, tmp_ctx):
+    label = 'P1 · 아다로 · 2611-03'
+    monkeypatch.setattr('midterm.assistant.agent.run_tool', lambda name, args, ctx: {
+        'ok': True, 'source': 'actual', 'as_of': DASH_AS_OF,
+        'data': {'items': [{'kind': 'missing', 'targets': [label]}]}})
+    answer = f'열량이 빠진 화물은 {label}입니다.'
+    llm = FakeLlm([LlmTurn([ToolCall('c1', 'screen_checks', {'screen': 'blend'})], None),
+                   LlmTurn([], final(answer, facts=[{**fact(label, 'c1')}]))])
+    out = ask('빠진 화물 목록?', [], tmp_ctx, llm)
+    assert out['answer'] == answer and len(llm.calls) == 2
+
+
+def test_numbers_only_in_failed_tool_results_are_still_rejected(monkeypatch, tmp_ctx):
+    monkeypatch.setattr('midterm.assistant.agent.run_tool', lambda name, args, ctx: {
+        'ok': False, 'error': '재고 98000 t 조회 실패'})
+    bad = final('재고는 98,000 t')
+    llm = FakeLlm([LlmTurn([ToolCall('c1', 'stock_snapshot', {'at': None})], None), LlmTurn([], bad), LlmTurn([], bad)])
+    out = ask('재고?', [], tmp_ctx, llm)
+    assert out['answer'] == '아래 근거 표를 확인해 주세요.'

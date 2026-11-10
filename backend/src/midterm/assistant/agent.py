@@ -66,6 +66,13 @@ PARTIAL_ANSWER = "일부만 확인됨: 질문을 끝까지 처리하지 못했�
 FALLBACK_ANSWER = "아래 근거 표를 확인해 주세요."
 STALE_GAP = "발전계획이 최신이 아닙니다"
 DEMO_GAP = "동작 확인용 계획 기준입니다"
+# 숫자 재작성 요청은 대화(user 차례)가 아니라 시스템 지시로 보낸다.
+# user 차례로 보내면 모델이 "맞습니다… 정정하면"처럼 그 요청에 답하는 말로 답을 시작했다.
+REWRITE_NOTE = (
+    "[서버 검사 · 사용자에게 보이지 않음] 직전 답안 초안에 도구 결과로 확인되지 않은 숫자가 있었습니다: {bad}.\n"
+    "질문에 대한 답을 처음부터 다시 쓰세요. 도구 결과에 있는 숫자만 씁니다. "
+    "정정·사과·검사 결과를 언급하지 말고, 사용자 질문에 바로 답하는 문장으로 시작합니다."
+)
 
 
 # ---------------------------------------------------------------- facts 서버 대조
@@ -167,8 +174,9 @@ def ask(question: str, history: list[dict], ctx: ToolContext, llm: Llm,
     started = clock()
     limited = False
 
-    def step(remaining: float):
-        return llm.step(system, messages, [] if limited else tools, FINAL_SCHEMA, max(1.0, remaining))
+    def step(remaining: float, note: str | None = None):
+        prompt = system if note is None else system + "\n\n" + note
+        return llm.step(prompt, messages, [] if limited else tools, FINAL_SCHEMA, max(1.0, remaining))
 
     def result(final: dict, facts: list[dict], answer: str) -> dict:
         return {
@@ -187,7 +195,9 @@ def ask(question: str, history: list[dict], ctx: ToolContext, llm: Llm,
         }
 
     def finish(final: dict) -> dict:
-        allowed = [question] + [json.dumps(c["arguments"], ensure_ascii=False) for c in calls]
+        # 질문 원문, 도구 호출 인자, 성공한 도구 결과 안의 문자열(화물 이름·항차 번호 등)에 든 숫자는 근거가 있다.
+        allowed = ([question] + [json.dumps(c["arguments"], ensure_ascii=False) for c in calls]
+                   + sorted(s for env in results.values() for s in _strings(env.get("data"))))
         facts = _clean_facts(final, results)
         answer = str(final.get("answer", ""))
         bad = unverified_numbers(answer, facts, allowed)
@@ -196,10 +206,8 @@ def ask(question: str, history: list[dict], ctx: ToolContext, llm: Llm,
         remaining = TOTAL_SECONDS - (clock() - started)
         if remaining <= 0:
             return result(final, facts, FALLBACK_ANSWER)
-        messages.append({"role": "assistant", "content": json.dumps(final, ensure_ascii=False)})
-        messages.append({"role": "user", "content": f"근거 없는 숫자: {', '.join(bad)}. facts에 있는 값만 쓰세요."})
         try:
-            turn = step(remaining)
+            turn = step(remaining, REWRITE_NOTE.format(bad=", ".join(bad)))
         except AssistantUnavailable:
             return partial()
         if turn.final is None:
