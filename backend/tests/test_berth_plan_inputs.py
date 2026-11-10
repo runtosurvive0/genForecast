@@ -6,6 +6,7 @@ from midterm import supply
 from midterm.berth_plan import inputs as bp
 from midterm.berth_plan.inputs import (StockSeries, build_inputs, load_berths, read_stock, unload_hours)
 from midterm.supply import timestamp
+from midterm.web.supply_api import DashboardInputError, PlanNotFound
 
 AS_OF = timestamp('2026-11-10T09:30:00+09:00')
 
@@ -208,3 +209,12 @@ def test_load_inputs_excludes_targets_then_builds(monkeypatch, tmp_path):
     assert result.danger_days == supply.DEFAULTS['danger_days']
     assert kinds(result, 'stock_unknown')
     assert result.t0 - result.as_of < timedelta(hours=1)
+
+
+@pytest.mark.parametrize('error', [DashboardInputError('전망 기간 오류'), PlanNotFound('계획 없음')])
+def test_read_stock_degrades_when_dashboard_fails(monkeypatch, error):
+    def fail(*args, **kwargs):
+        raise error
+    monkeypatch.setattr('midterm.web.supply_api.build_dashboard', fail)
+    stock, reason, result = read_stock(AS_OF, 14, set())
+    assert stock is None and str(error) in reason and result == {}

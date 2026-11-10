@@ -176,7 +176,7 @@ def build_inputs(registry: dict, berths: dict[str, Berth], outages: list[Outage]
 
 def read_stock(as_of: datetime, horizon_days: int,
                exclude_voyages: set[str]) -> tuple[StockSeries | None, str | None, dict]:
-    from midterm.web.supply_api import build_dashboard
+    from midterm.web.supply_api import DashboardInputError, PlanNotFound, build_dashboard
 
     def adjust(data, plan):
         data = {**data, 'registry_planned': [r for r in data.get('registry_planned') or []
@@ -184,7 +184,10 @@ def read_stock(as_of: datetime, horizon_days: int,
         return data, plan
 
     horizon = 30 if horizon_days <= 23 else 60
-    result = build_dashboard(horizon, as_of, None, adjust)
+    try:
+        result = build_dashboard(horizon, as_of, None, adjust)
+    except (DashboardInputError, PlanNotFound) as exc:
+        return None, f'수급 전망을 읽지 못함: {exc}', {}
     forecast = result.get('forecast') or []
     need = horizon_days + 7
     if len(forecast) < need:
