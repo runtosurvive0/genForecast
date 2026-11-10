@@ -133,6 +133,20 @@ export function VesselTracking({
   const [refreshingAis, setRefreshingAis] = useState(false);
   const [showOrb, setShowOrb] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
+  // 넓은 화면에서 "자료·계산 근거"를 펼치면 화면 높이 고정이 풀린다. 접힌 상태의 지도 높이를 기억해 펼친 동안 그대로 쓴다.
+  const mapStageRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const stage = mapStageRef.current;
+    if (!stage || typeof ResizeObserver === "undefined") return;
+    const remember = () => {
+      if (stage.closest(".gf-voyages")?.querySelector(".vessel-data-details[open]")) return;
+      stage.style.setProperty("--vessel-map-locked-h", `${stage.getBoundingClientRect().height}px`);
+    };
+    remember();
+    const observer = new ResizeObserver(remember);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
   const [dataTab, setDataTab] = useState<VesselDataTab>("ais");
   const [weatherModel, setWeatherModel] = useState({ key: "", sensitivity: 1 });
   const upload = useRef<HTMLInputElement>(null);
@@ -832,7 +846,7 @@ export function VesselTracking({
               />
             </div>
           )}
-          <div className="vessel-map-stage">
+          <div className="vessel-map-stage" ref={mapStageRef}>
             <VesselMap
               embedded
               fleetDiscovery={{

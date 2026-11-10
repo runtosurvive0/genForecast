@@ -3656,3 +3656,22 @@ test('waiting panel and interest headings share one left inset on narrow screens
   expect(Math.abs(wait - interests)).toBeLessThanOrEqual(1);
   await page.locator('.vessel-watchlist-panel').screenshot({ path: '.tooling-tmp/waiting-panel-narrow.png' });
 });
+
+test('opening raw data and calculation basis keeps the vessel map size on wide screens', async ({ page }) => {
+  for (const size of [{ width: 1920, height: 1080 }, { width: 1600, height: 900 }]) {
+    await page.setViewportSize(size);
+    await openEta(page);
+    const canvas = page.locator('.vessel-map-canvas');
+    await expect(canvas).toBeVisible();
+    await expect(page.locator('.vessel-data-details')).not.toHaveAttribute('open');
+    const before = (await canvas.boundingBox())!;
+    await openVesselData(page, '계산 근거');
+    await expect(page.locator('.vessel-data-details')).toHaveAttribute('open');
+    const after = (await canvas.boundingBox())!;
+    expect(Math.abs(after.height - before.height), `${size.width}px map height ${before.height} -> ${after.height}`).toBeLessThan(2);
+    expect(Math.abs(after.width - before.width)).toBeLessThan(2);
+    await page.locator('.vessel-data-details > summary').click();
+    await expect(page.locator('.vessel-data-details')).not.toHaveAttribute('open');
+    expect(Math.abs((await canvas.boundingBox())!.height - before.height)).toBeLessThan(2);
+  }
+});

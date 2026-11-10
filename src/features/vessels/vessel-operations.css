@@ -330,8 +330,11 @@
   .gf-voyages:has(.vessel-data-details[open]) {
     height: auto;
   }
+  /* 펼친 동안 지도는 접힌 상태의 높이(VesselWorkspace가 기억한 값)를 그대로 쓴다. */
   .gf-voyages:has(.vessel-data-details[open]) .vessel-map-stage {
-    min-height: 490px;
+    flex: none;
+    height: var(--vessel-map-locked-h, 490px);
+    min-height: 0;
   }
 }
 @media (max-width: 1499px), (max-height: 849px) {
