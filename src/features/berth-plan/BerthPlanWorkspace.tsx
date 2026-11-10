@@ -196,7 +196,6 @@ export function BerthPlanWorkspace({ theme }: { theme: "light" | "dark" }) {
           </span>
           <button type="submit" className="gf-bp-run" disabled={loading}>다시 계산</button>
         </form>
-        <p className="gf-bp-assume">부두 능력 시연용 가정값</p>
       </div>
       {inputError && <p className="gf-bp-error-inline" role="alert">{inputError}</p>}
 

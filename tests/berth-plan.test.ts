@@ -9,6 +9,8 @@ const FIXTURE = {
   source: { berths: 'dummy', voyages: 'registry', stock: 'supply_ledger' },
   assumptions: ['부두 능력: 시연용 가정값', 'ETA 기산 가정', '벌점 단가 20,000 USD/그룹·일(가정값)'],
   gaps: [{ kind: 'x', voyage_no: null, message: 'm' }],
+  berths: [{ id: 'X', yards: ['1', '5'] }],
+  outages: [{ berth: 'X', start: '2026-11-10T05:00:00+09:00', end: '2026-11-10T09:00:00+09:00' }],
   message: null,
   current: {
     label: '현재 계획',
@@ -72,6 +74,20 @@ test('고정 점유 행의 tonnes null과 unload_end null을 허용한다', () =
   assert.equal(r.options[0].assignments[0].fixed, true);
   const strTonnes = clone(); strTonnes.options[0].assignments[0].tonnes = '1';
   assert.throws(() => parseBerthPlan(strTonnes), { message: BAD });
+});
+
+test('부두 목록과 정비 구간을 파싱하고 형식이 다르면 throw한다', () => {
+  const r = parseBerthPlan(clone());
+  assert.deepEqual(r.berths, [{ id: 'X', yards: ['1', '5'] }]);
+  assert.equal(r.outages[0].berth, 'X');
+  const noBerths = clone(); delete noBerths.berths;
+  assert.throws(() => parseBerthPlan(noBerths), { message: BAD });
+  const badYards = clone(); badYards.berths[0].yards = [1];
+  assert.throws(() => parseBerthPlan(badYards), { message: BAD });
+  const badOutage = clone(); badOutage.outages[0].end = null;
+  assert.throws(() => parseBerthPlan(badOutage), { message: BAD });
+  const noOutages = clone(); noOutages.outages = {};
+  assert.throws(() => parseBerthPlan(noOutages), { message: BAD });
 });
 
 test('형식이 다르면 throw한다', () => {

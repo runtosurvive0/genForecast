@@ -35,7 +35,10 @@ const plan = (extra: Row = {}) => ({
   as_of: T(10, 9), horizon_days: 14, source: { berths: 'dummy', voyages: 'registry', stock: 'supply_ledger' },
   assumptions: ['부두 능력: 시연용 가정값', 'ETA 기산 가정', '벌점 단가 20,000 USD/그룹·일(가정값)'],
   gaps: [{ kind: 'no_demurrage', voyage_no: 'V-002', message: '체선료 단가 없음 · 체선료 계산에서 제외' }, { kind: 'no_specs', voyage_no: null, message: '선형 제한 미적용(선박 제원 없음)' }],
-  message: null, current, options: [optionA, optionB, optionC], ...extra,
+  message: null, current, options: [optionA, optionB, optionC],
+  berths: [{ id: 'BD-1', yards: ['1', '2'] }, { id: 'BD-2', yards: ['2', '3'] }, { id: 'BD-3', yards: ['3'] }],
+  outages: [{ berth: 'BD-2', start: T(13, 8), end: T(14, 20) }],
+  ...extra,
 });
 const stacking = { as_of: T(10, 9), cargo: null, options: [{ rank: 1, placements: [{ yard: 2, target: 'P4', from_m: 0, to_m: 120, tonnes: 80000 }], reasons: [], warnings: [], assumptions: [] }], no_fit: null, gaps: [], blocked: null };
 
@@ -61,7 +64,9 @@ test('탭 진입: 현재 계획과 순위순 안 카드, 추천 표시, 가정�
   await expect(cards(page).filter({ hasText: '추천' })).toHaveCount(1);
   await expect(cards(page).nth(1)).toContainText('추천');
   await expect(cards(page).nth(1)).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('부두 능력 시연용 가정값', { exact: true })).toBeVisible();
+  // 모의·시연 문구는 상단 공통 모드 표시 한 곳에만 둔다(AGENTS.md). 벌점 단가 옆 가정값 칩만 남는다.
+  await expect(page.getByText('부두 능력 시연용 가정값')).toHaveCount(0);
+  await expect(page.locator('.gf-bp-query .gf-bp-tag')).toHaveText('가정값');
   // 빈 값은 0이 아니라 "미확인", 시간 제한 안은 최선해와 차이를 보인다.
   await expect(cards(page).nth(1)).toContainText('미확인');
   await expect(cards(page).nth(3)).toContainText('최선해 · 차이 1.5%');
@@ -93,6 +98,19 @@ test('카드 전환: A 카드를 누르면 표와 간트가 A안으로 바뀐다
   await cards(page).filter({ hasText: '현재 계획' }).click();
   await expect(tableRow(page, 'V-003')).toContainText('11-12 00:00');
   await expect(page.locator('.gf-bp-gantt .gf-bp-ghost')).toHaveCount(0);
+});
+
+test('간트: 안이 부두 2개만 써도 부두 3줄과 정비 빗금을 그린다', async ({ page }) => {
+  const twoBerths = { ...optionB, assignments: optionB.assignments.filter(a => a.berth_id !== 'BD-2') };
+  await mockPlan(page, route => route.fulfill({ json: plan({ current: null, options: [twoBerths] }) }));
+  await openTab(page);
+  const gantt = page.locator('.gf-bp-gantt');
+  await expect(gantt.locator('[data-berth]')).toHaveCount(3);
+  await expect(gantt.locator('[data-berth]')).toHaveText(['BD-1', 'BD-2', 'BD-3']);
+  await expect(gantt.locator('.gf-bp-bar[data-on="BD-2"]')).toHaveCount(0);
+  await expect(gantt.locator('.gf-bp-outage')).toHaveCount(1);
+  await expect(gantt.locator('.gf-bp-outage')).toHaveAttribute('data-on', 'BD-2');
+  await expect(page.locator('.gf-bp-legend')).toContainText('정비');
 });
 
 test('합친 안: 세 안이 같으면 한 장의 카드로 보인다', async ({ page }) => {

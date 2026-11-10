@@ -22,11 +22,17 @@ export interface BerthOption {
   kpis: BerthKpis | null; warnings: string[]; assignments: BerthAssignment[];
 }
 export interface BerthGap { kind: string; voyage_no: string | null; message: string }
+export interface BerthInfo { id: string; yards: string[] }
+/** 조회 기간에 걸치는 정비 구간(ISO, KST). */
+export interface BerthOutage { berth: string; start: string; end: string }
 export interface BerthPlanResult {
   as_of: string; horizon_days: number; source: Record<string, string>;
   assumptions: string[]; gaps: BerthGap[]; message?: string | null;
   current: { label: string; kpis: BerthKpis; assignments: BerthAssignment[] } | null;
   options: BerthOption[];
+  /** 모든 부두(빈 줄 포함), id 순 */
+  berths: BerthInfo[];
+  outages: BerthOutage[];
 }
 
 const BAD_FORMAT = '접안 추천 응답 형식이 올바르지 않습니다';
@@ -62,10 +68,16 @@ function checkAssignments(v: unknown): void {
 export function parseBerthPlan(raw: unknown): BerthPlanResult {
   if (!isObj(raw) || !isStr(raw.as_of) || !isNum(raw.horizon_days) || !isObj(raw.source)
     || !strArray(raw.assumptions) || !Array.isArray(raw.gaps) || !strOrNull(raw.message)
-    || !Array.isArray(raw.options)) bad();
+    || !Array.isArray(raw.options) || !Array.isArray(raw.berths) || !Array.isArray(raw.outages)) bad();
   const r = raw as Obj;
   for (const g of r.gaps as unknown[]) {
     if (!isObj(g) || !isStr(g.kind) || !strOrNull(g.voyage_no) || !isStr(g.message)) bad();
+  }
+  for (const b of r.berths as unknown[]) {
+    if (!isObj(b) || !isStr(b.id) || !strArray(b.yards)) bad();
+  }
+  for (const o of r.outages as unknown[]) {
+    if (!isObj(o) || !isStr(o.berth) || !isStr(o.start) || !isStr(o.end)) bad();
   }
   if (r.current !== null && r.current !== undefined) {
     const c = r.current;

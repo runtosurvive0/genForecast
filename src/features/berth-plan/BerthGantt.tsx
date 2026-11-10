@@ -1,5 +1,6 @@
 // 접안 추천 간트(SVG). 부두별 줄에 선택한 안의 하역 막대를 그리고 현재 계획을 흐린 테두리로 겹친다.
-// 응답에 있는 값만 그린다: 부두 줄은 배정된 부두에서, 시간 축은 기준시각·기간·배정 시각에서 정한다.
+// 응답에 있는 값만 그린다: 부두 줄은 응답의 전체 부두 목록(빈 줄 포함), 정비는 응답의 정비 구간,
+// 시간 축은 기준시각·기간·배정 시각에서 정한다.
 import { useEffect, useId, useRef, useState } from "react";
 import type { BerthAssignment, BerthOption, BerthPlanResult } from "@/domain/berth-plan";
 
@@ -44,11 +45,16 @@ export function BerthGantt({ result, option, theme }: { result: BerthPlanResult;
   }, []);
   const rows = option.assignments.filter(placed);
   const ghosts = option.id === "current" ? [] : (result.current?.assignments ?? []).filter(placed);
-  const berths = [...new Set([...rows, ...ghosts].map(a => a.berth_id as string))].sort();
+  // 전체 부두 목록을 줄로 쓰고, 목록에 없는 부두에 배정된 행이 있으면 뒤에 덧붙인다(숨기지 않음).
+  const listed = result.berths.map(b => b.id);
+  const extra = [...new Set([...rows, ...ghosts].map(a => a.berth_id as string))].filter(id => !listed.includes(id)).sort();
+  const berths = [...listed, ...extra];
+  const outages = result.outages.filter(o => berths.includes(o.berth) && Number.isFinite(ms(o.start)) && Number.isFinite(ms(o.end)) && ms(o.end) > ms(o.start));
   const unplaced = option.assignments.length - rows.length;
 
   const asOf = ms(result.as_of);
   const times = [...rows, ...ghosts].flatMap(a => [ms(a.berth_at), ms(a.unload_end), ms(a.eta)]).filter(Number.isFinite);
+  // 정비 구간은 축을 늘리지 않고 축 안으로 잘라 그린다.
   const start = Math.floor(Math.min(asOf, ...times) / HOUR) * HOUR;
   const end = Math.ceil(Math.max(asOf + result.horizon_days * 24 * HOUR, ...times) / HOUR) * HOUR;
   const hours = Math.max(1, (end - start) / HOUR);
@@ -69,10 +75,14 @@ export function BerthGantt({ result, option, theme }: { result: BerthPlanResult;
     <div className="gf-bp-gantt-wrap" data-theme={theme}>
       <div className="gf-bp-gantt-scroll" ref={scrollRef} tabIndex={0} role="region" aria-label={`${label} (가로 스크롤)`}>
         {berths.length === 0 ? (
-          <p className="gf-bp-muted gf-bp-gantt-empty">부두에 배정된 항차가 없습니다.</p>
+          <p className="gf-bp-muted gf-bp-gantt-empty">부두 정보가 없습니다.</p>
         ) : (
           <svg className="gf-bp-gantt" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}>
             <defs>
+              <pattern id={`${uid}-outage`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+                <rect width="6" height="6" className="gf-bp-outage-bg" />
+                <line x1="0" y1="0" x2="0" y2="6" className="gf-bp-outage-line" strokeWidth="1.5" />
+              </pattern>
               <pattern id={`${uid}-wait`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
                 <rect width="6" height="6" className="gf-bp-wait-bg" />
                 <line x1="0" y1="0" x2="0" y2="6" className="gf-bp-wait-line" strokeWidth="3" />
@@ -81,7 +91,7 @@ export function BerthGantt({ result, option, theme }: { result: BerthPlanResult;
             {berths.map((berth, i) => (
               <g key={berth}>
                 <rect x={0} y={HEAD_H + i * ROW_H} width={width} height={ROW_H} className={i % 2 ? "gf-bp-row-alt" : "gf-bp-row"} />
-                <text x={8} y={HEAD_H + i * ROW_H + ROW_H / 2 + 4} className="gf-bp-axis-label">{berth}</text>
+                <text x={8} y={HEAD_H + i * ROW_H + ROW_H / 2 + 4} className="gf-bp-axis-label" data-berth={berth}>{berth}</text>
               </g>
             ))}
             {ticks.map((t, i) => (
@@ -90,6 +100,19 @@ export function BerthGantt({ result, option, theme }: { result: BerthPlanResult;
                 {i % tickEvery === 0 && <text x={x(t) + 3} y={HEAD_H - 9} className="gf-bp-axis-label">{kstLabel(new Date(t).toISOString())?.slice(0, 5)}</text>}
               </g>
             ))}
+            {outages.map(o => {
+              const from = Math.max(start, ms(o.start));
+              const to = Math.min(end, ms(o.end));
+              if (to <= from) return null;
+              const y = HEAD_H + berths.indexOf(o.berth) * ROW_H + 3;
+              return (
+                <g key={`outage-${o.berth}-${o.start}`}>
+                  <title>{`${o.berth} 정비 · ${kstLabel(o.start)} ~ ${kstLabel(o.end)}`}</title>
+                  <rect className="gf-bp-outage" data-on={o.berth} x={x(from)} y={y} width={Math.max(2, x(to) - x(from))} height={ROW_H - 6} fill={`url(#${uid}-outage)`} />
+                  <rect className="gf-bp-outage-edge" x={x(from)} y={y} width={Math.max(2, x(to) - x(from))} height={ROW_H - 6} />
+                </g>
+              );
+            })}
             <line x1={x(asOf)} x2={x(asOf)} y1={HEAD_H - 4} y2={height} className="gf-bp-now" />
             {ghosts.map(a => {
               const from = ms(a.berth_at);
@@ -110,7 +133,7 @@ export function BerthGantt({ result, option, theme }: { result: BerthPlanResult;
                 <g key={a.voyage_no}>
                   <title>{title}</title>
                   {waiting && <rect className="gf-bp-wait" x={x(eta)} y={y + 4} width={x(from) - x(eta)} height={BAR_H - 8} fill={`url(#${uid}-wait)`} />}
-                  <rect className={`gf-bp-bar ${a.fixed ? "gf-bp-bar-fixed" : yardClass(a.yard)}`} x={x(from)} y={y} width={Math.max(2, x(to) - x(from))} height={BAR_H} rx={4} />
+                  <rect data-on={a.berth_id ?? undefined} className={`gf-bp-bar ${a.fixed ? "gf-bp-bar-fixed" : yardClass(a.yard)}`} x={x(from)} y={y} width={Math.max(2, x(to) - x(from))} height={BAR_H} rx={4} />
                   {x(to) - x(from) > 46 && <text x={x(from) + 5} y={y + BAR_H / 2 + 4} className={`gf-bp-bar-label${a.fixed ? " gf-bp-bar-label-fixed" : ""}`}>{name}</text>}
                   {!a.fixed && Number.isFinite(eta) && <circle className="gf-bp-eta" cx={x(eta)} cy={y + BAR_H / 2} r={3.5} />}
                 </g>
@@ -125,6 +148,7 @@ export function BerthGantt({ result, option, theme }: { result: BerthPlanResult;
         <li><i className="gf-bp-key gf-bp-yard-3" />3저탄장</li>
         <li><i className="gf-bp-key gf-bp-bar-fixed" />고정 점유</li>
         {ghosts.length > 0 && <li><i className="gf-bp-key gf-bp-key-ghost" />현재 계획</li>}
+        <li><i className="gf-bp-key gf-bp-key-outage" />정비</li>
         <li><i className="gf-bp-key gf-bp-key-wait" />체선(ETA 후 대기)</li>
         <li><i className="gf-bp-key gf-bp-key-eta" />ETA</li>
         {unplaced > 0 && <li className="gf-bp-muted">부두 미배정 {unplaced}척은 표에서 확인</li>}

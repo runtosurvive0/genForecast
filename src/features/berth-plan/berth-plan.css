@@ -27,7 +27,6 @@
 .gf-bp-tag { padding: 1px 7px; border-radius: 999px; background: var(--amber-soft); color: var(--amber); font-size: 11px; font-weight: 600; }
 .gf-bp-run { height: 30px; padding: 0 14px; border: 1px solid var(--action); border-radius: 7px; background: var(--action); color: #fff; font-size: 12px; font-weight: 600; }
 .gf-bp-run:hover:not(:disabled) { background: var(--action-hover); }
-.gf-bp-assume { margin-left: auto !important; font-size: 11px; color: var(--amber); }
 
 .gf-bp-loading { display: flex; align-items: center; min-height: 64px; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; color: var(--muted-foreground); }
 .gf-bp-error { padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--destructive) 40%, var(--border)); border-radius: 12px; background: var(--card); color: var(--destructive); }
@@ -65,6 +64,10 @@
 .gf-bp-bar-label-fixed { fill: var(--foreground); }
 .gf-bp-yard-2 + .gf-bp-bar-label { fill: var(--foreground); }
 .gf-bp-ghost { fill: none; stroke: var(--muted-foreground); stroke-width: 1.5; stroke-dasharray: 4 3; opacity: .65; }
+.gf-bp-outage-bg { fill: color-mix(in srgb, var(--muted-foreground) 14%, var(--card)); }
+.gf-bp-outage-line { stroke: color-mix(in srgb, var(--muted-foreground) 55%, var(--card)); }
+.gf-bp-outage-edge { fill: none; stroke: color-mix(in srgb, var(--muted-foreground) 55%, var(--card)); stroke-width: 1; }
+.gf-bp-key-outage { background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--muted-foreground) 55%, var(--card)) 0 1.5px, color-mix(in srgb, var(--muted-foreground) 14%, var(--card)) 1.5px 4px); }
 .gf-bp-wait-bg { fill: color-mix(in srgb, var(--destructive) 12%, var(--card)); }
 .gf-bp-wait-line { stroke: color-mix(in srgb, var(--destructive) 55%, var(--card)); }
 .gf-bp-eta { fill: var(--card); stroke: var(--foreground); stroke-width: 1.5; }
@@ -110,6 +113,5 @@ i.gf-bp-bar-fixed { background: var(--gf-bp-fixed); }
 @media (max-width: 1100px) { .gf-bp-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) {
   .gf-bp-cards { grid-template-columns: minmax(0, 1fr); }
-  .gf-bp-assume { margin-left: 0 !important; }
   .gf-bp-field { flex-wrap: wrap; }
 }
