@@ -90,7 +90,21 @@ def _on_copy(path: Path, action):
 def _plan(path: Path, seed: int):
     registry = snapshot(path)
     baseline = read_baseline(path)
-    return registry, baseline, generate(registry, baseline, seed=seed)
+    return registry, baseline, generate(registry, baseline, seed=seed, today=_now().date())
+
+
+def _stale(path: Path, registry: dict, stale: dict | None) -> dict | None:
+    """Previous run's planned voyages not regenerated now; a voyage a person touched stays with its children."""
+    if not stale:
+        return None
+    edited = _edited_elsewhere(path, registry)
+    keep = {key for entity, key in edited if entity == 'voyages'}
+    cargo = {row['cargo_no'] for row in registry['cargo'] if row['voyage_no'] in keep}
+    keep_assays = {row['assay_id'] for row in registry['assays'] if row['cargo_no'] in cargo}
+    out = {'assays': [k for k in stale['assays'] if k not in keep_assays and ('assays', k) not in edited],
+           'cargo': [k for k in stale['cargo'] if k not in cargo and ('cargo', k) not in edited],
+           'voyages': [k for k in stale['voyages'] if k not in keep]}
+    return out if out['voyages'] else None
 
 
 def _summary(stats: dict) -> dict:
@@ -98,14 +112,17 @@ def _summary(stats: dict) -> dict:
     return {'create': dict(stats['create']),
             'fill_rows': sum(v['rows'] for v in fill.values()),
             'fill_fields': sum(v['fields'] for v in fill.values()),
-            'kept_real_values': stats['kept_real_values'], 'baseline_fill': stats['baseline_fill']}
+            'kept_real_values': stats['kept_real_values'], 'baseline_fill': stats['baseline_fill'],
+            'future_voyages': stats.get('future_voyages', 0)}
 
 
 def check(path: Path, *, seed: int = DEFAULT_SEED) -> dict:
     """What load would do. Reads only."""
     def run(copy):
         registry, baseline, plan = _plan(copy, seed)
-        return {**_summary(plan.stats), 'registry_revision': registry['revision'],
+        stale = _stale(copy, registry, plan.stale)
+        return {**_summary(plan.stats), 'stale_voyages': len(stale['voyages']) if stale else 0,
+                'registry_revision': registry['revision'],
                 'baseline_revision': baseline['revision'], 'baseline_as_of': baseline['as_of']}
     return {'db': str(Path(path)), **_on_copy(path, run)}
 
@@ -114,11 +131,15 @@ def load(path: Path, *, seed: int = DEFAULT_SEED, backup_root: Path | None = Non
     path = _require(path)
     saved = backup(path, backup_root)
     registry, baseline, plan = _plan(path, seed)
+    stale = _stale(path, registry, plan.stale)
+    if stale:  # 지난 실행의 계획 항차 중 이번 기간 밖으로 밀린 것은 먼저 지운다
+        registry = _purge_dummy(path, stale, registry)
     after = commit(plan.changes, registry['revision'], ACTOR, DUMMY_ORIGIN, path)
     baseline_revision = baseline['revision']
     if plan.baseline is not None:
         baseline_revision = save_baseline(plan.baseline, baseline['revision'], ACTOR, path)['revision']
     return {'db': str(path), 'backup': str(saved), **_summary(plan.stats),
+            'stale_voyages': len(stale['voyages']) if stale else 0,
             'registry_revision': after['revision'], 'baseline_revision': baseline_revision}
 
 

@@ -20,6 +20,8 @@ def _counts(c: dict) -> str:
 
 def _load_lines(r: dict, when: str) -> list[str]:
     return [f"새로 만들 행: {_counts(r['create'])}",
+            f"그중 앞으로 들어올 계획 항차: {r.get('future_voyages', 0)}척 · 기간 밖으로 밀려 지울 지난 계획 항차: "
+            f"{r.get('stale_voyages', 0)}척",
             f"실제 행 빈칸 채움: {r['fill_rows']}행 {r['fill_fields']}칸 (이미 입력된 값 {r['kept_real_values']}칸은 그대로)",
             f"기준재고 채울 칸: {r['baseline_fill']}",
             f"{when} 원장 revision {r['registry_revision']} · 기준재고 revision {r['baseline_revision']}"]

@@ -78,12 +78,16 @@ export interface PlanningSnapshot {
       delta?: number | null;
       today_burn?: number | null;
       expected_receipts: number;
+      /** 기간 중 재고가 바닥나 계획대로 태우지 못한 양(t) */
+      shortage?: number | null;
+      exhausted_on?: string | null;
+      planned_receipts?: number;
     }[];
     daily: {
       day: string;
       groups: Record<
         string,
-        { stock: number | null; days: number | null; burn: number | null; receipts?: number }
+        { stock: number | null; days: number | null; burn: number | null; receipts?: number; shortage?: number | null }
       >;
     }[];
     kpis: {

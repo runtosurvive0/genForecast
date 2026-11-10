@@ -13,7 +13,7 @@ import { PlanningWorkspace } from "@/components/PlanningWorkspace";
 import type { PlanningState } from "@/domain/use-planning";
 import type { PlanningSnapshot } from "@/domain/planning";
 import type { FuelDemoCatalog, FuelDemoSnapshot, FuelDemoStatus } from "@/domain/fuel-demo/types";
-import { completeTotal, reviewReceipt, reviewPileReceipt, reviewRouteSignals } from "./workspace-review";
+import { completeTotal, reviewReceipt, reviewPileReceipt, reviewRouteSignals, rowShortage } from "./workspace-review";
 import { useYardBaseline } from "@/domain/use-yard-baseline";
 import { BerthRoutes } from "@/data/fuel-reference/berth-routes.js";
 import { authJson } from "@/lib/auth-client";
@@ -654,6 +654,7 @@ function ReceiptReview({ snapshot: s, demoSnapshot, demoStatus, demoCatalog }: {
     day: row.day,
     stock: row.groups[group.id]?.stock ?? null,
     days: row.groups[group.id]?.days ?? null,
+    shortage: row.groups[group.id]?.shortage ?? null,
   }));
   const review = reviewReceipt(rows, {
     start: s.start,
@@ -967,7 +968,7 @@ function ReceiptReview({ snapshot: s, demoSnapshot, demoStatus, demoCatalog }: {
                     ? "반입 검토일"
                     : row.stock === null
                       ? "미확정"
-                      : row.stock < 0
+                      : rowShortage(row)
                         ? "계획상 부족"
                         : "저장 계획"}
                 </td>
