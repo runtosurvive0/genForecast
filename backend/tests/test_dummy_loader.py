@@ -83,8 +83,9 @@ def test_load_fills_blanks_only_and_creates_backup(tmp_db, tmp_path):
     for entity in ENTITIES:
         for key, row in old[entity].items():
             for field, value in row.items():
-                if value is not None:
+                if value is not None and (key, field) != ('V-test-26-3-034', 'status'):  # stocked: arrived -> completed
                     assert new[entity][key][field] == value, (entity, key, field)
+    assert new['voyages']['V-test-26-3-034']['status'] == 'completed'
     assert len(new['voyages']) == len(old['voyages']) + 89
     audit = _audit(tmp_db, after['revision'])
     assert audit and {(a, o) for a, o, _ in audit} == {('dummy-seed', 'dummy-data')}
