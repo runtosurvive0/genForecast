@@ -29,9 +29,9 @@ export function SupplyLedger({ planning, selectedDay }: { planning: PlanningStat
       {snapshot && selectedDay && snapshot.inventory.daily.filter(row => row.day === selectedDay).map(row => <section className="gf-supply-ledger__yards" aria-label="선택 날짜 수급" key={row.day}><span>{row.day}</span><b>{fmt(sumKnownInventory(SUPPLY_GROUPS.map(group => row.groups[group.id]?.stock ?? null)))}</b></section>)}
       {!snapshot ? <p>{planning.failed || (planning.current?.classification === 'functional_demo' ? '실제 발전계획이 아직 연결되지 않았습니다.' : '저장된 발전계획을 선택하면 재고·입하·사용 전망을 확인할 수 있습니다.')}</p> : <div className="gf-supply-ledger__table"><table><thead><tr><th>일자</th>{SUPPLY_GROUPS.map(group => <th key={group.id}>{group.name} 재고</th>)}<th>입하</th><th>사용</th></tr></thead><tbody>{snapshot.inventory.daily.map(row => {
         const values = (key: 'receipts' | 'burn') => sumKnownInventory(SUPPLY_GROUPS.map(group => row.groups[group.id]?.[key] ?? null));
-        return <tr key={row.day}><th>{row.day}</th>{SUPPLY_GROUPS.map(group => <td key={group.id}>{fmt(row.groups[group.id]?.stock)}</td>)}<td>{fmt(values('receipts'))}</td><td>{fmt(values('burn'))}</td></tr>;
+        return <tr key={row.day}><th>{row.day}</th>{SUPPLY_GROUPS.map(group => { const cell = row.groups[group.id]; const short = cell?.shortage ?? 0; return <td key={group.id} className={short > 0 ? 'gf-supply-ledger__short' : undefined}>{fmt(cell?.stock)}{short > 0 && <small>부족 {fmt(short)}</small>}</td>; })}<td>{fmt(values('receipts'))}</td><td>{fmt(values('burn'))}</td></tr>;
       })}</tbody></table></div>}
-      <p>기준일만 있는 재고는 다음 날 0시부터 적용합니다. 성상이 확인되지 않은 처의 연소량과 전망은 계산하지 않습니다.</p>
+      <p>기준일만 있는 재고는 다음 날 0시부터 적용합니다. 성상이 확인되지 않은 처의 연소량과 전망은 계산하지 않습니다. 입하에는 항차 원장의 계획 항차(하역완료 예정일)가 포함됩니다. 재고가 바닥나면 0으로 두고 계획대로 태우지 못한 양을 부족으로 표시합니다.</p>
     </section>
     <SupplyInputs onSaved={planning.refresh}/>
   </div>;

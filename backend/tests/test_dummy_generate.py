@@ -1,12 +1,12 @@
 import copy
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from midterm.dummy_data.generate import generate
+from midterm.dummy_data.generate import FUTURE_DAILY_T, FUTURE_DAYS, generate as _generate
 from midterm.dummy_data.profiles import load_berths, load_profiles
 from midterm.dummy_data.quality import check_assay
 from midterm.voyage_registry import SCHEMA, commit, snapshot
@@ -20,6 +20,12 @@ PANAMAX, CAPESIZE = (60000, 85000), (120000, 170000)
 CAPESIZE_COALS = {'AVRA', 'Glencore', 'Centennial'}
 STOCKED_KEY = 'V-test-26-3-034'  # the one entered 'arrived' voyage whose coal is in the baseline
 AS_OF = datetime.fromisoformat('2026-11-08T00:00:00+09:00')
+
+
+def generate(*args, **kwargs):
+    """Past 101-voyage range only; the planned voyages after as_of have their own tests below."""
+    kwargs.setdefault('future_days', 0)
+    return _generate(*args, **kwargs)
 
 
 def _full(entity, row):
@@ -398,3 +404,127 @@ def test_at_most_one_voyage_is_berthed_per_berth(fixture):
     for v in merged.values():
         if v['voyage_number'] in stocked:
             assert v['status'] == 'completed' and v['actual_unload_end'], v['voyage_number']
+
+
+# ---- 기준일 뒤 계획 항차 -------------------------------------------------------------------------
+
+TODAY = date(2026, 11, 10)
+START = datetime.fromisoformat('2026-11-10T00:00:00+09:00')
+
+
+def _future(plan):
+    return [v for v in plan.changes['voyages'] if v.get('status') in ('planned', 'underway')]
+
+
+def test_future_voyages_cover_the_window_with_cargo_not_yet_received(fixture):
+    plan = _generate(fixture.snapshot, fixture.baseline, today=TODAY)
+    future = _future(plan)
+    assert plan.stats['future_voyages'] == len(future) > 30
+    cargo = {c.get('voyage_no'): c for c in plan.changes['cargo']}
+    for v in future:
+        assert v['voyage_no'] == f"DV-{v['voyage_number']}" and v['data_origin'] == 'dummy'
+        assert v['classification'] == 'actual' and v['berth_id'] is None
+        assert all(v[f'planned_{t}'] for t in TIMES) and not any(v[f'actual_{t}'] for t in TIMES[1:])
+        assert [v[f'planned_{t}'] for t in TIMES] == sorted(v[f'planned_{t}'] for t in TIMES)
+        assert START < _dt(v['planned_unload_end'])
+        assert _dt(v['planned_arrival']) < START + timedelta(days=FUTURE_DAYS)
+        assert v['yard'] in FUTURE_DAILY_T[f"BD-{v['voyage_number'].split('-')[1]}"]
+        assert (v['status'] == 'underway') == (_dt(v['planned_departure']) <= START)
+        assert (v['actual_departure'] is not None) == (v['status'] == 'underway')
+        c = cargo[v['voyage_no']]
+        assert c['cargo_no'] == f"DC-{v['voyage_number']}" and c['received_t'] is None and c['receipt_date'] is None
+        assert c['destination_plant_id'] == 'dangjin' and c['bl_t'] == c['planned_t'] > 0
+        assert c['cv_basis'] == 'GAR' and 4000 <= c['cv'] <= 7500
+    # 앞 배 하역이 끝난 뒤에만 접안하고, 과거 항차 사슬 뒤에서 시작한다.
+    merged = _merged(fixture, plan)['voyages']
+    for berth in ('1', '2', '3'):
+        rows = sorted((v for v in future if v['voyage_number'].split('-')[1] == berth), key=lambda v: v['planned_berth'])
+        for a, b in zip(rows, rows[1:]):
+            assert _dt(a['planned_unload_end']) <= _dt(b['planned_berth'])
+        past_end = max(_dt(v['actual_unload_end']) for v in merged.values()
+                       if v['actual_unload_end'] and v['voyage_number'] and v['voyage_number'].split('-')[1] == berth)
+        assert past_end <= _dt(rows[0]['planned_berth'])
+    assert {v['status'] for v in future} == {'planned', 'underway'}
+    assert any(v['voyage_number'].startswith('27-') for v in future)  # 해가 바뀌면 새 번호
+
+
+def test_future_receipts_follow_the_daily_targets_by_yard(fixture):
+    plan = _generate(fixture.snapshot, fixture.baseline, today=TODAY)
+    cargo = {c.get('voyage_no'): c for c in plan.changes['cargo']}
+    by_yard = {}
+    for v in _future(plan):
+        by_yard[v['yard']] = by_yard.get(v['yard'], 0) + cargo[v['voyage_no']]['bl_t']
+    targets = {}
+    for yards in FUTURE_DAILY_T.values():
+        for yard, t in yards.items():
+            targets[yard] = targets.get(yard, 0) + t
+    total = sum(by_yard.values()) / FUTURE_DAYS
+    assert 0.8 * sum(targets.values()) <= total <= 1.2 * sum(targets.values())
+    for yard, target in targets.items():
+        assert 0.5 * target <= by_yard.get(yard, 0) / FUTURE_DAYS <= 1.6 * target, yard
+
+
+def test_underway_voyage_has_loading_assay_and_planned_has_none(fixture):
+    plan = _generate(fixture.snapshot, fixture.baseline, today=TODAY)
+    assays = {a['assay_id']: a for a in plan.changes['assays']}
+    for v in _future(plan):
+        number = v['voyage_number']
+        assert f'DA-{number}-U' not in assays
+        if v['status'] == 'underway':
+            a = assays[f'DA-{number}-L']
+            assert check_assay(a) == [] and a['sample_date'] == v['planned_departure'][:10]
+        else:
+            assert f'DA-{number}-L' not in assays
+
+
+def test_future_voyages_start_from_today_when_baseline_is_older(fixture):
+    later = _generate(fixture.snapshot, fixture.baseline, today=date(2026, 11, 20))
+    first = min(_dt(v['planned_arrival']) for v in _future(later))
+    assert first >= datetime.fromisoformat('2026-11-21T00:00:00+09:00')
+    earlier = _generate(fixture.snapshot, fixture.baseline, today=date(2026, 11, 1))  # 기준일보다 앞이면 기준일
+    assert min(_dt(v['planned_arrival']) for v in _future(earlier)) >= AS_OF + timedelta(days=1)
+
+
+def test_future_numbers_skip_numbers_already_in_the_registry(fixture):
+    snap = copy.deepcopy(fixture.snapshot)
+    snap['voyages'].append(_full('voyages', {'voyage_no': 'V-real-26-1-042', 'classification': 'actual',
+                                             'voyage_number': '26-1-042', 'status': 'planned'}))
+    plan = _generate(snap, fixture.baseline, today=TODAY)
+    numbers = [v['voyage_number'] for v in _future(plan)]
+    assert '26-1-042' not in numbers and '26-1-043' in numbers
+
+
+def test_future_plan_is_deterministic_and_reload_is_a_noop(tmp_path, fixture):
+    path = tmp_path / 'registry.sqlite3'
+    commit({entity: fixture.raw['registry'][entity] for entity in ('ships', 'voyages', 'cargo')}, 0, 'fixture',
+           'manual', path)
+    before = snapshot(path)
+    plan = _generate(before, fixture.baseline, today=TODAY)
+    assert plan.changes == _generate(before, fixture.baseline, today=TODAY).changes
+    after = commit(plan.changes, before['revision'], 'dummy-seed', 'dummy-data', path)
+    again = _generate(after, plan.baseline, today=TODAY)
+    assert again.stale is None and again.stats['create'] == {'voyages': 0, 'cargo': 0, 'assays': 0}
+    assert commit(again.changes, after['revision'], 'dummy-seed', 'dummy-data', path)['revision'] == after['revision']
+    # 하루 뒤 다시 만들면 기간 끝이 늘고, 사라진 번호만 지울 대상(stale)으로 남는다.
+    later = _generate(after, plan.baseline, today=date(2026, 11, 25))
+    kept = {v['voyage_no'] for v in later.changes['voyages']}
+    stale = later.stale or {'voyages': []}
+    old = {v['voyage_no'] for v in _future(plan)}
+    assert set(stale['voyages']) == old - kept
+    assert all(c.startswith('DC-') for c in (later.stale or {}).get('cargo', []))
+
+
+def test_supply_forecast_counts_the_dummy_planned_voyages(tmp_path, fixture):
+    """적재한 계획 항차가 수급 전망의 예정 입하(registry_planned)로 들어간다."""
+    from midterm.supply import planned_receipts
+    path = tmp_path / 'registry.sqlite3'
+    commit({entity: fixture.raw['registry'][entity] for entity in ('ships', 'voyages', 'cargo')}, 0, 'fixture',
+           'manual', path)
+    before = snapshot(path)
+    plan = _generate(before, fixture.baseline, today=TODAY)
+    after = commit(plan.changes, before['revision'], 'dummy-seed', 'dummy-data', path)
+    rows = planned_receipts(after)
+    future = {v['voyage_no'] for v in _future(plan)}
+    assert {r['voyage_no'] for r in rows} >= future
+    mine = [r for r in rows if r['voyage_no'] in future]
+    assert all(r['group'] in ('g14', 'g58', 'g910') and r['cv'] is not None and r['tonnes'] > 0 for r in mine)

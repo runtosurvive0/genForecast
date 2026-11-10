@@ -332,7 +332,102 @@ def test_exhausted_stock_reports_zero_days_not_negative_days():
     output = simulate(r, plan(), START, 7)
     g = output['groups'][0]
     assert g['min_days'] == 0
-    assert g['min_stock'] < 0  # 부족량은 그대로 보인다
+    assert g['min_stock'] == 0  # 재고는 0에서 멈추고
+    assert g['shortage'] == pytest.approx(7 * 1920 - 5000)  # 못 태운 양은 부족량으로 따로 남는다
+    assert g['exhausted_on'] == '2026-10-10'
     assert g['risk'] == 'danger'
     assert all(p['groups']['g14']['days'] >= 0 for p in output['forecast'])
+    assert all(p['groups']['g14']['stock'] >= 0 for p in output['forecast'])
+    assert [p['groups']['g14']['shortage'] for p in output['forecast'][:4]] == pytest.approx([0, 0, 760, 1920])
     assert output['kpis']['min_days'] == 0
+
+
+def test_receipt_after_exhaustion_refills_from_zero_not_from_a_deficit():
+    r = records()
+    r['baselines'][0]['tonnes'] = 1000
+    r['registry_planned'] = [{'cargo_no': 'P1', 'group': 'g14', 'at': (START + timedelta(days=3)).isoformat(),
+                              'tonnes': 10000., 'cv': 5500., 'vessel_name': 'PLAN ONE', 'mmsi': None}]
+    output = simulate(r, plan(), START, 7)
+    day3 = output['forecast'][3]['groups']['g14']
+    assert day3['receipts'] == 10000
+    assert day3['stock'] == pytest.approx(10000 - 1920)
+
+
+def test_planned_registry_voyage_adds_expected_receipt_after_as_of():
+    r = records()
+    at = START + timedelta(days=2, hours=6)
+    r['registry_planned'] = [{'cargo_no': 'P1', 'group': 'g58', 'at': at.isoformat(), 'tonnes': 80000.,
+                              'cv': 6000., 'vessel_name': 'PLAN ONE', 'mmsi': None}]
+    base = simulate(records(), plan(), START, 7)
+    output = simulate(r, plan(), START, 7)
+    day = lambda o, i: o['forecast'][i]['groups']['g58']
+    assert day(output, 2)['receipts'] == 80000
+    assert day(output, 1)['stock'] == pytest.approx(day(base, 1)['stock'])
+    # 고열량탄이 섞여 같은 발전량에 덜 태우므로 기본 + 입하량보다 조금 많이 남는다.
+    assert day(output, 2)['stock'] > day(base, 2)['stock'] + 80000
+    assert day(output, 2)['stock'] < day(base, 2)['stock'] + 80000 + 1920
+    g = {x['id']: x for x in output['groups']}
+    assert g['g58']['expected_receipts'] == 80000
+    assert g['g58']['planned_receipts'] == 80000
+    assert day(output, 3)['cv'] > 5500  # 고열량 입하가 섞인다
+
+
+def test_planned_receipt_without_calorific_value_is_skipped_and_reported():
+    r = records()
+    r['registry_planned'] = [{'cargo_no': 'P2', 'group': 'g14', 'at': (START + timedelta(days=1)).isoformat(),
+                              'tonnes': 50000., 'cv': None, 'vessel_name': 'NO CV', 'mmsi': None}]
+    output = simulate(r, plan(), START, 7)
+    assert output['forecast'][1]['groups']['g14']['receipts'] == 0
+    assert output['forecast'][3]['groups']['g14']['stock'] is not None
+    assert any('P2' in issue and '계획 입하' in issue for issue in output['transfer_issues'])
+
+
+def test_planned_receipt_in_the_past_is_not_counted():
+    r = records()
+    r['registry_planned'] = [{'cargo_no': 'P3', 'group': 'g14', 'at': (START + timedelta(hours=1)).isoformat(),
+                              'tonnes': 50000., 'cv': 5500., 'vessel_name': 'LATE', 'mmsi': None}]
+    output = simulate(r, plan(), START + timedelta(days=1), 5)
+    assert all(p['groups']['g14']['receipts'] == 0 for p in output['forecast'])
+    assert any('P3' in issue and '하역완료 예정이 지났' in issue for issue in output['transfer_issues'])
+
+
+def test_planned_receipts_from_registry_skip_received_cancelled_and_other_plants():
+    from midterm.supply import planned_receipts
+    v = lambda no, status, yard, end, ship, cls='actual': {
+        'voyage_no': no, 'status': status, 'classification': cls, 'yard': yard,
+        'planned_unload_end': end, 'actual_unload_end': None, 'ship_code': ship}
+    registry = {
+        'voyages': [
+            v('V1', 'planned', '2', '2026-11-14T06:00:00+09:00', 'S1'),
+            v('V2', 'cancelled', '1', '2026-11-15T06:00:00+09:00', 'S1'),
+            v('V3', 'planned', '1', '2026-11-15T06:00:00+09:00', 'S1', 'simulation'),
+            v('V4', 'underway', '3', '2026-11-16T06:00:00+09:00', 'S2'),
+            v('V5', 'planned', None, '2026-11-17T06:00:00+09:00', 'S2'),
+        ],
+        'cargo': [
+            {'cargo_no': 'C1', 'voyage_no': 'V1', 'destination_plant_id': 'dangjin', 'bl_t': 80000, 'planned_t': 81000,
+             'received_t': None, 'cv': 5900, 'cv_basis': 'GAR'},
+            {'cargo_no': 'C2', 'voyage_no': 'V2', 'destination_plant_id': 'dangjin', 'bl_t': 80000, 'received_t': None, 'cv': 5900},
+            {'cargo_no': 'C3', 'voyage_no': 'V3', 'destination_plant_id': 'dangjin', 'bl_t': 80000, 'received_t': None, 'cv': 5900},
+            {'cargo_no': 'C4', 'voyage_no': 'V4', 'destination_plant_id': 'taean', 'bl_t': 80000, 'received_t': None, 'cv': 5900},
+            {'cargo_no': 'C4b', 'voyage_no': 'V4', 'destination_plant_id': 'dangjin', 'bl_t': None, 'planned_t': 60000,
+             'received_t': None, 'cv': 4800, 'cv_basis': 'NAR'},
+            {'cargo_no': 'C5', 'voyage_no': 'V5', 'destination_plant_id': 'dangjin', 'bl_t': 70000, 'received_t': None, 'cv': 5000},
+        ],
+        'ships': [{'ship_code': 'S1', 'name': 'ONE', 'mmsi': '440000001'}, {'ship_code': 'S2', 'name': 'TWO', 'mmsi': None}],
+    }
+    rows = planned_receipts(registry, received={'C1-old'})
+    assert [(r['cargo_no'], r['group'], r['tonnes'], r['cv']) for r in rows] == [
+        ('C1', 'g58', 80000, 5900), ('C4b', 'g910', 60000, None), ('C5', None, 70000, 5000)]
+    assert rows[0]['vessel_name'] == 'ONE' and rows[0]['mmsi'] == '440000001'
+    assert rows[0]['at'] == '2026-11-14T06:00:00+09:00'
+    assert planned_receipts(registry, received={'C1'})[0]['cargo_no'] == 'C4b'
+
+
+def test_planned_receipt_without_yard_is_reported_not_guessed():
+    r = records()
+    r['registry_planned'] = [{'cargo_no': 'P4', 'group': None, 'at': (START + timedelta(days=1)).isoformat(),
+                              'tonnes': 50000., 'cv': 5500., 'vessel_name': 'NO YARD', 'mmsi': None}]
+    output = simulate(r, plan(), START, 7)
+    assert all(p['groups'][g]['receipts'] == 0 for p in output['forecast'] for g in GROUPS)
+    assert any('P4' in issue and '저탄장' in issue for issue in output['transfer_issues'])

@@ -82,6 +82,40 @@ def init_supply(db):
         db.execute("ALTER TABLE supply_vessels ADD COLUMN classification TEXT NOT NULL DEFAULT 'planned'")
 
 
+YARD_GROUP = {'1': 'g14', '2': 'g58', '3': 'g910'}
+CLOSED_STATUSES = {'completed', 'cancelled'}
+ARB_BASES = {'', 'GAR', 'ARB'}
+
+
+def planned_receipts(registry: dict, received=frozenset()) -> list[dict]:
+    """항차 원장에서 아직 입고되지 않은 당진행 화물을 하역완료 예정시각의 예상 입하로 만든다.
+
+    저탄장(group)·수입기준 발열량(cv)을 모르면 None으로 두고, 전망에서 제외 사유를 따로 보인다."""
+    ships = {s.get('ship_code'): s for s in registry.get('ships') or []}
+    voyages = {v['voyage_no']: v for v in registry.get('voyages') or []
+               if v.get('classification') != 'simulation' and v.get('status') not in CLOSED_STATUSES
+               and not v.get('actual_unload_end')}
+    rows = []
+    for cargo in registry.get('cargo') or []:
+        voyage = voyages.get(cargo.get('voyage_no'))
+        if (not voyage or cargo.get('destination_plant_id') != 'dangjin' or cargo.get('received_t') is not None
+                or cargo.get('cargo_no') in received):
+            continue
+        tonnes = cargo.get('bl_t') or cargo.get('planned_t')
+        at = voyage.get('planned_unload_end') or voyage.get('planned_berth') or voyage.get('planned_arrival')
+        if not isinstance(tonnes, (int, float)) or tonnes <= 0 or not at:
+            continue
+        cv = cargo.get('cv')
+        basis = str(cargo.get('cv_basis') or '').strip().upper()
+        ship = ships.get(voyage.get('ship_code')) or {}
+        rows.append({'cargo_no': cargo['cargo_no'], 'voyage_no': voyage['voyage_no'],
+                     'voyage_number': voyage.get('voyage_number'),
+                     'group': YARD_GROUP.get(str(voyage.get('yard') or '').strip()), 'at': at, 'tonnes': tonnes,
+                     'cv': cv if isinstance(cv, (int, float)) and 1000 <= cv <= 10000 and basis in ARB_BASES else None,
+                     'vessel_name': ship.get('name'), 'mmsi': ship.get('mmsi')})
+    return sorted(rows, key=lambda r: (timestamp(r['at']), r['cargo_no']))
+
+
 def read_supply(path=DATABASE) -> dict:
     with connect(path) as db:
         init_supply(db)
@@ -107,9 +141,8 @@ def read_supply(path=DATABASE) -> dict:
         snapshots = [dict(row) for row in db.execute('''SELECT y.* FROM yard_baselines y
             WHERE y.revision=(SELECT MAX(z.revision) FROM yard_baselines z WHERE z.as_of=y.as_of)
             ORDER BY y.as_of''')]
-    if snapshots:
-        from midterm.voyage_registry import snapshot as registry_snapshot, quality_selection
-        registry = registry_snapshot(path)
+    from midterm.voyage_registry import snapshot as registry_snapshot, quality_selection
+    registry = registry_snapshot(path)
     for snapshot in snapshots:
         baseline = {'as_of': snapshot['as_of'], 'revision': snapshot['revision'],
                     'lots': json.loads(snapshot['payload'])}
@@ -144,6 +177,7 @@ def read_supply(path=DATABASE) -> dict:
         'balance_updated_at': row.get('balance_updated_at'), 'remaining_t': row['remaining_t'],
         }
     result['registry_receipts'] = [receipt(row) for row in inventory['lots']]
+    result['registry_planned'] = planned_receipts(registry, {r['cargo_no'] for r in result['registry_receipts']})
     result['registry_reconciliations'] = [{
         'cargo_no': event['cargo_no'], 'at': event['at'],
         'groups': sorted({{1:'g14', 2:'g58', 3:'g910'}[row['yard']] for row in event['before'] + event['after']}),
@@ -265,6 +299,37 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             if begin <= at <= as_of:
                 balance_events[at].append(receipt)
                 times.add(at)
+    transfer_issues = []
+    planned_events = defaultdict(list)
+    horizon_end = midnight + timedelta(days=horizon)
+    for item in records.get('registry_planned', []):
+        at = timestamp(item['at'])
+        label = item.get('voyage_number') or item.get('vessel_name') or item['cargo_no']
+        if at <= as_of:
+            transfer_issues.append(f"{item['cargo_no']}({label}): 하역완료 예정이 지났는데 입고 기록이 없어 계획 입하에서 제외")
+        elif at >= end:
+            continue
+        elif item.get('group') is None:
+            transfer_issues.append(f"{item['cargo_no']}({label}): 저탄장 미지정이라 계획 입하에서 제외")
+        elif item.get('cv') is None:
+            transfer_issues.append(f"{item['cargo_no']}({label}): 수입기준 발열량 미확인이라 계획 입하에서 제외")
+        else:
+            planned_events[at].append(item)
+            times.add(at)
+    planned_total = dict.fromkeys(GROUPS, 0.)
+
+    def overlapping(receipt, t, v):
+        """같은 배가 기존 입하 원장(supply_vessels)에도 있으면 중복으로 본다."""
+        if v.get('classification') == 'simulation':
+            return False
+        at = timestamp(v['arrival_at'])
+        if not at <= t <= at + timedelta(days=60):
+            return False
+        mmsi, name = receipt.get('mmsi'), receipt.get('vessel_name')
+        return ((mmsi and mmsi == v.get('mmsi')) or
+                (name and str(name).strip().casefold() == str(v.get('name') or '').strip().casefold()) or
+                (not mmsi and not name))
+
     state = {g: {"stock": 0., "cv": fallback_cv, "known": False} for g in GROUPS}
     active_anchors = dict.fromkeys(GROUPS)
     baseline_events = defaultdict(list)
@@ -274,7 +339,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
     unit_daily = defaultdict(lambda: {u: {"mwh": 0., "tonnes": 0., "hours": 0., "online_hours": 0.} for u in UNITS})
     daily_coverage = defaultdict(lambda: dict.fromkeys(GROUPS, True))
     daily_receipts = defaultdict(lambda: dict.fromkeys(GROUPS, 0.))
-    transfer_issues = []
+    daily_shortage = defaultdict(lambda: dict.fromkeys(GROUPS, 0.))
     # 계획 첫 시각 전은 '계획 공백'(아직 시작 안 한 계획)이다. 계획 시작 후 빠진 호기 행(계획 누락)과 구분한다.
     plan_start = min((timestamp(k) for k in plan), default=None)
     plan_gaps = dict.fromkeys(GROUPS)
@@ -292,17 +357,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             anchor, st = active_anchors[g], state[g]
             if not anchor or t <= timestamp(anchor['at']):
                 continue
-            def overlapping(v):
-                if v.get('classification') == 'simulation':
-                    return False
-                at = timestamp(v['arrival_at'])
-                if not at <= t <= at + timedelta(days=60):
-                    return False
-                mmsi, name = receipt.get('mmsi'), receipt.get('vessel_name')
-                return ((mmsi and mmsi == v.get('mmsi')) or
-                        (name and str(name).strip().casefold() == str(v.get('name') or '').strip().casefold()) or
-                        (not mmsi and not name))
-            if receipt.get('needs_review') or any(overlapping(v) for v in records['vessels']):
+            if receipt.get('needs_review') or any(overlapping(receipt, t, v) for v in records['vessels']):
                 st['known'] = False
                 transfer_issues.append(f"{receipt['cargo_no']}: 기존 입하 원장과 중복 또는 정보 변경 확인 필요")
                 continue
@@ -315,6 +370,20 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             st['cv'] = (weight * st['cv'] + q * cv) / (weight + q)
             st['stock'] += q
             daily_receipts[t.date().isoformat()][g] += q
+        for item in planned_events[t]:
+            g = item['group']
+            anchor, st = active_anchors[g], state[g]
+            if not anchor or t <= timestamp(anchor['at']) or not st['known']:
+                continue
+            if any(overlapping(item, t, v) for v in records['vessels']):
+                transfer_issues.append(f"{item['cargo_no']}: 기존 입하 원장과 같은 배로 보여 계획 입하에서 제외")
+                continue
+            q, weight = item['tonnes'], max(st['stock'], 0)
+            st['cv'] = (weight * st['cv'] + q * item['cv']) / (weight + q)
+            st['stock'] = weight + q
+            daily_receipts[t.date().isoformat()][g] += q
+            if t < horizon_end:
+                planned_total[g] += q
         for receipt in balance_events[t]:
             g = receipt['group']
             anchor = active_anchors[g]
@@ -397,7 +466,11 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             totals["hours"] += dt
             totals["online_hours"] += row["online"] * dt
             if active_anchors[g]:
-                st["stock"] -= burn
+                if st["stock"] >= burn:
+                    st["stock"] -= burn
+                else:
+                    daily_shortage[day][g] += burn - max(st["stock"], 0.)
+                    st["stock"] = 0.
         if nxt.hour == 0 and nxt.minute == 0 and nxt.second == 0:
             stock_days[day] = {g: dict(v) for g, v in state.items()}
 
@@ -425,7 +498,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             return None
         avg = sum(burns) / 7
         # 정지 등으로 7일간 연소가 0이면 무한대 대신 별도 휴지 상태.
-        # 재고가 바닥난 뒤에는 0일(소진)로 둔다. 부족량은 stock·min_stock(음수)에 그대로 남는다.
+        # 재고가 바닥난 뒤에는 0일(소진)로 둔다. 못 태운 양은 shortage(부족량)에 따로 남는다.
         return max(0.0, stock["stock"] / avg) if avg > 0 else None
 
     forecast = []
@@ -437,7 +510,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             st = stock_days.get(day, {}).get(g, {"stock": 0, "cv": None, "known": False})
             point["groups"][g] = {"stock": st["stock"] if st["known"] else None,
                 "days": days_of_stock(st, d + timedelta(days=1), g), "cv": st["cv"] if st["known"] else None, "burn": daily_burn(day, g),
-                "receipts": daily_receipts[day][g]}
+                "receipts": daily_receipts[day][g], "shortage": daily_shortage[day][g] if st["known"] else None}
         forecast.append(point)
     groups = []
     for g, label in GROUPS.items():
@@ -452,6 +525,7 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
         first_risk = next((x["day"] for x in forecast if x["groups"][g]["days"] is not None and
                            x["groups"][g]["days"] < config["normal_days"]), None)
         stocks = [x["groups"][g]["stock"] for x in forecast]
+        shortages = [x["groups"][g]["shortage"] for x in forecast]
         today = daily_burn(midnight.date().isoformat(), g)
         groups.append({"id": g, "name": label, "stock": st["stock"] if st["known"] else None,
             "cv": st["cv"] if b and st["known"] else None, "baseline": b,
@@ -464,8 +538,11 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
                          sum(r['tonnes'] for at, entries in registry_events.items() for r in entries
                              if r['group'] == g and timestamp(b['at']) < at <= as_of and
                              not r.get('needs_review') and r.get('cv') is not None and 1000 <= r['cv'] <= 10000)) if b and st['known'] else None,
+            "shortage": sum(shortages) if all(x is not None for x in shortages) else None,
+            "exhausted_on": next((x["day"] for x in forecast if (x["groups"][g]["shortage"] or 0) > 0), None),
+            "planned_receipts": planned_total[g],
             "expected_receipts": sum(unloading(v, midnight + timedelta(days=horizon))["allocated"][g] - unloading(v, as_of)["allocated"][g]
-                                     for v in records["vessels"])})
+                                     for v in records["vessels"]) + planned_total[g]})
     known = all(g["stock"] is not None for g in groups)
     status = "danger" if any(g["risk"] == "danger" for g in groups) else "unknown" if any(g["risk"] == "unknown" for g in groups) else "caution" if any(g["risk"] == "caution" for g in groups) else "normal"
     vessels = [{**v, **unloading(v, as_of), "remaining": v["cargo"] - unloading(v, as_of)["cumulative"]} for v in records["vessels"]]

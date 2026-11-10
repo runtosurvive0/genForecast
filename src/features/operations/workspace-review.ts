@@ -30,7 +30,13 @@ export interface ReviewRow {
   day: string;
   stock: number | null;
   days: number | null;
+  /** 재고가 0에서 멈춘 뒤 못 태운 양(t). 서버가 주지 않으면 비워 둔다. */
+  shortage?: number | null;
 }
+
+/** 서버 재고는 0 아래로 내려가지 않으므로 부족량으로 판정한다. 예전 응답의 음수 재고도 부족으로 본다. */
+export const rowShortage = (row: Pick<ReviewRow, 'stock' | 'shortage'> | undefined) =>
+  !!row && ((typeof row.shortage === 'number' && row.shortage > 0) || (typeof row.stock === 'number' && row.stock < 0));
 export interface ReceiptAssumptions {
   start: string;
   arrival: string;
@@ -105,9 +111,8 @@ export function reviewReceipt(
       (Number.isFinite(input.capacity) && input.capacity > 0)) &&
     wholeDays(input.leadDays) &&
     wholeDays(input.storageDays);
-  const rawStock = valid
-    ? rows.find((row) => row.day === input.arrival)?.stock
-    : null;
+  const arrivalRow = valid ? rows.find((row) => row.day === input.arrival) : undefined;
+  const rawStock = arrivalRow?.stock;
   const stock =
     typeof rawStock === "number" && Number.isFinite(rawStock) ? rawStock : null;
   const headroom =
@@ -162,6 +167,6 @@ export function reviewReceipt(
         ? null
         : input.quantity > headroom,
     tooEarly: earliestArrival === null ? null : input.arrival < earliestArrival,
-    shortage: stock !== null && stock < 0,
+    shortage: stock !== null && rowShortage(arrivalRow),
   };
 }

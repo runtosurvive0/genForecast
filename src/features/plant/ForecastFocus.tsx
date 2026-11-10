@@ -67,7 +67,7 @@ export function ForecastFocus({ snapshot, onSupplyTarget, onSimulation, onPurcha
         {lead}
         <section className="gf-forecast-chart" aria-labelledby="gf-forecast-title">
           <header>
-            <div><h2 id="gf-forecast-title">{hasStock ? '저탄장 재고 전망' : '일별 발전량 전망'}</h2><p>{hasStock ? '저탄장별 당일 마감 계획 · 음수는 계획상 부족량' : '선택한 발전계획 · 당진 1~10호기 합계'} · 차트를 눌러 날짜 선택</p></div>
+            <div><h2 id="gf-forecast-title">{hasStock ? '저탄장 재고 전망' : '일별 발전량 전망'}</h2><p>{hasStock ? '저탄장별 당일 마감 계획 · 0은 소진(부족량은 수급 원장에 표시)' : '선택한 발전계획 · 당진 1~10호기 합계'} · 차트를 눌러 날짜 선택</p></div>
             <button type="button" className="gf-forecast-link" onClick={() => onSupplyTarget({ section: "forecast", day })}>수급 원장 <ArrowRight size={15} /></button>
           </header>
           {hasStock ? <ChartContainer config={STOCK_CONFIG} className="gf-ov-chart" aria-label="호기군별 당일 마감 재고 전망 톤">
