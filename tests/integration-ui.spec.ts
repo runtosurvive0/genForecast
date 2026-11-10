@@ -1212,3 +1212,30 @@ test('invalid stack address is ignored',async({page})=>{
   await expect(page.locator('.gf-oy-pile[data-proposed="true"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('수급 예측은 가상 표본임을 알리고 저장 계획의 최저 재고일수를 참고값으로 함께 보인다', async ({page}) => {
+  await page.route('**/api/runs', r => r.fulfill({json:[{id:'r1',name:'11월 계획',period:'2026-11-01 ~ 2027-03-31'}]}));
+  await page.route('**/api/planning/runs/r1/snapshot?*', r => {
+    const u = new URL(r.request().url());
+    return r.fulfill({json:suppliedPlanningFixture('r1', u.searchParams.get('start')!, Number(u.searchParams.get('horizon')))});
+  });
+  await page.goto('/#forecast');
+  const notice = page.getByRole('note',{name:'가상 표본으로 계산하는 연습 화면'});
+  await expect(notice).toContainText('운영 판단은 저장 계획 기준입니다');
+  await expect(page.getByLabel('저장 계획 참고값')).toContainText('저장 계획 최저 5.0일');
+  await expect(page.getByLabel('저장 계획 참고값')).toContainText('통합 시뮬레이션');
+  await notice.getByRole('button',{name:'통합 시뮬레이션 보기'}).click();
+  await expect(page).toHaveURL(/#simulation/);
+});
+
+test('수급 예측은 저장 계획을 못 불러오면 참고값을 미확인으로 두고 0으로 채우지 않는다', async ({page}) => {
+  await page.route('**/api/runs', r => r.fulfill({status:500,json:{detail:'서버 오류'}}));
+  await page.goto('/#forecast');
+  await expect(page.getByLabel('저장 계획 참고값')).toContainText('미확인');
+  await expect(page.getByLabel('저장 계획 참고값')).not.toContainText('0일');
+});
+
+test('시나리오 분석은 합성 표본임을 알린다', async ({page}) => {
+  await page.goto('/#scenario');
+  await expect(page.getByRole('note',{name:'합성 표본으로 비교하는 화면'})).toContainText('실제 운영 정보가 아닙니다');
+});
