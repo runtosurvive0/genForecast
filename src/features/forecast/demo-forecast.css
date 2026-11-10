@@ -208,3 +208,11 @@
   .dfc-table { min-width: 640px; font-size: 13px; }
   .dfc-table th, .dfc-table td { padding: 8px 14px; }
 }
+
+/* 적치 추천: 하역 전 선박 행 아래 펼침 */
+.dfc-stack-btn { margin-left: 6px; padding: 1px 8px; border: 1px solid var(--primary); border-radius: 999px; background: transparent; color: var(--primary); font: inherit; font-size: 11px; cursor: pointer; }
+.dfc-stack-btn[aria-expanded="true"] { background: color-mix(in srgb, var(--primary) 14%, transparent); }
+.dfc-stack-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.dfc-table .dfc-stack-row td { white-space: normal; background: var(--muted); color: var(--foreground); }
+.dfc-stack-note { margin: 0 0 6px; font-size: 12px; color: var(--muted-foreground); }
+.dfc-stack-error { color: var(--destructive); }
