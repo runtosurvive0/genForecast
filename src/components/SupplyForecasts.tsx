@@ -121,20 +121,20 @@ export function SupplyForecasts({
           </div>
         )}
         <p className="tower-footnote">
-          일말 재고 ÷ 다음 7일 평균 소비. 계획 누락·소비 0이면 미확정.
+          당일 마감 재고 ÷ 다음 7일 평균 소비. 계획 누락·소비 0이면 미확정.
         </p>
       </Panel>
       <Panel title={`저탄장별 재고량 전망 (${s.horizon_days}일)`}>
         {has("stock") ? (
           <TowerChart
             theme={theme}
-            label="저탄장별 일말 예상 석탄 재고 톤"
+            label="저탄장별 당일 마감 예상 석탄 재고 톤"
             height={225}
             option={{
               ...common,
               aria: {
                 enabled: true,
-                label: { description: "저탄장별 일말 예상 석탄 재고 톤" },
+                label: { description: "저탄장별 당일 마감 예상 석탄 재고 톤" },
               },
               yAxis: axis("t", {
                 axisLabel: {

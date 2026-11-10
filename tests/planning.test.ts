@@ -227,3 +227,39 @@ test("malformed supply groups, dates and vessel records cannot enter either scre
     /일치하지/,
   );
 });
+
+test('계획·입력 목록 이름에 번호와 실행 시각을 붙여 같은 이름도 구분한다', async () => {
+  const { planLabel, runTitle } = await import('../src/domain/planning-labels.ts');
+  const item = { name: '2026년 11월+90', id: 4, recorded_at: '2026-11-09T18:09:30+00:00', start: '2026-11-10', end: '2027-02-07' };
+  assert.equal(planLabel(item), '#4 2026년 11월+90 · 2026-11-10 ~ 2027-02-07 · 11-10 03:09 KST');
+  assert.notEqual(planLabel(item), planLabel({ ...item, id: 5, recorded_at: '2026-11-08T18:00:00+00:00' }));
+  // 번호·실행 시각이 없으면 붙이지 않는다
+  assert.equal(planLabel({ name: '월간 전망', start: '2027-01-01', end: '2027-12-31' }), '월간 전망 · 2027-01-01 ~ 2027-12-31');
+  // 날짜만 있는 기록 시각은 시각으로 쓰지 않는다
+  assert.equal(planLabel({ name: '기준', id: 1, recorded_at: '2026-11-01', start: 'a', end: 'b' }), '#1 기준 · a ~ b');
+  // 계산 실행은 식별자의 시각을 쓴다
+  const runs = ['20261109-030000-111111-같은이름', '20261110-031444-322005-같은이름'].map(run_id => planLabel({ name: '같은이름', run_id, start: 'a', end: 'b' }));
+  assert.deepEqual(runs, ['같은이름 · a ~ b · 11-09 03:00 KST', '같은이름 · a ~ b · 11-10 03:14 KST']);
+});
+
+test('실행 이력 제목은 입력 이름과 실행 시각, 식별자는 보조 글자로 나눈다', async () => {
+  const { runTitle } = await import('../src/domain/planning-labels.ts');
+  assert.deepEqual(runTitle('20261110-031444-322005-2026년11월90', '2026년 11월+90'), {
+    title: '2026년 11월+90 · 11-10 03:14 KST',
+    sub: '20261110-031444-322005-2026년11월90',
+  });
+  assert.deepEqual(runTitle('manual-run', '이름'), { title: '이름', sub: 'manual-run' });
+});
+
+test('안내문의 연속 하이픈은 문장 부호로 바꾼다', () => {
+  assert.equal(sourceDescription('과대예측했습니다 -- 월별 보정을 검토하세요.'), '과대예측했습니다. 월별 보정을 검토하세요.');
+});
+
+test('이미 마침표가 있는 문장 뒤의 하이픈도 마침표가 겹치지 않는다', () => {
+  assert.equal(sourceDescription('끝났습니다. -- 다음을 확인하세요.'), '끝났습니다. 다음을 확인하세요.');
+});
+
+test('기간이 없는 항목도 undefined 없이 이름을 만든다', async () => {
+  const { planLabel } = await import('../src/domain/planning-labels.ts');
+  assert.equal(planLabel({ name: '월간', id: 2, start: undefined as unknown as string, end: undefined as unknown as string }), '#2 월간');
+});

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { authJson } from '@/lib/auth-client';
 import { useYardBaseline } from '@/domain/use-yard-baseline';
+import { lotDetailKeys, lotQualityLabel } from '@/domain/blend-quality';
+import type { LotDetail } from '@/domain/assistant-checks';
 import './inventory-workspace.css';
 
 type Lot = { id: number; cargo_no: string; location: string; yard: number; coal_name: string;
@@ -21,7 +23,15 @@ const dateKst = (value: string) => Number.isNaN(Date.parse(value)) ? '시각 미
 const dateTimeKst = (value: string | null | undefined) => !value || Number.isNaN(Date.parse(value)) ? '미확인' : new Intl.DateTimeFormat('ko-KR', {timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false}).format(new Date(value));
 const errorText = (e: unknown) => e instanceof Error ? e.message : '요청을 처리하지 못했습니다.';
 
-export function InventoryWorkspace({ mode, onBack, standalone = false }: {mode: 'inventory' | 'blend'; onBack?: () => void; standalone?: boolean}) {
+function LotQuality({ details, id }: { details: Record<string, LotDetail> | undefined; id: string | undefined }) {
+  if (!details) return null; // 점검 결과가 아직 없으면 성분을 모르는 것이지 미확인이 아니다
+  const detail = id ? details[id] : undefined;
+  const q = lotQualityLabel(detail);
+  if (!q.known) return <small className="gf-inventory-quality">성분 미확인</small>;
+  return <small className="gf-inventory-quality">{[q.grade, q.gcv, q.sulfur].filter(Boolean).join(' · ')}{q.dummy && <span className="gf-inventory-dummy" title="더미 성분 값입니다">더미</span>}</small>;
+}
+
+export function InventoryWorkspace({ mode, onBack, standalone = false, lotDetails }: {mode: 'inventory' | 'blend'; onBack?: () => void; standalone?: boolean; lotDetails?: Record<string, LotDetail> | null}) {
   const baseline = useYardBaseline();
   const [baselineChosen, setBaselineChosen] = useState<string[]>([]);
   const [inventory, setInventory] = useState<Inventory | null>(null);
@@ -87,7 +97,7 @@ export function InventoryWorkspace({ mode, onBack, standalone = false }: {mode: 
     if (saved) { setReconcileCargo(null); setReconcileRows([]); setReconcileReason(''); }
   }
   async function calculate() {
-    if ((!chosen.length && !baselineChosen.length) || !tonnes || !target) { setError('더미, 요청량, 목표 발열량을 입력하세요.'); return; }
+    if ((!chosen.length && !baselineChosen.length) || !tonnes || !target) { setError('원탄, 요청량, 목표 발열량을 입력하세요.'); return; }
     setBusy(true); setError(''); setResult(null);
     try {
       const criteria = {tonnes: Number(tonnes), target_gcv_arb: Number(target), gcv_tolerance: Number(tolerance || 0),
@@ -119,8 +129,8 @@ export function InventoryWorkspace({ mode, onBack, standalone = false }: {mode: 
         <div className="gf-inventory-entry-actions"><button onClick={() => setRows([...rows, {location: 'P1', tonnes: ''}])}><Plus size={15}/> 구역 추가</button>
           <span>배분 {fmt(pending)} / 입하 {fmt(selectedCargo?.received_t)} t</span><button className="gf-inventory-primary" disabled={busy || !selectedCargo} onClick={() => void assign()}>재고에 반영</button></div>
       </div>}
-      <div className="gf-inventory-grid"><div><div className="gf-inventory-subhead"><h3>{mode === 'inventory' ? '기록된 재고' : '혼탄 대상 더미'}</h3><span>{lots.length}건 · 수기 기록</span></div>
-        {mode === 'blend' && baseline.data?.as_of && <section aria-label="기준재고 혼탄 대상"><h3>기준재고 · {baseline.data.as_of}</h3><p>해당 기준일의 수량입니다. 이후 변동을 확인하세요. 입하 배분 재고와 동시에 선택할 수 없습니다.</p><div className="gf-inventory-list">{baseline.data.lots.filter(row => row.source_id && row.tonnes > 0).map(row => <label className="gf-inventory-row" key={row.source_id}><input type="checkbox" disabled={chosen.length > 0} checked={baselineChosen.includes(row.source_id!)} onChange={event => {setBaselineChosen(event.target.checked ? [...baselineChosen,row.source_id!] : baselineChosen.filter(id => id !== row.source_id));setResult(null);}}/><span>{label(row.location)} · {row.coal_name}<small> {row.voyage_number || '항차 미확인'}</small></span><strong>{fmt(row.tonnes)} t</strong></label>)}</div></section>}
+      <div className="gf-inventory-grid"><div><div className="gf-inventory-subhead"><h3>{mode === 'inventory' ? '기록된 재고' : '혼탄 대상 원탄'}</h3><span>{lots.length}건 · 수기 기록</span></div>
+        {mode === 'blend' && baseline.data?.as_of && <section aria-label="기준재고 혼탄 대상"><h3>기준재고 · {baseline.data.as_of}</h3><p>해당 기준일의 수량입니다. 이후 변동을 확인하세요. 입하 배분 재고와 동시에 선택할 수 없습니다.</p><div className="gf-inventory-list">{(() => { const keys = lotDetailKeys(baseline.data.lots); return baseline.data.lots.map((row, index) => ({row, key: keys[index]})); })().filter(({row}) => row.source_id && row.tonnes > 0).map(({row, key}) => <label className="gf-inventory-row gf-inventory-row-compact" key={row.source_id}><input type="checkbox" disabled={chosen.length > 0} checked={baselineChosen.includes(row.source_id!)} onChange={event => {setBaselineChosen(event.target.checked ? [...baselineChosen,row.source_id!] : baselineChosen.filter(id => id !== row.source_id));setResult(null);}}/><span className="gf-inventory-name">{label(row.location)} · {row.coal_name}<small> {row.voyage_number || '항차 미확인'}</small><LotQuality details={lotDetails ?? undefined} id={key}/></span><strong>{fmt(row.tonnes)} t</strong></label>)}</div></section>}
         {!lots.length ? <p className="gf-inventory-empty">아직 배분된 입하 재고가 없습니다. 항차 원장에서 Pile별 적치량을 등록하세요.</p> : <div className="gf-inventory-list">{lots.map(lot => <div className="gf-inventory-row" key={lot.id}>
           {mode === 'blend' && <input type="checkbox" aria-label={`${label(lot.location)} ${lot.coal_name} 선택`} disabled={baselineChosen.length > 0 || lot.needs_review || lot.remaining_t <= 0} checked={chosen.includes(lot.id)} onChange={e => {setChosen(e.target.checked ? [...chosen, lot.id] : chosen.filter(id => id !== lot.id)); setResult(null);}}/>}
           <div><strong>{label(lot.location)} · {lot.coal_name}</strong><small>{lot.voyage_number || lot.plan_name || '항차 미정'} · {lot.assay ? (lot.assay.stage === 'unloading' ? '하역 분석' : '선적 분석') : '확정 성상 없음'}{lot.needs_review ? ' · 입하 정보 재확인' : ''}</small></div>

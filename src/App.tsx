@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -29,7 +29,9 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AssistantPanel } from "@/features/assistant/AssistantPanel";
+import { AssistantPanel, type PendingQuestion } from "@/features/assistant/AssistantPanel";
+import { SCREEN_QUESTIONS, type AssistantContext, type AssistantScreen } from "@/domain/assistant-checks";
+import { AssistantSection } from "@/components/assistant-section/AssistantSection";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -72,6 +74,8 @@ import {
   plantInputs as plants,
   towerSummary,
   defaultModels,
+  shiftForecastTimes,
+  shiftSampleTime,
 } from "@/domain/control-tower";
 import { PlantOverview } from "@/features/plant/PlantOverview";
 import { SupplyLedger } from "@/features/stockyard/SupplyLedger";
@@ -111,14 +115,22 @@ const isStopped = (unit: Unit) =>
       new Date(o.startAt).getTime() <= baseMs &&
       new Date(o.endAt).getTime() > baseMs,
   );
-const daysUntil = (time: string) =>
+const daysUntil = (time: string, origin = baseMs) =>
   Math.max(
     0,
     Math.floor((new Date(time).getTime() + 9 * 3600000) / 86400000) -
-      Math.floor((baseMs + 9 * 3600000) / 86400000),
+      Math.floor((origin + 9 * 3600000) / 86400000),
   );
 const scenarioIsDefault = (s: Scenario) =>
   s.loadChangePct === 0 && s.arrivalDelayDays === 0 && s.includeInbound;
+
+// 도우미 창 예시 질문에 쓰는 화면. 점검 대상이 아닌 화면은 공통 예시를 쓴다.
+const ASSISTANT_SCREEN_BY_PAGE: Partial<Record<Page, AssistantScreen>> = {
+  blend: "blend", forecast: "forecast", simulation: "simulation", scenario: "scenario",
+};
+// 데이터 페이지는 현재 탭이 '전망 입력·계산'일 때만 해당 예시를 쓴다. 알 수 없으면 공통 예시를 쓴다.
+const assistantScreen = (page: Page, dataTab: 'status' | 'upload' | null): AssistantScreen | undefined =>
+  page === "data" ? (dataTab === 'upload' ? "planning_input" : undefined) : ASSISTANT_SCREEN_BY_PAGE[page];
 
 function Panel({
   title,
@@ -194,6 +206,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
   const [blendView,setBlendView]=useState<'diagram'|'analysis'>('diagram');
   const [dataInitialTab, setDataInitialTab] = useState<'status'|'upload'>('status');
   const [dataTabRequest, setDataTabRequest] = useState(0);
+  const [dataTab, setDataTab] = useState<'status' | 'upload' | null>(null);
   // 승인된 로그인 세션에서만 계산 상태를 확인한다(오프라인 파일·미승인 상태 제외).
   const signedIn = Boolean(useAccount());
   const planningJob = usePlanningJob(signedIn);
@@ -233,7 +246,20 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
     if (assistantWasOpen.current && !assistantOpen) assistantButtonRef.current?.focus();
     assistantWasOpen.current = assistantOpen;
   }, [assistantOpen]);
+  // 뒤로 가기·링크처럼 navigate()를 거치지 않는 화면 전환에서도 이전 화면의 스크롤 위치가 남지 않게 맨 위로 연다.
+  const firstPage = useRef(true);
+  useLayoutEffect(() => {
+    if (firstPage.current) { firstPage.current = false; return; }
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [page]);
   const closeAssistant = useCallback(() => setAssistantOpen(false), []);
+  const [assistantPending, setAssistantPending] = useState<PendingQuestion | null>(null);
+  const clearAssistantPending = useCallback(() => setAssistantPending(null), []);
+  // 화면의 도우미 섹션이 부른다: 창을 열고 질문을 맥락과 함께 보낸다.
+  const openAssistant = useCallback((question: string, context: AssistantContext) => {
+    setAssistantPending({ question, context });
+    setAssistantOpen(true);
+  }, []);
   const [scheduleFilter, setScheduleFilter] = useState("all");
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
   const selectedPlants = useMemo(
@@ -253,6 +279,13 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
       towerSummary(selectedPlants, scenarioDefaults, horizon, models).forecast,
     [selectedPlants, horizon, models],
   );
+  // 시나리오 분석 화면만 표본 시각을 오늘(KST) 09:00 기준으로 옮겨 보여 준다. 계산·공통 BASE_TIME은 그대로다.
+  const sampleToday = useMemo(() => new Date(), [page]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scenarioView = useMemo(() => {
+    if (page !== "scenario") return { forecast, baseline, origin: baseMs };
+    const shifted = shiftForecastTimes(forecast, sampleToday);
+    return { forecast: shifted, baseline: shiftForecastTimes(baseline, sampleToday), origin: Date.parse(shifted.baseTime) };
+  }, [page, forecast, baseline, sampleToday]);
   const units = selectedPlants.flatMap((p) => p.units);
   const running = units.filter((u) => !isStopped(u) && u.loadPct > 0).length;
   const outages = selectedPlants
@@ -285,8 +318,11 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
   const currentPage = pageInfo[page];
   const scenarioChanged = JSON.stringify(draft) !== JSON.stringify(applied);
   const detailPlant = plants.find((p) => p.id === detail?.plantId);
+  // 시나리오 화면에서는 표와 같은 옮긴 날짜를 대화상자에도 쓴다.
+  const shownTime = (f: Forecast) => (page === "scenario" ? shiftForecastTimes(f, sampleToday) : f);
+  const shownIso = (iso: string) => (page === "scenario" ? shiftSampleTime(iso, BASE_TIME, sampleToday) : iso);
   const detailForecast = detailPlant
-    ? forecast.byPlant.find((p) => p.plantId === detailPlant.id)
+    ? scenarioView.forecast.byPlant.find((p) => p.plantId === detailPlant.id)
     : undefined;
 
   useEffect(() => {
@@ -395,7 +431,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
     navigate(pageFromHash('#' + next));
   };
 
-  const plantTable = (
+  const renderPlantTable = (byPlant: Forecast["byPlant"], origin = baseMs) => (
     <div className="table-scroll">
       <table className="operations-table">
         <thead>
@@ -410,7 +446,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           </tr>
         </thead>
         <tbody>
-          {forecast.byPlant.map((p) => (
+          {byPlant.map((p) => (
             <tr key={p.plantId}>
               <td>
                 <button
@@ -449,7 +485,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                       {fmtDate(p.firstShortageAt)}
                     </span>
                     <small className="cell-note">
-                      D+{daysUntil(p.firstShortageAt)}
+                      D+{daysUntil(p.firstShortageAt, origin)}
                     </small>
                   </>
                 ) : (
@@ -467,6 +503,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
       </table>
     </div>
   );
+  const plantTable = renderPlantTable(forecast.byPlant);
 
   const checkpoints = (
     <div className="checkpoint-list">
@@ -610,7 +647,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
             <AccountControls />
           </div>
         </header>
-        <AssistantPanel open={assistantOpen} onClose={closeAssistant} />
+        <AssistantPanel open={assistantOpen} onClose={closeAssistant} pending={assistantPending} onPendingSent={clearAssistantPending} screen={assistantScreen(page, dataTab)} />
         <aside className="sidebar">
           <nav aria-label="주 메뉴">{nav}</nav>
         </aside>
@@ -672,17 +709,17 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                 <ArrowDownToLine />
                 CSV 내보내기
               </Button>
-              <Button
+              {page !== "scenario" && <Button
                 onClick={() => navigate("scenario")}
                 className="scenario-shortcut"
                 disabled={isBackendSupplyView}
               >
                 <Settings2 />
                 시나리오 분석
-              </Button>
+              </Button>}
             </div>}
           </div>}
-          {!isMilpOverview && (["overview","fuel","scenario","schedule"].includes(page) || (page==='blend'&&blendView==='analysis')) && (
+          {!isMilpOverview && (["overview","fuel","scenario","schedule"].includes(page)) && (
             <div className="context-bar">
               <div className="context-left">
                 <span className="context-caption">조회 범위</span>
@@ -773,16 +810,16 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           {page === 'procurement' && <><div className="gf-workflow-tabs"><button onClick={()=>navigate('simulation')}><ArrowRight size={14}/>시뮬레이션 결과로 돌아가기</button></div><ProcurementWorkspace planning={planning} demoSnapshot={demo.snapshot} demoStatus={demo.status} demoCatalog={demo.catalog}/></>}
           {page === 'connections' && <ConnectionsWorkspace planning={planning} status={demo.status} receivedAt={demo.receivedAt} onNavigate={navigateFromScreen}/>}
           {page === 'members' && <MemberManagement/>}
-          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status}/>}
+          {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status} onAsk={openAssistant} onNavigate={navigateFromScreen}/>}
           {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
           {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
-          {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onOpenYard={id=>navigate('yard',id)}/>}
+          {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onAsk={openAssistant} onOpenYard={id=>navigate('yard',id)}/>}
           {page === "overview" && overviewSource === "milp" && (
             <OperationsStatus demo={demo} runs={planning.runs} runsLoading={planning.listLoading} runsError={planning.runs.length ? null : planning.failed || null} berthFeed={berthFeed} onNavigate={(next) => navigate(next as Page)} />
           )}
           {page === "simulation" && (
             <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>}>
-              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} onSimulation={() => navigate("simulation")} onPurchasing={() => navigate('procurement')} onSupplyTarget={(target) => {
+              {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} assistant={<AssistantSection screen="simulation" params={{ runId: snapshot.run_id }} context={{ screen: "simulation", selection: { run_id: snapshot.run_id } }} questions={SCREEN_QUESTIONS.simulation} onAsk={openAssistant} onNavigate={navigateFromScreen} />} onPurchasing={() => navigate('procurement')} onSupplyTarget={(target) => {
                 setSupplyTarget(target);
                 navigate("fuel");
               }} /></>}
@@ -952,13 +989,14 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
           {page === "models" && (
             <ModelsPage models={models} onModels={setModels} theme={theme} />
           )}
-          {page === "data" && <><section className="gf-demo-data" aria-label="운전 데모 설정"><div><strong>운전 데모</strong><p>실제 운전 정보와 분리된 모사 데이터를 연결합니다.</p></div><div className="gf-demo-data-actions"><label className="gf-stream-toggle"><input aria-label="운전 데모 연결" type="checkbox" checked={demoEnabled} onChange={e=>onDemoEnabled(e.target.checked)}/><span>데모 연결</span><span className="gf-stream-state" aria-live="polite">{{disabled:'꺼짐',connecting:'연결 중',online:'수신 중',stale:'수신 지연',disconnected:'끊김'}[demo.status]}</span></label><a className="gf-control-link" href="#demo-control" target="_blank" rel="noopener"><Settings2 size={16}/><span>조작반 열기</span></a></div></section><DataPage key={dataTabRequest} plants={selectedPlants} initialTab={dataInitialTab} onResult={(run) => {
+          {page === "data" && <><section className="gf-demo-data" aria-label="운전 데모 설정"><div><strong>운전 데모</strong><p>실제 운전 정보와 분리된 모사 데이터를 연결합니다.</p></div><div className="gf-demo-data-actions"><label className="gf-stream-toggle"><input aria-label="운전 데모 연결" type="checkbox" checked={demoEnabled} onChange={e=>onDemoEnabled(e.target.checked)}/><span>데모 연결</span><span className="gf-stream-state" aria-live="polite">{{disabled:'꺼짐',connecting:'연결 중',online:'수신 중',stale:'수신 지연',disconnected:'끊김'}[demo.status]}</span></label><a className="gf-control-link" href="#demo-control" target="_blank" rel="noopener"><Settings2 size={16}/><span>조작반 열기</span></a></div></section><DataPage key={dataTabRequest} plants={selectedPlants} initialTab={dataInitialTab} onTabChange={setDataTab} onAsk={openAssistant} onNavigate={navigateFromScreen} onResult={(run) => {
             planning.setQuery(initialPlanningQuery({ ...run, name: "", period: `${run.start} ~ ${run.end}` }));
             planning.refresh(); setOverviewSource("milp"); navigate("simulation");
           }} /></>}
 
           {page === "scenario" && (
             <>
+              <AssistantSection screen="scenario" params={{}} context={{ screen: "scenario" }} questions={SCREEN_QUESTIONS.scenario} onAsk={openAssistant} onNavigate={navigateFromScreen} />
               <div className="scenario-layout">
                 <Panel
                   title="운영 조건 설정"
@@ -1124,12 +1162,12 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                     <Card className="comparison-card">
                       <span>최초 연료부족 예상</span>
                       <strong>
-                        {forecast.firstShortageAt
-                          ? fmtDate(forecast.firstShortageAt)
+                        {scenarioView.forecast.firstShortageAt
+                          ? fmtDate(scenarioView.forecast.firstShortageAt)
                           : "기간 내 없음"}
                       </strong>
                       <p>
-                        기준안 <b>{fmtDate(baseline.firstShortageAt)}</b>
+                        기준안 <b>{fmtDate(scenarioView.baseline.firstShortageAt)}</b>
                       </p>
                     </Card>
                   </div>
@@ -1138,8 +1176,8 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                     description="점선은 기준안, 실선은 적용한 시나리오입니다."
                   >
                     <InventoryChart
-                      forecast={forecast}
-                      comparison={baseline}
+                      forecast={scenarioView.forecast}
+                      comparison={scenarioView.baseline}
                       safetyStockTons={safetyStock}
                     />
                     <div className="applied-conditions">
@@ -1159,7 +1197,7 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                 title="시나리오별 발전본부 영향"
                 description="예측된 연료부족을 실제 정지계획과 비교해 운영 대응을 검토하세요."
               >
-                {plantTable}
+                {renderPlantTable(scenarioView.forecast.byPlant, scenarioView.origin)}
               </Panel>
             </>
           )}
@@ -1187,7 +1225,9 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
             <DialogHeader>
               <DialogTitle>{detailPlant?.name} 운영 상세</DialogTitle>
               <DialogDescription>
-                시연 기준 2026.10.06 09:00 KST · 샘플 운영 및 정비계획
+                {page === "scenario"
+                  ? "오늘 09:00 KST 기준으로 옮긴 날짜 · 샘플 운영 및 정비계획"
+                  : "시연 기준 2026.10.06 09:00 KST · 샘플 운영 및 정비계획"}
               </DialogDescription>
             </DialogHeader>
             {detailPlant && (
@@ -1217,8 +1257,8 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                     <b className="detail-date">
                       {fmtDate(
                         detailForecast?.firstShortageAt ??
-                          towerSummary([detailPlant], applied, horizon, models)
-                            .forecast.firstShortageAt,
+                          shownTime(towerSummary([detailPlant], applied, horizon, models)
+                            .forecast).firstShortageAt,
                       )}
                     </b>
                   </div>
@@ -1270,8 +1310,8 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                             <div>
                               <b>{o.title}</b>
                               <span>
-                                {fmtDate(o.startAt, true)} ~{" "}
-                                {fmtDate(o.endAt, true)}
+                                {fmtDate(shownIso(o.startAt), true)} ~{" "}
+                                {fmtDate(shownIso(o.endAt), true)}
                               </span>
                               <small>{o.reason} · 입력된 샘플 계획</small>
                             </div>
@@ -1316,7 +1356,9 @@ function WorkspaceApp({page,initialLotId,demoEnabled,onDemoEnabled}:{page:Page;i
                   ? "선택한 저장 계산의 기간 · KST 00시~24시입니다."
                   : page === "vessels"
                     ? "모든 시각은 KST로 표시하며, 관측·예보·시연 기준을 구분합니다."
-                    : "모든 시간은 KST, 시연 기준시각은 2026.10.06 09:00입니다."}
+                    : page === "scenario"
+                      ? "모든 시간은 KST, 표시 날짜는 오늘 09:00 기준으로 옮긴 값입니다."
+                      : "모든 시간은 KST, 시연 기준시각은 2026.10.06 09:00입니다."}
               </DialogDescription>
             </DialogHeader>
             {page === "vessels" ? (

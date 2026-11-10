@@ -933,3 +933,22 @@ test("site layout: unload lines follow the stockyard PDF capacities and blocked 
   assert.deepEqual(blocked(one), ["Pile 7", "Pile 8"]);
   assert.deepEqual(blocked(twoThree), ["Pile 3", "Pile 4"]);
 });
+
+import { lotDetailKeys, lotQualityLabel } from "../src/domain/blend-quality.ts";
+
+test("lot quality label: grade, gcv, sulfur, dummy and unknown", () => {
+  assert.deepEqual(
+    lotQualityLabel({ grade: "저", gcv_arb: 4200, sulfur_ar: 0.45, tm_ar: 12, dummy: false, reason: null }),
+    { known: true, grade: "저열량", gcv: "4,200 kcal/kg", sulfur: "황분 0.45%", dummy: false },
+  );
+  assert.equal(lotQualityLabel({ grade: "고", gcv_arb: 5800, sulfur_ar: 0.5, tm_ar: null, dummy: true, reason: null }).dummy, true);
+  assert.equal(lotQualityLabel({ grade: "고", gcv_arb: 5800, sulfur_ar: null, tm_ar: null, dummy: false, reason: null }).sulfur, null);
+  assert.equal(lotQualityLabel({ grade: null, gcv_arb: null, sulfur_ar: null, tm_ar: null, dummy: false, reason: "x" }).known, false);
+  assert.equal(lotQualityLabel(undefined).known, false);
+});
+
+test("lot detail keys follow the backend duplicate rule and skip empty rows", () => {
+  const row = (source_id: string | null, tonnes: number) => ({ source_id, location: "P1", coal_name: "탄", voyage_number: null, tonnes });
+  assert.deepEqual(lotDetailKeys([row("A", 10), row("A", 0), row("A", 5), row(null, 3), row(null, 4), row("A", 1)]),
+    ["A", undefined, "A (2)", "P1 · 탄 · 항차 미확인", "P1 · 탄 · 항차 미확인 (2)", "A (3)"]);
+});

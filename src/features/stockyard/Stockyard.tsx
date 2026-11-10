@@ -375,7 +375,7 @@ export function Stockyard({
       label: "총 저탄량",
       value: n(total),
       unit: "t",
-      note: planning ? "DB 처별 재고 · 더미 원장 미연계" : `${piles.length}개 더미 합계`,
+      note: planning ? "DB 처별 재고 · 원탄 원장 미연계" : `${piles.length}개 원탄 합계`,
       action: "원장으로 이동",
       onClick: () => scrollToRef(ledgerRef),
     },
@@ -395,7 +395,7 @@ export function Stockyard({
           : scrollToRef(forecastRef),
     },
     {
-      label: "운영 더미",
+      label: "운영 원탄",
       value: piles.length,
       unit: "개",
       note: `${groups.length}개 처·발전소${planning ? " · 시연 구역" : ""}`,
@@ -410,7 +410,7 @@ export function Stockyard({
         ),
       ),
       unit: "kcal/kg",
-      note: planning ? "DB 처별 재고 가중" : "더미 재고 가중",
+      note: planning ? "DB 처별 재고 가중" : "원탄 재고 가중",
       action: "탄종 구성 보기",
       onClick: () => {
         setAnalysisTab("mix");
@@ -430,12 +430,12 @@ export function Stockyard({
       value: oldest ? pileRisk(oldest).age : 0,
       unit: "일",
       note: oldest ? nameOf(oldest) : undefined,
-      action: "해당 더미 선택",
+      action: "해당 원탄 선택",
       onClick: () =>
         oldest && select({ kind: "pile", id: oldest.stockpile_id }, true),
     },
     {
-      label: "고위험 더미",
+      label: "고위험 원탄",
       value: highCount,
       unit: "개",
       note: sensed ? "센서 반영 위험도" : "모의 위험도 · SIMULATED",
@@ -566,8 +566,8 @@ export function Stockyard({
           <label className="stockyard-search">
             <Search size={13} aria-hidden="true" />
             <input
-              aria-label="더미 검색"
-              placeholder="더미 검색 (P1-01 · A-10 · DA-04)"
+              aria-label="원탄 검색"
+              placeholder="원탄 검색 (P1-01 · A-10 · DA-04)"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -595,7 +595,7 @@ export function Stockyard({
           <label>
             정렬
             <select
-              aria-label="더미 정렬"
+              aria-label="원탄 정렬"
               value={sort}
               onChange={(e) => setSort(e.target.value as typeof sort)}
             >
@@ -731,7 +731,7 @@ export function Stockyard({
       {otherYards.length > 0 && (
         <Section
           title={dangjinInView ? "기타 발전소 저탄장" : "저탄장 배치"}
-          note="둔덕 크기는 재고량 비례 · 더미에 마우스를 올리면 탄질과 하역 이력, 선택하면 상세"
+          note="둔덕 크기는 재고량 비례 · 원탄에 마우스를 올리면 탄질과 하역 이력, 선택하면 상세"
           action={
             <span className="stockyard-gauge tower-tag">
               상탄 {n(otherGauge, 1)} t/h · SIMULATED
@@ -776,7 +776,7 @@ export function Stockyard({
       {standalonePile && (
         <Section
           title={`${nameOf(standalonePile)} · ${standalonePile.coal_type}`}
-          note="약도 또는 원장에서 더미 선택"
+          note="약도 또는 원장에서 원탄 선택"
         >
           <PileDetail
             pile={standalonePile}

@@ -8,3 +8,12 @@
 .gf-inventory-history{margin-top:16px}.gf-inventory-history summary{cursor:pointer;color:var(--primary);font-weight:600}.gf-inventory-history article{display:grid;gap:4px;padding:12px 0;border-bottom:1px solid var(--border)}.gf-inventory-history article span{color:var(--muted-foreground)}
 @media(max-width:800px){.gf-inventory{padding:16px}.gf-inventory-grid{grid-template-columns:1fr}.gf-inventory-head{align-items:flex-start}.gf-inventory-row{flex-wrap:wrap}.gf-inventory-value{margin-left:auto}}
 @media(max-width:500px){.gf-inventory-row>div:nth-of-type(1){flex-basis:100%}.gf-inventory-value{margin-left:0}.gf-inventory-reconcile-row{grid-template-columns:1fr 1fr}.gf-inventory-reconcile-row label:first-child{grid-column:1/-1}}
+/* 혼탄 분석 행: 체크박스를 이름 왼쪽 한 줄에 두고 행을 압축한다. 성분 표시는 이름 아래 한 줄. */
+.gf-inventory label.gf-inventory-row-compact{display:flex;flex-direction:row;align-items:flex-start;gap:10px;padding:7px 2px;font-size:13px;color:var(--foreground)}
+.gf-inventory-row-compact input[type=checkbox]{flex:0 0 auto;margin:2px 0 0}
+.gf-inventory-row-compact .gf-inventory-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.gf-inventory-row-compact>strong{flex:0 0 auto;white-space:nowrap}
+.gf-inventory-row-compact .gf-inventory-name>small{display:inline;margin:0}
+.gf-inventory-row-compact .gf-inventory-name>small.gf-inventory-quality{display:block;margin-top:2px}
+.gf-inventory-dummy{display:inline-flex;align-items:center;margin-left:6px;padding:0 6px;border:1px solid color-mix(in srgb,var(--amber) 55%,transparent);border-radius:999px;background:var(--amber-soft);color:var(--amber);font-size:10.5px;font-weight:650;line-height:17px;white-space:nowrap;vertical-align:middle;cursor:help}
+@media(max-width:800px){.gf-inventory label.gf-inventory-row-compact{flex-wrap:nowrap}}

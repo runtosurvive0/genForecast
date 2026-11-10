@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
+import { AssistantSection } from "@/components/assistant-section/AssistantSection";
+import { SCREEN_QUESTIONS, type AssistantContext } from "@/domain/assistant-checks";
 import { PlanningJobProgress } from "@/components/planning-job/PlanningJobProgress";
 import { usePlanningJob } from "@/domain/use-planning-job";
 import { Button } from "@/components/ui/button";
 import { Section } from "@/components/tower/primitives";
 import { number as n } from "@/lib/format";
+import { planLabel, runTitle } from "@/domain/planning-labels";
 import { PlanningInputForm, type PlanningInputDetail } from "./PlanningInputForm";
 import baselinePrices from "../../../backend/data/heat_price.csv.json";
 
@@ -59,9 +62,15 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function MilpUpload({
   onResult,
+  onAsk,
+  onNavigate,
 }: {
   onResult: (run: { id: string; start: string; end: string }) => void;
+  onAsk: (question: string, context: AssistantContext) => void;
+  onNavigate: (page: string) => void;
 }) {
+  // 입력 양식에서 고른 저장 입력(없거나 기본 조건이면 없음). 도우미 점검·질문에 쓴다.
+  const [pickedInputId, setPickedInputId] = useState<number | undefined>();
   const [inputs, setInputs] = useState<InputSet[]>([]);
   const [selected, setSelected] = useState<InputDetail | null>(null);
   const [executions, setExecutions] = useState<Execution[]>([]);
@@ -126,7 +135,10 @@ export function MilpUpload({
     <div className="milp-admin">
       {error && <p className="error-banner" role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
-      <PlanningInputForm inputs={inputs} busy={busy || running} status={progress()}
+      <AssistantSection screen="planning_input" params={{ inputId: pickedInputId }}
+        context={{ screen: "planning_input", selection: pickedInputId === undefined ? undefined : { input_id: pickedInputId } }}
+        questions={SCREEN_QUESTIONS.planning_input} onAsk={onAsk} onNavigate={onNavigate} />
+      <PlanningInputForm onBaseChange={setPickedInputId} inputs={inputs} busy={busy || running} status={progress()}
         onLoad={async id => {
           if (id !== 0) return api<PlanningInputDetail>(`/api/planning/inputs/${id}`);
           const [meta, settings] = await Promise.all([
@@ -259,7 +271,7 @@ export function MilpUpload({
               <option value="">입력 선택</option>
               {inputs.map((r) => (
                 <option value={r.id} key={r.id}>
-                  #{r.id} {r.name} · {r.start} ~ {r.end}
+                  {planLabel(r)}
                 </option>
               ))}
             </select>
@@ -313,7 +325,7 @@ export function MilpUpload({
               {executions.map((r) => (
                 <tr key={r.id}>
                   <td>
-                    {r.summary?.scenario.name ?? r.id}
+                    {runTitle(r.id, r.summary?.scenario.name ?? "전망 계산").title}
                     <small>
                       입력 #{r.input_id} · {r.id}
                     </small>
@@ -405,7 +417,7 @@ export function MilpUpload({
               <option value="">완료 계산 선택</option>
               {done.map((r) => (
                 <option value={r.id} key={r.id}>
-                  {r.summary!.scenario.name} · {r.id}
+                  {runTitle(r.id, r.summary!.scenario.name).title}
                 </option>
               ))}
             </select>

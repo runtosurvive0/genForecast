@@ -181,7 +181,7 @@ export function StockyardSite({
         <div>
           <h2 id={titleId}>당진 항만 · 저탄장 현황</h2>
           <p>
-            선박 대기·접안·하역 → 저탄장 Pile 저탄 → 발전소 상탄 · 더미에 마우스를
+            선박 대기·접안·하역 → 저탄장 Pile 저탄 → 발전소 상탄 · 원탄에 마우스를
             올리면 탄질과 하역 이력, 선택하면 우측 패널에 상세 · Pile 이름을 누르면 Pile 요약
           </p>
         </div>
@@ -204,7 +204,7 @@ export function StockyardSite({
           <div className="site-plants" role="group" aria-label="당진 발전소 처별 발전·상탄 계획">
             <div className="site-plants-caption"><strong>당진 발전소</strong><span>{feedDate} · {feedSource} · KST · 일평균 · 실시간 계측 미연계</span></div>
             <p className="site-unload-note">하역 기본 {n(DEFAULT_UNLOAD_TPD)} t/일 (약 {n(DEFAULT_UNLOAD_TPD / 24, 1)} t/h) · 가정 · 선박 잔량·접안시간 반영 · 저탄 라인 1,000~1,200 t/h 상한 (하역기 능력보다 작음)
-              <span className="site-reach-legend"><span className="site-reach is-ok">부두</span> 하역 가능 <span className="site-reach is-no">부두</span> 하역 불가 · Pile = 더미 5개 묶음</span></p>
+              <span className="site-reach-legend"><span className="site-reach is-ok">부두</span> 하역 가능 <span className="site-reach is-no">부두</span> 하역 불가 · Pile = 원탄 5개 묶음</span></p>
             <div className="site-plant-grid">
               {YARDS.map((yard) => {
                 const feed = feeds.find((f) => f.yard === yard);
@@ -309,7 +309,7 @@ export function StockyardSite({
                             {!shed && <span>{group.heaps[0].coal_type}</span>}
                           </button>
                           <span className="site-pile-meta">
-                            · {shed ? "Cell" : "더미"} {group.heaps.length} · <b>{n(sum)} t</b>
+                            · {shed ? "Cell" : "원탄"} {group.heaps.length} · <b>{n(sum)} t</b>
                           </span>
                           <span className="site-pile-reach" aria-label={`${group.label} 하역 가능 부두`}>
                             {UNLOAD_LINES.map((line) => {

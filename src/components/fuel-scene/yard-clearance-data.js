@@ -16,6 +16,6 @@ export function selectedClearances(lots,id){
   return {...g,key:g.ids.join(':'),neighbourId,neighbour:byId.get(neighbourId).coal,side:g.ids[0]===id?'오른쪽':'왼쪽',ends,line,
    state:!g.positionConfirmed?'unknown':g.benchGap<g.required-1e-6?'breach':'clear'};
  });
- if(!result.measurements.length)result.message='같은 Pile에 인접 더미 없음';
+ if(!result.measurements.length)result.message='같은 Pile에 인접 원탄 없음';
  return result;
 }

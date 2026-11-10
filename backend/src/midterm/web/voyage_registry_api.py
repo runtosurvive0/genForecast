@@ -12,6 +12,7 @@ from midterm.voyage_registry_excel import MAX_FILE, parse_workbook, workbook_byt
 from midterm.stock_inventory import inventory_snapshot, assign_receipt, correct_balance, reconcile_receipt
 from midterm.stock_baseline import read_baseline, save_baseline
 from midterm.blend_recommendation import recommend_blend
+from midterm.baseline_quality import match_lot_quality
 from midterm.receipt_plans import list_plans, save_plan, PlanConflict
 
 router = APIRouter(prefix='/api/voyage-registry', tags=['voyage-registry'])
@@ -203,10 +204,7 @@ async def blend_baseline_recommend(request: Request):
     register = await run_in_threadpool(checked, snapshot, path(request))
     lots = []
     for row in rows:
-        voyages = [v for v in register['voyages'] if row.get('voyage_number') and v.get('voyage_number') == row['voyage_number']]
-        cargo = [c for c in register['cargo'] if len(voyages) == 1 and c.get('voyage_no') == voyages[0]['voyage_no'] and c.get('coal_name') == row['coal_name']]
-        assay = register['quality_selection'].get(cargo[0]['cargo_no']) if len(cargo) == 1 else None
-        assay = assay or {}
+        assay = match_lot_quality(row, register)['assay'] or {}
         lots.append({'id': row['source_id'], 'available_t': row['tonnes'], 'gcv_arb': assay.get('gcv_arb'),
                      'tm_ar': assay.get('tm_ar'), 'sulfur_ar': assay.get('sulfur_ar')})
     result = await run_in_threadpool(inventory_checked, recommend_blend, lots, criteria)

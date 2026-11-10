@@ -4,6 +4,9 @@
 
 .gf-forecast-focus { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 12px; min-width: 0; }
 .gf-forecast-main { display: grid; gap: 12px; min-width: 0; }
+/* 오른쪽 열: 도우미 섹션 아래에 확인할 변화. 열이 행 높이만큼 늘어나야 카드가 붙어 따라온다. */
+.gf-forecast-side { align-self: stretch; min-width: 0; }
+.gf-forecast-side .gf-as-body { max-height: 96px; overflow: auto; }
 .gf-forecast-chart, .gf-forecast-watch, .gf-forecast-units { min-width: 0; padding: 14px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
 .gf-forecast-chart > header, .gf-forecast-watch > header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
 .gf-forecast-focus h2 { margin: 0; color: var(--foreground); font-size: 14px; font-weight: 600; }

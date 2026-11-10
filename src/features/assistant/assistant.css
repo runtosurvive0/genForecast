@@ -31,3 +31,13 @@
 .gf-asst-send:disabled { opacity: 0.5; cursor: not-allowed; }
 .gf-asst-open-label { margin-left: 4px; font-size: 13px; }
 @media (max-width: 720px) { .gf-asst-open-label { display: none; } }
+.gf-asst-conn { margin: 0; font-size: 12px; color: var(--muted-foreground); }
+.gf-asst-conn-off { color: var(--destructive); }
+.gf-asst-examples { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.gf-asst-example { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--secondary); color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.gf-asst-example:hover:not(:disabled) { background: var(--muted); }
+.gf-asst-example:disabled, .gf-asst-form textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+.gf-asst-example:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.gf-asst-ask { align-self: flex-end; max-width: 90%; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.gf-asst-ask .gf-asst-user { max-width: 100%; }
+.gf-asst-chip { padding: 1px 8px; border-radius: 999px; background: var(--muted); color: var(--muted-foreground); font-size: 11px; }

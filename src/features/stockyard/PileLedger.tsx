@@ -10,7 +10,7 @@ import {
 
 export const LEDGER_PAGE_SIZE = 20;
 const COLUMNS: { key: LedgerKey; label: string }[] = [
-  { key: "id", label: "더미" },
+  { key: "id", label: "원탄" },
   { key: "yard", label: "발전소 · 처" },
   { key: "coal", label: "탄종" },
   { key: "tons", label: "재고 · t" },
@@ -98,14 +98,14 @@ export function PileLedger({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "저탄장_더미_원장.csv";
+    a.download = "저탄장_원탄_원장.csv";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
     <Section
-      title="전체 더미 원장"
+      title="전체 원탄 원장"
       note={`${visible.length}개 · ${LEDGER_PAGE_SIZE}행 페이지 · 헤더를 눌러 정렬 · 행을 누르면 상세와 약도 선택`}
       action={
         <button className="stockyard-csv" onClick={download}>
@@ -126,7 +126,7 @@ export function PileLedger({
         </div>
         <input
           aria-label="원장 검색"
-          placeholder="더미·탄종 검색"
+          placeholder="원탄·탄종 검색"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -197,7 +197,7 @@ export function PileLedger({
             })}
             {!shown.length && (
               <tr>
-                <td colSpan={COLUMNS.length}>조건에 맞는 더미가 없습니다</td>
+                <td colSpan={COLUMNS.length}>조건에 맞는 원탄이 없습니다</td>
               </tr>
             )}
           </tbody>

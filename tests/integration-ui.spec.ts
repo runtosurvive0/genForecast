@@ -110,7 +110,8 @@ test('수급 원장은 기준재고 DB를 보여주고 이전 표본 선박과 �
   await expect(page.getByLabel('저탄장 기준재고')).toContainText('2026-11-04');
   await expect(page.getByLabel('저탄장 기준재고')).toContainText('1저탄장');
   await expect(page.locator('main')).not.toContainText('Pacific Horizon');
-  await expect(page.locator('main')).not.toContainText('운영 더미');
+  await expect(page.locator('main')).not.toContainText('운영 원탄');
+  expect(await page.locator('main').innerText()).not.toMatch(/더미(를|\s*선택|\s*목록)|대상 더미/);
   await expect(page.getByRole('button', {name:/총 저탄 재고/})).toContainText('0.03');
 });
 
@@ -148,7 +149,7 @@ test('발전 수급 전망은 선택한 날짜의 완전한 자료만 합산한�
   await expect(page.getByRole('region', { name: '선택 날짜 수급' })).toContainText('2027-01-03');
   await expect(page.getByRole('region', { name: '선택 날짜 수급' })).toContainText('284,000');
   await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: '통합 시뮬레이션', exact: true }).click();
-  await page.getByRole('button', { name: '통합 시뮬레이션 열기' }).click();
+  await expect(page.getByRole('button', { name: /통합 시뮬레이션 열기/ })).toHaveCount(0); // 자기 화면을 가리키는 링크는 두지 않는다
   await expect(page).toHaveURL(/#simulation$/);
   await expect(page.getByLabel('저장된 MILP 계산')).toHaveValue('검증 계산');
 });
@@ -158,10 +159,14 @@ test('통합 시뮬레이션은 머리를 줄이고 1920 첫 화면에 KPI·shad
   snapshot.classification = 'operational';
   await page.route('**/api/runs', route => route.fulfill({ json: [{ id: '검증 계산', name: '검증 계산', period: '2027-01-01 ~ 2027-12-31' }] }));
   await page.route('**/api/planning/**', route => route.fulfill({ json: snapshot }));
+  // 도우미 섹션은 빠진 자료가 없어 접힌 상태로 둔다(오른쪽 열 맨 위에 한 줄을 차지한다).
+  await page.route('**/api/assistant/checks?**', route => route.fulfill({ json: { screen: 'simulation', as_of: '2027-01-01T09:00:00+09:00', items: [], errors: [] } }));
+  await page.route('**/api/assistant/status', route => route.fulfill({ json: { llm: true } }));
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/#simulation');
   const focus = page.locator('.gf-forecast-focus');
   await expect(focus.locator('[data-slot="chart"]')).toHaveCount(1);
+  await expect(page.getByRole('region', { name: '도우미' })).toBeVisible();
   // 조회 조건·저장 범위·시작재고는 패널 하나에 있다.
   const query = page.getByRole('region', { name: '조회 조건', exact: true });
   await expect(query.getByLabel('저장된 MILP 계산')).toBeVisible();
@@ -391,7 +396,7 @@ test('Pile 검토는 계통 연결과 입력 계획을 구분해 공간 및 저�
   await expect(panel).toContainText('400 t');
   await page.getByLabel('이 화물 사용 계획 · t/일').fill('400');
   await expect(panel).toContainText('전량 사용 계획');
-  await expect(panel).toContainText('설비 신호와 인접 더미 상부 이격거리');
+  await expect(panel).toContainText('설비 신호와 인접 원탄 상부 이격거리');
   await page.setViewportSize({width:1920,height:1080});
   await panel.scrollIntoViewIfNeeded();
   await page.screenshot({path:'.tooling-tmp/pile-review-1920.png',animations:'disabled'});
@@ -482,7 +487,7 @@ test('yard displays manual inventory separately from the photographic scene', as
   await page.goto('/#yard');
   const manual = page.getByLabel('수기 원장 구역별 잔량');
   await expect(manual).toContainText('Pile 1 150 t · 재확인');
-  await expect(manual).toContainText('더미 위치 미확인');
+  await expect(manual).toContainText('적치 위치 미확인');
   await expect(page.locator('.gf-oy-map-caption')).toContainText('참고 배치');
   await page.getByRole('tab', {name:'3저탄장옥내'}).click();
   await expect(manual).toContainText('A3 셀 50 t');
@@ -542,10 +547,10 @@ test('berth satellite layout supports plan comparison, roof inspection and close
   await expect(viewport.locator('.fuel-scene__labels')).toContainText('5번');
   await page.locator('.gf-ob-dock').nth(1).click();
   await expect(viewport.locator('.fuel-scene__labels')).toContainText('9A번');
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('p5-b');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('p5-b');
   await expect(viewport.locator('.fuel-scene__labels')).toContainText('Pile 5');
   await page.screenshot({path:'artifacts/berth/receiving-route.png',fullPage:true,animations:'disabled'});
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('');
   await site.click();
   await expect(viewport.locator('.fuel-scene__labels')).toContainText('3부두');
   await page.screenshot({path:'artifacts/berth/site-1920.png',fullPage:true,animations:'disabled'});
@@ -610,7 +615,7 @@ test('blend supplies retain three yard models, boiler selection, analysis and re
   await expect(page.getByLabel('목표 발열량 ARB', {exact:true})).toBeVisible();
   await page.getByRole('button',{name:'공급 계통',exact:true}).click();
   await page.getByRole('group',{name:'주 공급 계통 선택'}).getByRole('button',{name:/1–4호기/}).click();
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('P2-K1');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('P2-K1');
   await expect(page.locator('.gf-bl-coal')).toContainText('KCH(Kaltim)');
   await page.getByRole('button',{name:'다크 모드로 전환',exact:true}).click();
   await expect(page.getByRole('button',{name:'라이트 모드로 전환',exact:true})).toHaveCSS('color','rgb(238, 240, 244)');
@@ -812,11 +817,11 @@ test('yard and berth share selection and reachable destinations',async({page})=>
   await page.getByRole('navigation',{name:'주 메뉴',exact:true}).getByRole('button',{name:'접안·하역',exact:true}).click();
   await expect(page.getByRole('region',{name:'반입 가능 구역'}).getByRole('button',{name:'Pile 7',exact:true})).toBeDisabled();
   await page.getByRole('region',{name:'반입 가능 구역'}).getByRole('button',{name:'Pile 2',exact:true}).click();
-  const lot=await page.getByLabel('더미 선택',{exact:true}).inputValue();
+  const lot=await page.getByLabel('원탄 선택',{exact:true}).inputValue();
   await page.getByRole('button',{name:/Pile 2 재고 보기/}).click();
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await page.getByRole('button',{name:'상탄 경로 보기'}).click();
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await expect(page.getByRole('heading',{level:1,name:'상탄·혼탄'})).toBeVisible();
 });
 
@@ -826,14 +831,14 @@ test('yard orbit and pan move the projected pile labels without changing the sel
   const viewport=page.locator('.fuel-scene__viewport');
   const position=()=>viewport.locator('.fuel-scene__labels span').first().evaluate(el=>el.getAttribute('style'));
   await expect(viewport).toHaveAttribute('data-renderer','webgl');
-  const initial=await position(), lot=await page.getByLabel('더미 선택',{exact:true}).inputValue();
+  const initial=await position(), lot=await page.getByLabel('원탄 선택',{exact:true}).inputValue();
   const box=(await viewport.boundingBox())!;
   const x=box.x+box.width/2, y=box.y+box.height/2;
   for(const orbit of [false,true]){
     if(orbit) await page.getByRole('button',{name:'드래그 회전'}).click();
     await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+75,y+20,{steps:5});await page.mouse.up();
     await expect.poll(position).not.toBe(initial);
-    await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+    await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
     if(orbit){
       const turned=await position();
       await viewport.press('Shift+ArrowRight');
@@ -842,17 +847,17 @@ test('yard orbit and pan move the projected pile labels without changing the sel
     await viewport.press('Home');
     await expect.poll(position).toBe(initial);
   }
-  await page.getByRole('button',{name:'선택 더미 확대'}).click();
+  await page.getByRole('button',{name:'선택 원탄 확대'}).click();
   await expect(page.getByLabel('장면 배율')).toHaveText('300%');
   const bounds=await viewport.boundingBox();
   await page.mouse.click(bounds!.x+bounds!.width/2,bounds!.y+bounds!.height/2);
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await viewport.press('Shift+ArrowLeft');
   await page.mouse.move(bounds!.x+bounds!.width/2+25,bounds!.y+bounds!.height/2);
   await page.mouse.move(bounds!.x+bounds!.width/2,bounds!.y+bounds!.height/2);
   await expect(viewport).toHaveCSS('cursor','pointer');
   await page.mouse.click(bounds!.x+bounds!.width/2,bounds!.y+bounds!.height/2);
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
 });
 
 for(const width of [1920,1131,390,320])test(`native operations layout remains usable at ${width}px`,async({page})=>{
@@ -971,10 +976,15 @@ test('수급 예측은 운영 화면과 같은 머리글·조회 막대를 쓰�
 });
 
 test('수급 예측은 1920 기본 화면을 스크롤 없이 담고, shadcn 차트와 포인트색 테마, 7열 선박 목록·고정 어시스턴트를 쓴다',async({page})=>{
+  // 도우미 섹션이 빠진 자료 여러 건으로 펼쳐진 상태에서도 한 화면에 담긴다(섹션 응답 후에 잰다).
+  const manyItems=Array.from({length:6},(_,i)=>({id:`m${i}`,kind:'missing',title:`빠진 자료 ${i+1}`,detail:'확인 필요',count:3,targets:[],action:null}));
+  await page.route('**/api/assistant/checks?**',r=>r.fulfill({json:{screen:'forecast',as_of:'2026-11-10T09:00:00+09:00',items:manyItems,errors:[]}}));
+  await page.route('**/api/assistant/status',r=>r.fulfill({json:{llm:true}}));
   await page.setViewportSize({width:1920,height:1080});
   await page.goto('/#forecast');
   const root=page.locator('.dfc-page');
   await expect(root.locator('.recharts-surface').first()).toBeVisible();
+  await expect(page.getByRole('region',{name:'도우미'}).getByText('빠진 자료 1')).toBeVisible();
   // 기본 상태는 페이지 스크롤 없이 한 화면에 담는다.
   expect(await page.evaluate(()=>document.scrollingElement!.scrollHeight<=innerHeight+2)).toBe(true);
   // 차트는 ECharts가 아니라 shadcn(Recharts) 차트이고, 두 차트를 나란히 둔다.
@@ -993,7 +1003,7 @@ test('수급 예측은 1920 기본 화면을 스크롤 없이 담고, shadcn 차
   await expect(table.locator('thead th')).toHaveCount(7);
   expect(await table.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   // 어시스턴트 열은 320px로 화면에 붙어 따라온다.
-  const assist=page.getByRole('complementary',{name:'AI 어시스턴트',exact:true});
+  const assist=page.getByRole('complementary',{name:'조건 해석',exact:true});
   await expect(assist).toHaveCSS('position','sticky');
   expect(Math.round((await assist.boundingBox())!.width)).toBe(320);
   await page.screenshot({path:'artifacts/forecast/light-1920.png',animations:'disabled'});
@@ -1028,4 +1038,23 @@ test('수급 예측은 운전 데모의 현재 재고·선박 잔량을 시작�
     await group.getByRole('button',{name:'기준 표본',exact:true}).click();
     await expect(origin).toHaveText('시작값 기준 표본');
   }finally{clearInterval(timer);}
+});
+
+test('통합 시뮬레이션은 도우미 섹션이 빠진 자료 여러 건으로 펼쳐져도 확인할 변화 머리와 검토 버튼이 첫 화면 안에 있다', async ({ page }) => {
+  const snapshot = suppliedPlanningFixture('검증 계산', '2027-01-01', 30);
+  snapshot.classification = 'operational';
+  const items = Array.from({ length: 8 }, (_, i) => ({ id: `m${i}`, kind: 'missing', title: `빠진 자료 ${i + 1}`, detail: '확인 필요', count: 3, targets: [], action: null }));
+  await page.route('**/api/runs', route => route.fulfill({ json: [{ id: '검증 계산', name: '검증 계산', period: '2027-01-01 ~ 2027-12-31' }] }));
+  await page.route('**/api/planning/**', route => route.fulfill({ json: snapshot }));
+  await page.route('**/api/assistant/checks?**', route => route.fulfill({ json: { screen: 'simulation', as_of: '2027-01-01T09:00:00+09:00', items, errors: [] } }));
+  await page.route('**/api/assistant/status', route => route.fulfill({ json: { llm: true } }));
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto('/#simulation');
+  await expect(page.getByRole('region', { name: '도우미' }).getByText('빠진 자료 1')).toBeVisible();
+  const watch = page.getByRole('complementary', { name: '확인할 변화' });
+  await expect(watch.getByRole('heading', { name: '확인할 변화' })).toBeVisible();
+  const head = (await watch.getByRole('heading', { name: '확인할 변화' }).boundingBox())!;
+  expect(head.y + head.height).toBeLessThanOrEqual(1080);
+  const button = (await watch.getByRole('button', { name: '부족 시점·반입 가능 여부 검토' }).boundingBox())!;
+  expect(button.y + button.height).toBeLessThanOrEqual(1080);
 });

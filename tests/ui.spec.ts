@@ -3004,7 +3004,7 @@ test("incomplete fuel plans remain unknown and DB inventory forecasts render sep
     page.getByText("온전한 월별 연료계획이 없습니다."),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: "저탄장별 일말 예상 석탄 재고 톤" }),
+    page.getByRole("img", { name: "저탄장별 당일 마감 예상 석탄 재고 톤" }),
   ).toBeVisible();
   await expect(page.locator('[data-unit-id="dj-1"]')).toContainText("미확정");
   await page.getByText("일별 계획 수치 보기", { exact: true }).click();
@@ -3155,7 +3155,7 @@ test("baseline pile detail remains separate from disconnected sensors and the st
   await page.route('**/api/runs', route => route.fulfill({json:[{id:'운영 계획',name:'운영 계획',period:'2027-01-01 ~ 2027-12-31'}]}));
   await page.route('**/api/planning/**', route => route.fulfill({json:snapshot}));
   await page.goto('/#yard');
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('P2-K1');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('P2-K1');
   const detail=page.getByRole('region',{name:'선택 구간 상세'});
   await expect(detail).toContainText('KCH(Kaltim)');
   await expect(detail).toContainText('26-1-039');
@@ -3296,7 +3296,7 @@ test("offline single HTML supports calculation without network", async ({
   await page.getByRole("checkbox", { name: "입항 예정 연료 포함" }).uncheck();
   await page.getByRole("button", { name: "시나리오 분석 실행" }).click();
   await expect(page.locator(".applied-conditions")).toContainText("입항 제외");
-  await expect(page.locator(".comparison-card").nth(1)).toContainText("10.");
+  await expect(page.locator(".comparison-card").nth(1)).toContainText(/\d+\. \d+\./);
   expect(errors).toEqual([]);
   await page
     .getByRole("navigation", { name: "주 메뉴" })
@@ -3483,7 +3483,7 @@ test("dotted map supports keyboard selection, theme changes and reduced motion",
 });
 test("berth, yard and reclaim views follow the selected actual inventory and allowed routes", async ({page}) => {
   await page.goto('/#yard');
-  await page.getByLabel('더미 선택',{exact:true}).selectOption('P2-K1');
+  await page.getByLabel('원탄 선택',{exact:true}).selectOption('P2-K1');
   const detail=page.getByRole('region',{name:'선택 구간 상세'});
   await expect(detail).toContainText('KCH(Kaltim)');
   await expect(detail).toContainText('센서 미연결');
@@ -3491,11 +3491,11 @@ test("berth, yard and reclaim views follow the selected actual inventory and all
   const receiving=page.getByRole('region',{name:'반입 가능 구역'});
   await expect(receiving.getByRole('button',{name:'Pile 7',exact:true})).toBeDisabled();
   await receiving.getByRole('button',{name:'Pile 2',exact:true}).click();
-  const lot=await page.getByLabel('더미 선택',{exact:true}).inputValue();
+  const lot=await page.getByLabel('원탄 선택',{exact:true}).inputValue();
   await page.getByRole('button',{name:/Pile 2 재고 보기/}).click();
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await page.getByRole('button',{name:'상탄 경로 보기'}).click();
-  await expect(page.getByLabel('더미 선택',{exact:true})).toHaveValue(lot);
+  await expect(page.getByLabel('원탄 선택',{exact:true})).toHaveValue(lot);
   await expect(page.getByRole('heading',{level:1,name:'상탄·혼탄'})).toBeVisible();
 });
 

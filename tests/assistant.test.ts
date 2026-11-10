@@ -70,13 +70,28 @@ const hang = () => {
 test('호출자 signal이 있어도 타임아웃이 걸리고 한국어 메시지로 나온다', async () => {
   hang();
   const caller = new AbortController();
-  await assert.rejects(askAssistant('q', [], caller.signal, 20), /응답이 늦어 질문을 멈췄습니다/);
+  await assert.rejects(askAssistant('q', [], caller.signal, undefined, 20), /응답이 늦어 질문을 멈췄습니다/);
 });
 
 test('사용자 취소는 AbortError로 그대로 전파된다', async () => {
   hang();
   const caller = new AbortController();
-  const pending = askAssistant('q', [], caller.signal, 5000);
+  const pending = askAssistant('q', [], caller.signal, undefined, 5000);
   caller.abort();
   await assert.rejects(pending, (e: Error) => e.name === 'AbortError');
+});
+
+test('askAssistant는 context가 없으면 본문에 context 키를 넣지 않는다', async () => {
+  let body: Record<string, unknown> = {};
+  globalThis.fetch = async (_url, init) => { body = JSON.parse(String(init!.body)); return new Response(JSON.stringify(ok), { status: 200 }); };
+  await askAssistant('q', []);
+  assert.equal('context' in body, false);
+});
+
+test('askAssistant는 context가 있으면 그대로 넣는다', async () => {
+  let body: Record<string, unknown> = {};
+  globalThis.fetch = async (_url, init) => { body = JSON.parse(String(init!.body)); return new Response(JSON.stringify(ok), { status: 200 }); };
+  const context = { screen: 'blend' as const, selection: { yard: 1, lot: 'Pile 3' } };
+  await askAssistant('q', [], undefined, context);
+  assert.deepEqual(body.context, context);
 });

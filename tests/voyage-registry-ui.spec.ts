@@ -202,7 +202,7 @@ test('배선 화면에서 입력한 실제 입고가 Pile 배분·정정과 저�
   await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'저탄·재고',exact:true}).click();
   await page.getByRole('tab',{name:/^2저탄장/}).click();
   await expect(page.getByLabel('수기 원장 구역별 잔량')).toContainText('Pile 5 90 t');
-  await expect(page.getByLabel('수기 원장 구역별 잔량')).toContainText('더미 위치 미확인');
+  await expect(page.getByLabel('수기 원장 구역별 잔량')).toContainText('적치 위치 미확인');
 });
 
 test('received cargo flows into manual pile stock and constraint-based blend', async ({page}) => {

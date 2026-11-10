@@ -313,3 +313,36 @@ export function towerSummary(
   };
 }
 export type TowerSummary = ReturnType<typeof towerSummary>;
+
+/**
+ * 표본 시각을 "오늘(KST) 09:00"이 기준 시각이 되도록 옮긴 ISO 문자열(KST)로 돌려준다.
+ * 시나리오 분석 화면의 표시 전용이며 계산과 공통 BASE_TIME은 바꾸지 않는다.
+ */
+export function shiftSampleTime(iso: string, baseTime: string, now: Date): string {
+  const KST = 9 * HOUR;
+  const todayStart = Math.floor((now.getTime() + KST) / DAY) * DAY - KST;
+  const shifted = Date.parse(iso) + (todayStart + 9 * HOUR - Date.parse(baseTime));
+  return `${new Date(shifted + KST).toISOString().slice(0, 19)}+09:00`;
+}
+
+/** 시나리오 화면 표시용: 예측 결과의 모든 시각을 shiftSampleTime으로 옮긴 복사본. 계산 결과 자체는 바꾸지 않는다. */
+export function shiftForecastTimes(forecast: Forecast, now: Date): Forecast {
+  const at = (iso: string) => shiftSampleTime(iso, BASE_TIME, now);
+  const optional = (iso: string | null) => (iso ? at(iso) : iso);
+  // 일별 항목의 날짜는 "YYYY-MM-DD" 형식이라 같은 날 09:00(KST)로 보고 옮긴 뒤 날짜만 남긴다.
+  const day = (date: string) => (date.length === 10 ? at(`${date}T09:00:00+09:00`).slice(0, 10) : at(date));
+  const days = <T extends { date: string }>(rows: T[]) => rows.map((row) => ({ ...row, date: day(row.date) }));
+  return {
+    ...forecast,
+    baseTime: at(forecast.baseTime),
+    firstShortageAt: optional(forecast.firstShortageAt),
+    firstLowStockAt: optional(forecast.firstLowStockAt),
+    daily: days(forecast.daily),
+    byPlant: forecast.byPlant.map((plant) => ({
+      ...plant,
+      firstShortageAt: optional(plant.firstShortageAt),
+      firstLowStockAt: optional(plant.firstLowStockAt),
+      daily: days(plant.daily),
+    })),
+  };
+}

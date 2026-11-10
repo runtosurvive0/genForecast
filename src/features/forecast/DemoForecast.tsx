@@ -15,6 +15,8 @@ import { demoForecastInput } from "@/data/demo-forecast-sample";
 import { kstDay } from "@/domain/operations-status";
 import { fromOperations, operationsKey } from "@/domain/demo-forecast/live";
 import type { FuelDemoSnapshot, FuelDemoStatus } from "@/domain/fuel-demo/types";
+import { AssistantSection } from "@/components/assistant-section/AssistantSection";
+import { SCREEN_QUESTIONS, type AssistantContext } from "@/domain/assistant-checks";
 import "./demo-forecast.css";
 
 const HORIZONS = [7, 30, 60, 90] as const;
@@ -52,14 +54,17 @@ function Panel({ title, note, children, className = "" }: { title: string; note?
     <section className={`dfc-panel ${className}`}>
       <header>
         <h2>{title}</h2>
-        {note && <span>{note}</span>}
+        {note && <span title={note}>{note}</span>}
       </header>
       {children}
     </section>
   );
 }
 
-export function DemoForecast({ theme, snapshot, status }: { theme: string; snapshot: FuelDemoSnapshot | null; status: FuelDemoStatus }) {
+export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate }: {
+  theme: string; snapshot: FuelDemoSnapshot | null; status: FuelDemoStatus;
+  onAsk: (question: string, context: AssistantContext) => void; onNavigate: (page: string) => void;
+}) {
   const [horizon, setHorizon] = useState<number>(90);
   const [today, setToday] = useState(() => kstDay(new Date()));
   useEffect(() => {
@@ -300,7 +305,7 @@ export function DemoForecast({ theme, snapshot, status }: { theme: string; snaps
                   <XAxis dataKey="day" {...AXIS} />
                   <YAxis {...AXIS} width={38} tickFormatter={(v: number) => `${n(v / 1000, 0)}k`} />
                   {contractDay && <ReferenceLine x={contractDay} className="dfc-ref-contract" label={{ value: "계약 선박 끝", position: "top", className: "dfc-ref-label" }} />}
-                  {gradeDepletion.map(g => <ReferenceLine key={g.key} x={g.day} className="dfc-ref-danger" strokeDasharray="4 4" label={{ value: g.label, position: "top", className: "dfc-ref-label" }} />)}
+                  {gradeDepletion.map((g, row) => <ReferenceLine key={g.key} x={g.day} className="dfc-ref-danger" strokeDasharray="4 4" label={(props: { viewBox?: { x?: number; y?: number } }) => { const x = props.viewBox?.x ?? 0; const early = x < 130; /* 앞쪽 날짜면 선 오른쪽에 둬 Y축 쪽으로 잘리지 않게 한다 */ return <text className="dfc-ref-label" x={early ? x + 4 : x - 4} y={(props.viewBox?.y ?? 0) + 12 + row * 13} textAnchor={early ? "start" : "end"}>{g.label}</text>; }} />)}
                   <ChartTooltip content={<ChartTooltipContent indicator="line" formatter={(v, name) => tipRow(STOCK_CONFIG, String(name), `${n(Number(v), 0)} t`)} />} />
                   <ChartLegend content={<ChartLegendContent />} />
                   <Bar dataKey="receipts" fill="var(--color-receipts)" barSize={4} radius={[2, 2, 0, 0]} isAnimationActive={false} />
@@ -388,8 +393,11 @@ export function DemoForecast({ theme, snapshot, status }: { theme: string; snaps
           </section>
         </div>
 
-        <aside className="dfc-panel dfc-assist" aria-label="AI 어시스턴트">
-          <header><h2><Bot size={15} />AI 어시스턴트</h2><span>{parsed?.source === "llm" ? "LLM 해석" : "LLM · 규칙 해석"}</span></header>
+        <div className="dfc-side">
+        <AssistantSection screen="forecast" params={{ live: live ? ["stock", "ships", "units"] : [] }}
+          context={{ screen: "forecast" }} questions={SCREEN_QUESTIONS.forecast} onAsk={onAsk} onNavigate={onNavigate} />
+        <aside className="dfc-panel dfc-assist" aria-label="조건 해석">
+          <header><h2><Bot size={15} />조건 해석</h2><span>{parsed?.source === "llm" ? "LLM 해석" : "LLM · 규칙 해석"}</span></header>
           <div className="dfc-assist-body">
             <p className="dfc-note">말로 조건을 바꾸면 LLM이 계산 조건으로 해석하고, 화면의 계산 엔진이 다시 계산해 접안·적치 대안을 비교합니다. LLM을 쓸 수 없으면 규칙 기반 해석으로 대신합니다.</p>
             <textarea
@@ -450,6 +458,7 @@ export function DemoForecast({ theme, snapshot, status }: { theme: string; snaps
             )}
           </div>
         </aside>
+        </div>
       </div>
     </div>
   );
