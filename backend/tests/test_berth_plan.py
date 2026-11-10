@@ -154,3 +154,24 @@ def test_assumptions_and_gaps():
         assert text in out['assumptions']
     assert out['gaps'] == inputs.gaps
     assert all('위험 기준을 지킬 수 없음' in o['warnings'] for o in out['options'])
+
+
+def test_berths_and_outages_in_response():
+    inputs = make_inputs([berth('Y', yards=('2', '1')), berth('X')], [ship('a', h(0), 12000)], outages=[
+        Outage('X', h(-10), h(-1)),          # 기간 전: 제외
+        Outage('X', h(-2), h(4)),            # 시작에 걸침: 포함
+        Outage('Y', h(70), h(80)),           # 기간 끝(72시간)에 걸침: 포함
+        Outage('Y', h(72), h(90)),           # 기간 뒤: 제외
+    ])
+    out = recommend_berth_plan(inputs)
+    assert out['berths'] == [{'id': 'X', 'yards': ['1']}, {'id': 'Y', 'yards': ['2', '1']}]
+    assert out['outages'] == [
+        {'berth': 'X', 'start': h(-2).isoformat(), 'end': h(4).isoformat()},
+        {'berth': 'Y', 'start': h(70).isoformat(), 'end': h(80).isoformat()},
+    ]
+
+
+def test_no_targets_still_lists_berths_and_outages():
+    out = recommend_berth_plan(make_inputs([berth('X')], [], outages=[Outage('X', h(1), h(5))]))
+    assert out['options'] == [] and out['berths'] == [{'id': 'X', 'yards': ['1']}]
+    assert out['outages'] == [{'berth': 'X', 'start': h(1).isoformat(), 'end': h(5).isoformat()}]

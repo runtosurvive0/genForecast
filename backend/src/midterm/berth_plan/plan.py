@@ -1,7 +1,7 @@
 """접안 추천 조립: 세 안(A 체선 최소·B 균형·C 재고 우선)을 풀어 현재 계획과 비교한 JSON을 만든다."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from midterm.berth_plan.explain import current_plan, fixed_assignments, reasons
 from midterm.berth_plan.inputs import BerthInputs
@@ -54,6 +54,14 @@ def _assignment_rows(inputs: BerthInputs, assignments: list[Assignment], scores:
     return rows
 
 
+def _outages(inputs: BerthInputs) -> list[dict]:
+    """조회 기간 [t0, t0 + 기간)에 걸치는 정비 구간. 간트 빗금 표시용."""
+    end = inputs.t0 + timedelta(days=inputs.horizon_days)
+    spans = sorted((o for o in inputs.outages if o.start < end and o.end > inputs.t0),
+                   key=lambda o: (o.berth, o.start))
+    return [{'berth': o.berth, 'start': _iso(o.start), 'end': _iso(o.end)} for o in spans]
+
+
 def _key(result: OptionResult):
     if result.status == 'infeasible':
         return None
@@ -72,6 +80,8 @@ def recommend_berth_plan(inputs: BerthInputs, penalty_usd: float = 20000., locks
         'message': None,
         'current': None,
         'options': [],
+        'berths': [{'id': key, 'yards': list(inputs.berths[key].yards)} for key in sorted(inputs.berths)],
+        'outages': _outages(inputs),
     }
     if not inputs.voyages:
         out['message'] = NO_TARGETS_MESSAGE
