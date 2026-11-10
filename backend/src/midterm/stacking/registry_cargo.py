@@ -52,7 +52,7 @@ def cargo_from_voyage(voyage_no: str, register: dict, baseline: dict, profiles: 
     if berth is None:
         return None, "부두 미배정"
     amounts = [_tonnes(r) for r in rows]
-    if any(a is None for a in amounts):
+    if any(a is None for a in amounts) or sum(amounts) <= 0:
         return None, "화물 물량 미확인"
     coal_name = coals.pop()
     grade = _grade(coal_name, baseline, profiles)

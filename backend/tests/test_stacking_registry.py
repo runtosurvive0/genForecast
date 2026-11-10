@@ -67,6 +67,11 @@ def test_missing_tonnes_blocks():
     assert cargo_from_voyage("V1", reg, EMPTY, PROFILES) == (None, "화물 물량 미확인")
 
 
+def test_zero_total_tonnes_blocks():
+    reg = register(cargos=[cargo("C1", planned_t=0)])
+    assert cargo_from_voyage("V1", reg, EMPTY, PROFILES) == (None, "화물 물량 미확인")
+
+
 def test_grade_from_baseline_then_profile():
     base = {"lots": [{"coal_name": "Glencore", "grade": "저열량", "tonnes": 1}]}
     got, _ = cargo_from_voyage("V1", register(), base, PROFILES)
