@@ -162,3 +162,8 @@ test('daily bar axis labels skip a tick that would collide with the last date', 
   // 31 days (step 4): 28 is three days before the last day, far enough to keep.
   assert.deepEqual(shown(31), [0, 4, 8, 12, 16, 20, 24, 28, 30]);
 });
+
+test('stacking layout copies stay identical', () => {
+  const read=(p:string)=>JSON.parse(readFileSync(new URL(p,import.meta.url),'utf8'));
+  assert.deepEqual(read('../backend/src/midterm/stacking/layout.json'), read('../src/data/fuel-reference/stacking-layout.json'));
+});

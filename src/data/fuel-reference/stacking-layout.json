@@ -1,0 +1,23 @@
+{
+  "classification": "모의",
+  "piles": {
+    "P1": {"length_m": 420},
+    "P2": {"length_m": 420},
+    "P3": {"length_m": 420},
+    "P4": {"length_m": 420},
+    "P5": {"length_m": 720},
+    "P6": {"length_m": 720},
+    "P7": {"length_m": 720},
+    "P8": {"length_m": 720}
+  },
+  "default_t_per_m": 150,
+  "min_gap_m": 5,
+  "shed_cell_t": 30000,
+  "old_age_days": 30,
+  "hot_temperature_c": 40,
+  "sources": [
+    "P1~P4 길이: yard-snapshot.js 구간 최대 420 m",
+    "P5~P8 길이: yard2-calibration.js lengthM 720",
+    "m당 톤수·Shed 칸 용량: 모의 값"
+  ]
+}
