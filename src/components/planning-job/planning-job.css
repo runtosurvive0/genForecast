@@ -24,10 +24,8 @@
 .gf-job-indicator { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 10px; border:1px solid var(--primary); border-radius:999px; background:var(--card); color:var(--primary); font-size:12px; font-weight:600; white-space:nowrap; cursor:pointer; flex:0 0 auto; font-variant-numeric:tabular-nums; }
 .gf-job-indicator:hover { background:var(--accent); }
 .gf-job-indicator:focus-visible { outline:2px solid var(--ring, var(--primary)); outline-offset:2px; }
-.gf-job-indicator-icon { animation:gf-job-spin 1.2s linear infinite; }
 .gf-job-indicator-short { display:none; }
-@keyframes gf-job-spin { to { transform:rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .gf-job-indicator-icon, .gf-job-progress progress:not([value])::-webkit-progress-bar { animation:none; } }
+@media (prefers-reduced-motion: reduce) { .gf-job-progress progress:not([value])::-webkit-progress-bar { animation:none; } }
 @media (max-width:720px) {
   .gf-job-indicator { padding:0 8px; gap:4px; }
   .gf-job-indicator-text { display:none; }

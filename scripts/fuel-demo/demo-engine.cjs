@@ -2,8 +2,11 @@
 const { createMaterial } = require("./demo-material.cjs");
 const clone = (x) => structuredClone(x),
   moving = new Set(["stacker", "reclaimer", "tripper"]);
-function createEngine(catalog) {
-  let elapsed = 0,
+// 데모 시계는 초기화한 날(KST)의 09:00에서 시작한다. 예전에는 사진 촬영일(2026-11-04)로 고정돼 있었다.
+const demoBaseTime = (now) => `${new Date(now.getTime() + 9 * 3600e3).toISOString().slice(0, 10)}T00:00:00.000Z`;
+function createEngine(catalog, { now = () => new Date() } = {}) {
+  let baseTime = demoBaseTime(now()),
+    elapsed = 0,
     playing = false,
     speed = 1,
     equipment,
@@ -20,6 +23,7 @@ function createEngine(catalog) {
     events = events.slice(0, 120);
   };
   function reset() {
+    baseTime = demoBaseTime(now());
     elapsed = 0;
     playing = false;
     speed = 1;
@@ -292,7 +296,7 @@ function createEngine(catalog) {
       elapsed,
       playing,
       speed,
-      baseTime: "2026-11-04T00:00:00.000Z",
+      baseTime,
       material: materialState,
       equipment: Object.fromEntries(
         Object.entries(equipment).map(([id, e]) => [
@@ -367,4 +371,4 @@ function createEngine(catalog) {
   }
   return { command, advance, snapshot, checkpoint, restore };
 }
-module.exports = { createEngine };
+module.exports = { createEngine, demoBaseTime };

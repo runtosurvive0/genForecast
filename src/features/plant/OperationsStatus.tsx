@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { Anchor, ArrowRight, Ship, Timer } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "../../components/ui/chart";
@@ -50,6 +51,10 @@ function Panel({ title, note, className = "", children }: { title: string; note?
     <header><h2>{title}</h2>{note && <span>{note}</span>}</header>
     {children}
   </section>;
+}
+
+function Loading({ label }: { label: string }) {
+  return <p className="gf-os-empty"><ProcessingOrb state="searching" label={label} /></p>;
 }
 
 function Empty({ children, alert = false }: { children: React.ReactNode; alert?: boolean }) {
@@ -113,9 +118,9 @@ export function OperationsStatus({ demo, runs, runsLoading, runsError, berthFeed
 
       <Panel title="금일 수요전망" className="gf-os-demand" note={run ? `${day} · '${run.name}' 순수요(수요−태양광) 예측` : day}>
         {runsError ? <Empty alert>{runsError}</Empty>
-          : runsLoading ? <Empty>저장 계획을 확인하는 중</Empty>
+          : runsLoading ? <Loading label="저장 계획을 확인하는 중" />
           : !run ? <Empty>오늘을 포함한 저장 계획이 없습니다. 통합 시뮬레이션에서 계산을 실행하세요.</Empty>
-          : !demand || demand.state === "loading" ? <Empty>오늘 순수요를 불러오는 중</Empty>
+          : !demand || demand.state === "loading" ? <Loading label="오늘 순수요를 불러오는 중" />
           : demand.state === "error" ? <Empty alert>{demand.message}</Empty>
           : <>
             <div className="gf-os-demand-stats">
@@ -160,7 +165,7 @@ export function OperationsStatus({ demo, runs, runsLoading, runsError, berthFeed
           <section aria-label="접안 중" className="gf-os-ship-col">
             <h3><Anchor size={15} aria-hidden="true" />접안 중 <b>{berthed.length}</b>{berthNote && <small>{berthNote}</small>}</h3>
             {!live && berthFeed.status === "error" ? <Empty>AIS 부두 조회 실패</Empty>
-              : !live && berthFeed.status === "loading" ? <Empty>AIS 확인 중</Empty>
+              : !live && berthFeed.status === "loading" ? <Loading label="AIS 확인 중" />
               : berthed.length ? <ul>{berthed.slice(0, LIST_MAX).map((row) => <li key={row.key}><strong>{row.name}</strong><span>{row.detail}</span></li>)}</ul>
               : <Empty>접안한 배 없음</Empty>}
             {berthed.length > LIST_MAX && <p className="gf-os-more">외 {berthed.length - LIST_MAX}척</p>}
@@ -168,7 +173,7 @@ export function OperationsStatus({ demo, runs, runsLoading, runsError, berthFeed
           </section>
           <section aria-label="체선 대기" className="gf-os-ship-col">
             <h3><Timer size={15} aria-hidden="true" />체선 대기 <b>{waiting.state === "ready" ? waiting.data.candidates.length : "–"}</b><small>AIS 대기 후보</small></h3>
-            {waiting.state === "loading" ? <Empty>AIS 확인 중</Empty>
+            {waiting.state === "loading" ? <Loading label="AIS 확인 중" />
               : waiting.state === "error" ? <Empty>{waiting.message}</Empty>
               : waiting.data.candidates.length ? <ul>{waiting.data.candidates.slice(0, LIST_MAX).map((c) => <li key={c.mmsi}><strong>{c.name}{waiting.data.confirmed[c.mmsi] && <em>확인됨</em>}</strong><span>{Math.round(c.dwellHours)}시간 대기 · 부두에서 {c.distanceKm.toFixed(1)}km{c.stale ? " · 관측 지연" : ""}</span></li>)}</ul>
               : <Empty>대기 후보 없음</Empty>}
@@ -177,7 +182,7 @@ export function OperationsStatus({ demo, runs, runsLoading, runsError, berthFeed
           </section>
           <section aria-label="입항 예정" className="gf-os-ship-col">
             <h3><Ship size={15} aria-hidden="true" />입항 예정 <b>{registry.state === "ready" ? arrivalRows.length : "–"}</b><small>항차 원장</small></h3>
-            {registry.state === "loading" ? <Empty>항차 원장 확인 중</Empty>
+            {registry.state === "loading" ? <Loading label="항차 원장 확인 중" />
               : registry.state === "error" ? <Empty>{registry.message}</Empty>
               : arrivalRows.length ? <ul>{arrivalRows.slice(0, LIST_MAX).map((row) => <li key={row.voyage}><strong>{row.ship}</strong><span>{VOYAGE[row.status] ?? row.status} · ETA {when(row.eta)}{row.berth ? ` · ${row.berth.replace("BD-", "")}부두` : ""}</span></li>)}</ul>
               : <Empty>예정 항차 없음</Empty>}

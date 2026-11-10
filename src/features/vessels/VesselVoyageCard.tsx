@@ -1,4 +1,5 @@
 import { ArrowRight, Minus, Flame, Mountain, Ship, GripVertical } from "lucide-react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import {
   estimateArrival,
   type TrackingVessel,
@@ -70,7 +71,7 @@ export function VesselVoyageCard({
   const berth = berthDisplay(vessel, berthObservation, registry ?? null, now);
   const loadingCargo = vessel.source !== 'demo' && registryStatus === 'loading';
   const loadingArrival = vessel.source !== 'demo' && (observationLoading || (Boolean(berth) && loadingCargo));
-  const skeleton = <span className="gf-voyage-skeleton" role="status" aria-label="정보 불러오는 중" />;
+  const skeleton = <ProcessingOrb state="searching" label="정보 불러오는 중" hideLabel className="gf-voyage-skeleton" />;
   const berthText = berth?.actual ? etaDate(berth.actual) : berth?.observation.stale ? "마지막 위치 · 확인 필요" : "접안 시각 미확인";
   const source =
     vessel.source === "demo"

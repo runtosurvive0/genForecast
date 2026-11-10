@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { RefreshCw, CalendarClock, TriangleAlert, ArrowRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { Section } from "./tower/primitives";
@@ -156,8 +157,8 @@ export function PlanningWorkspace({
           </div>
         </div>
       ) : listLoading || loading || (query && !current) ? (
-        <div className="gf-planning-loading" role="status" aria-label="저장된 발전·수급 전망을 불러오는 중">
-          <span className="gf-planning-loading__text">저장된 발전·수급 전망을 불러오는 중</span>
+        <div className="gf-planning-loading">
+          <ProcessingOrb state="searching" label="저장된 발전·수급 전망을 불러오는 중" className="gf-planning-loading__text" />
           <div className="gf-planning-loading__metrics" aria-hidden="true"><i /><i /><i /></div>
           <div className="gf-planning-loading__chart" aria-hidden="true" />
         </div>

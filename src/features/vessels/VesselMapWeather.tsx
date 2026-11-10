@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { date } from "@/lib/format";
 import type { ForecastState } from "./vessel-weather";
 import { ForecastRangeControl, WeatherCredits } from "./VesselForecastPanel";
@@ -160,7 +161,7 @@ export function VesselMapWeather({
         </p>
         {cycloneOn && (
           <div className="vessel-map-cyclone-context" aria-live="polite">
-            {cycloneBusy && <p>태풍 정보 조회 중</p>}
+            {cycloneBusy && <ProcessingOrb state="searching" label="태풍 정보 조회 중" />}
             {cycloneError && <p role="status">{cycloneError}</p>}
             {cycloneData && (
               <>

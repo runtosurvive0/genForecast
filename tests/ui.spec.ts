@@ -69,6 +69,7 @@ test('pending berth and cargo data use skeletons until requests finish', async (
   await openEta(page);
   const card=page.locator('.gf-voyage-card.selected');
   await expect(card.locator('.gf-voyage-skeleton').first()).toBeVisible();
+  await expect(card.locator('.gf-voyage-skeleton canvas').first()).toBeAttached();  // thinking-orbs
   await expect(card).not.toContainText('ETA 미확정');
   await expect(card.locator('.gf-voyage-card-facts')).not.toContainText('미확인');
   release();
@@ -3674,6 +3675,20 @@ test('opening raw data and calculation basis keeps the vessel map size on wide s
     await expect(page.locator('.vessel-data-details')).not.toHaveAttribute('open');
     expect(Math.abs((await canvas.boundingBox())!.height - before.height)).toBeLessThan(2);
   }
+});
+
+test("waiting screens show the thinking orb with a readable label instead of plain loading text", async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/voyage-registry/inventory/baseline", async route => { await gate; await route.fallback(); });
+  await page.goto("/#fuel");
+  const loading = page.getByRole("status").filter({ hasText: "기준재고 조회 중" });
+  await expect(loading).toBeVisible();
+  await expect(loading.locator("canvas")).toHaveCount(1);
+  await page.locator("html").evaluate(el => el.classList.add("dark"));
+  await expect(loading.locator("canvas")).toHaveCount(1);
+  release();
+  await expect(loading).toHaveCount(0);
 });
 
 test("supply ledger keeps stock at zero and shows the unburned shortage separately", async ({ page }) => {

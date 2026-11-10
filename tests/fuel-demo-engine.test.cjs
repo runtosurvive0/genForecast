@@ -96,3 +96,15 @@ test("events sharing a time execute once, manual override cancels only the activ
   assert.equal(e.snapshot().playing, false);
   assert.equal(e.snapshot().schedule.length, 0);
 });
+
+test("demo clock starts at 09:00 KST of the day the engine was created or reset, not a fixed photo date", () => {
+  const { demoBaseTime } = require("../scripts/fuel-demo/demo-engine.cjs");
+  let clock = new Date("2026-11-10T05:30:00Z"); // 14:30 KST
+  const e = createEngine(catalog, { now: () => clock });
+  assert.equal(e.snapshot().baseTime, "2026-11-10T00:00:00.000Z");
+  clock = new Date("2026-11-10T16:10:00Z"); // 다음 날 01:10 KST
+  e.command({ op: "reset" });
+  assert.equal(e.snapshot().baseTime, "2026-11-11T00:00:00.000Z");
+  assert.equal(demoBaseTime(new Date("2026-12-31T14:59:00Z")), "2026-12-31T00:00:00.000Z");
+  assert.equal(demoBaseTime(new Date("2026-12-31T15:00:00Z")), "2027-01-01T00:00:00.000Z");
+});

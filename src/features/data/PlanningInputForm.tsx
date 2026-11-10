@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { Button } from "@/components/ui/button";
 import { addDays } from '@/domain/planning';
 import { planLabel } from '@/domain/planning-labels';
@@ -67,7 +68,7 @@ export function PlanningInputForm({ inputs, busy, onLoad, onSave, simple = false
     {base?.id === 0 && !reference && <p className="planning-input-note">기준 단가는 2026년 10월 자료를 12개월에 적용한 값입니다. 전망에 맞게 각 호기·월별 단가와 정비 일정을 확인하고 수정하세요.</p>}
     {reference && <p className="planning-input-note">DB에 저장된 호기 제원과 연월별 단가를 적용합니다. 2026년 11·12월은 과거 단가의 회귀 추정값입니다.</p>}
     {error && <p role="alert">{error}</p>}
-    {loading && <p role="status">저장된 조건을 불러오는 중…</p>}
+    {loading && <ProcessingOrb state="searching" label="저장된 조건을 불러오는 중" />}
     {base && scenario && <form onInvalid={e => { const details = (e.target as HTMLElement).closest('details'); if (details) details.open = true; }} onSubmit={e => {e.preventDefault(); submit(false);}}>
       <fieldset disabled={readOnly || busy || loading} className="planning-input-fields">
       <div className="planning-input-grid">

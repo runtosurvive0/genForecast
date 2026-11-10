@@ -491,12 +491,6 @@
 }
 .gf-voyage-skeleton {
   display: inline-block;
-  width: 68px;
-  height: 0.85em;
   vertical-align: middle;
-  border-radius: 4px;
-  background: color-mix(in srgb, currentColor 18%, transparent);
-  animation: gf-voyage-skeleton-pulse 1.4s ease-in-out infinite alternate;
+  line-height: 0;
 }
-@keyframes gf-voyage-skeleton-pulse { to { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) { .gf-voyage-skeleton { animation: none; } }

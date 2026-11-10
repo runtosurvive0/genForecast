@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { Dialog } from "radix-ui";
 import {
   ArrowRight,
@@ -684,7 +685,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
           {notice}
         </p>
       )}
-      {busy && !data && <p role="status">공용 원장을 불러오는 중입니다…</p>}
+      {busy && !data && <ProcessingOrb state="searching" label="공용 원장을 불러오는 중" />}
       {schema && data && (
         <>
           <div className="vr-toolbar">
@@ -1302,7 +1303,7 @@ export function VoyageRegistry({ navigation, initialEntity = 'voyages', initialK
                 </form>
               )}
               {busy && !review && file && (
-                <p role="status">엑셀 헤더·참조·물량을 검증하고 있습니다…</p>
+                <ProcessingOrb state="solving" label="엑셀 헤더·참조·물량을 검증하는 중" />
               )}
               {review && (
                 <>

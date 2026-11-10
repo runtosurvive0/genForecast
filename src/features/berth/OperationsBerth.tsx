@@ -1,4 +1,5 @@
 import { docks, matchCargo } from "@/domain/berth-ais";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import type { BerthFeed } from "@/domain/use-berth-feed";
 import { useEffect, useMemo, useState } from "react";
 import { StackingOptions } from "@/components/stacking/StackingOptions";
@@ -96,7 +97,7 @@ function BerthStackingHint({ voyageNo, onOpenStacking }: { voyageNo: string; onO
     return () => controller.abort();
   }, [voyageNo]);
   if (error) return <p className="gf-ob-stack-hint">적치 추천을 불러오지 못했습니다: {error}</p>;
-  if (!result) return <p className="gf-ob-stack-hint" role="status">적치 추천 계산 중</p>;
+  if (!result) return <ProcessingOrb state="solving" label="적치 추천 계산 중" className="gf-ob-stack-hint" />;
   return (
     <div className="gf-ob-stack-hint">
       <StackingOptions compact result={result} onOpenYard={onOpenStacking ? p => onOpenStacking(stackingFocusValue(p)) : undefined} />
@@ -469,7 +470,7 @@ export function OperationsBerth({
               baselineLots={baseline.data.lots}
               online={status === "online"}
             />}
-            {!baseline.data?.as_of && <p role="status">{baseline.error || '기준재고 확인 중'}</p>}
+            {!baseline.data?.as_of && (baseline.error ? <p role="status">{baseline.error}</p> : <ProcessingOrb state="searching" label="기준재고 확인 중" />)}
           </div>
           <div
             className="gf-ob-equipment-tabs"

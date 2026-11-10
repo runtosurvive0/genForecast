@@ -1,4 +1,5 @@
 import {useEffect,useMemo,useState} from 'react';
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import {ArrowRight, Factory, Layers3, Route, Radio, SlidersHorizontal, Info} from 'lucide-react';
 import {FuelScene} from '@/components/fuel-scene/FuelScene';
 import {blendLines,silosPerUnit} from '@/data/fuel-reference/blend-lines.js';
@@ -55,7 +56,7 @@ export function OperationsBlend({theme,snapshot,status,view,onView,onNavigate,on
       </div>
       <section className="gf-bl-stage" aria-label="상탄·분배 계통">
         <div className="gf-bl-stage-heading"><h2>{line.source} <ArrowRight size={15}/> {line.label} 보일러</h2><span>주계통 보기 · 교차 공급 생략</span></div>
-        {baseline.data?.as_of ? <FuelScene mode="blend" yard={yard} berth={yard} theme={theme} snapshot={demo} baselineLots={baseline.data.lots} baselineStock={baselineStock} baselineDetails={baselineDetails} online={status==='online'} selectedLotId={lotId} onSelectLot={setLotId} selectedUnitId={unit} onSelectUnit={setUnit}/> : <p role="status">{baseline.error || '기준재고 확인 중'}</p>}
+        {baseline.data?.as_of ? <FuelScene mode="blend" yard={yard} berth={yard} theme={theme} snapshot={demo} baselineLots={baseline.data.lots} baselineStock={baselineStock} baselineDetails={baselineDetails} online={status==='online'} selectedLotId={lotId} onSelectLot={setLotId} selectedUnitId={unit} onSelectUnit={setUnit}/> : baseline.error ? <p role="status">{baseline.error}</p> : <ProcessingOrb state="searching" label="기준재고 확인 중" />}
         <div className="gf-bl-units" role="group" aria-label="보일러 선택">
           {line.units.map(id=>{const u=demo?.units?.[String(id)];return <button key={id} aria-pressed={unit===id} onClick={()=>setUnit(id)}><Factory size={18}/><span>{id}호기{u&&<small>{status==='online'?({running:'운전',stopped:'정지',fault:'고장'}[u.status]):'마지막 수신값'}</small>}</span>{u&&<strong>{fmt(u.mw)}<small>MW</small></strong>}</button>;})}
         </div>

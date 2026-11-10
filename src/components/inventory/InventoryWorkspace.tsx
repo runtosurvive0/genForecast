@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { ArrowLeft, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { authJson } from '@/lib/auth-client';
 import { useYardBaseline } from '@/domain/use-yard-baseline';
@@ -112,7 +113,7 @@ export function InventoryWorkspace({ mode, onBack, standalone = false, lotDetail
       <p>{mode === 'inventory' ? '화물별 실제 적치 구역과 수기 잔량을 관리합니다.' : '입력한 목표와 제한을 만족하는 조합을 계산합니다.'}</p></div>
       <button onClick={() => void refresh()} disabled={busy}><RefreshCw size={15}/> 새로고침</button></header>
     {error && <p className="gf-inventory-error" role="alert">{error}</p>}
-    {busy && !inventory && <p role="status">공용 재고를 불러오는 중입니다…</p>}
+    {busy && !inventory && <ProcessingOrb state="searching" label="공용 재고를 불러오는 중" />}
     {inventory && <>
       {mode === 'inventory' && <div className="gf-inventory-entry"><h3>입하 화물 적치</h3>
         <p>입고 종료일·입하량·실제 하역완료 시각이 등록된 당진 화물만 선택할 수 있습니다.</p>

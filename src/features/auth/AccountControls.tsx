@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { LogOut, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,7 +29,7 @@ export function AccountWorkspaceStatus() {
   if (!account) return null;
   return <div className="gf-account-status">
     {account.user.role === 'user' && <p>개인 관심 선박은 저장할 수 있습니다. 공용 원장·설정 저장과 서버 계산 실행은 관리자 권한이 필요합니다.</p>}
-    {account.saving && <p role="status">관심 선박을 계정에 저장하는 중…</p>}
+    {account.saving && <ProcessingOrb state="connecting" label="관심 선박을 계정에 저장하는 중" />}
     {account.error && <div role="alert"><p>아직 서버에 저장되지 않았습니다. {account.error}</p><Button variant="outline" size="sm" onClick={account.retry}>저장 재시도</Button><Button variant="ghost" size="sm" onClick={() => void account.reload()}>미저장 변경을 버리고 서버 목록 불러오기</Button></div>}
     {!dismissed && legacy && legacy.watchlist.length > 0 && <aside>
       <span>이 브라우저에 기존 관심 선박 {legacy.watchlist.length}척이 있습니다. 공용 PC라면 본인의 목록인지 확인해 주세요.</span>
