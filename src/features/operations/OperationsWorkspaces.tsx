@@ -17,6 +17,7 @@ import { useYardBaseline } from "@/domain/use-yard-baseline";
 import { BerthRoutes } from "@/data/fuel-reference/berth-routes.js";
 import { authJson } from "@/lib/auth-client";
 import "./operations-workspaces.css";
+import { showDailyAxisLabel } from "./daily-axis";
 
 const fmt = (value: number | null | undefined, digits = 0) =>
   value == null || !Number.isFinite(value)
@@ -492,9 +493,7 @@ export function AnalysisWorkspace({ planning }: { planning: PlanningState }) {
                         }}
                       />
                       <span>
-                        {index === 0 ||
-                        index === s.daily.length - 1 ||
-                        index % Math.max(1, Math.ceil(s.daily.length / 8)) === 0
+                        {showDailyAxisLabel(index, s.daily.length)
                           ? day.date.slice(5)
                           : ""}
                       </span>

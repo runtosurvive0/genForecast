@@ -735,7 +735,8 @@
 }
 @media (max-width: 1600px) {
   .gf-ob-dock {
-    grid-template-columns: 36px 1fr;
+    /* The id column holds a one-line signal label (e.g. "최근 신호 없음"); size it to that label. */
+    grid-template-columns: minmax(36px, max-content) minmax(0, 1fr);
     gap: 5px 8px;
   }
   .gf-ob-dock-progress {
@@ -818,7 +819,7 @@
     border: 0;
   }
   .gf-ob-dock {
-    grid-template-columns: 42px 1fr auto;
+    grid-template-columns: minmax(42px, max-content) minmax(0, 1fr) auto;
   }
   .gf-ob-dock-progress {
     grid-column: auto;

@@ -150,3 +150,15 @@ test('부두 위치 JSON은 프런트와 백엔드 사본이 같다',()=>{
   const read=(p:string)=>JSON.parse(readFileSync(new URL(p,import.meta.url),'utf8'));
   assert.deepEqual(read('../backend/src/midterm/vessels/dangjin_berths.json'),read('../src/data/berths/dangjin-berths.json'));
 });
+
+test('daily bar axis labels skip a tick that would collide with the last date', async () => {
+  const { showDailyAxisLabel } = await import('../src/features/operations/daily-axis.ts');
+  const shown = (n: number) => Array.from({ length: n }, (_, i) => i).filter(i => showDailyAxisLabel(i, n));
+  // 30 days: every 4th day, but day 28 sits right next to the last day (29) and would overlap it.
+  assert.deepEqual(shown(30), [0, 4, 8, 12, 16, 20, 24, 29]);
+  // Short ranges still label every day, including the second-to-last one.
+  assert.deepEqual(shown(5), [0, 1, 2, 3, 4]);
+  assert.deepEqual(shown(1), [0]);
+  // 31 days (step 4): 28 is three days before the last day, far enough to keep.
+  assert.deepEqual(shown(31), [0, 4, 8, 12, 16, 20, 24, 28, 30]);
+});
