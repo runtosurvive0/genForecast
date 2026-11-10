@@ -425,7 +425,8 @@ def simulate(records, plan, as_of, horizon, fallback_cv=5500, master=None) -> di
             return None
         avg = sum(burns) / 7
         # 정지 등으로 7일간 연소가 0이면 무한대 대신 별도 휴지 상태.
-        return stock["stock"] / avg if avg > 0 else None
+        # 재고가 바닥난 뒤에는 0일(소진)로 둔다. 부족량은 stock·min_stock(음수)에 그대로 남는다.
+        return max(0.0, stock["stock"] / avg) if avg > 0 else None
 
     forecast = []
     for i in range(horizon):

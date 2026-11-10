@@ -1863,6 +1863,8 @@ test("voyage operating layout fits one desktop page and keeps selected cargo sep
   const ocean = page.locator('.shipment-card').filter({ hasText: 'Ocean Frontier' });
   await ocean.click();
   await expect(cargo).toContainText('시연 자료');
+  // 합성 선박은 관측 최신성(LIVE) 대신 '모의 위치'로 표시한다.
+  await expect(ocean.locator('.vessel-freshness-tag')).toHaveText('모의 위치');
   await expect(cargo).toContainText('시연 일정 기준');
   await expect(cargo).toHaveAttribute('data-vessel-id', await page.locator('.vessel-arrival-panel').getAttribute('data-vessel-id') as string);
   const expected = voyages.find(v => v.vessel_name === 'Ocean Frontier')!;
