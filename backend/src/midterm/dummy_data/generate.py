@@ -49,10 +49,11 @@ COUNTRIES = (
 OTHER_SAILING_DAYS = (18, 22)
 GRADE_LABEL = {'high_cv': '고열', 'low_cv': '저열'}
 # 기준일(또는 오늘) 뒤로 이어지는 계획 항차. 시연용 가정값: 부두별·저탄장별 하루 입하 목표(t/일)를
-# 계획 운전의 저탄장별 소비(1저탄장 약 4천, 2·3저탄장 약 1.9만 t/일)에 맞춘다.
+# 2026-11 계획 운전 90일의 저탄장별 평균 사용량(1저탄장 약 8천(12월 1.4만), 2저탄장 1.8만, 3저탄장 1.8만 t/일)에
+# 맞춘다. 1저탄장은 12월 증가분을 감안해 조금 넉넉히 둔다.
 FUTURE_DAYS = 100
 FUTURE_LEAD = timedelta(days=1)
-FUTURE_DAILY_T = {'BD-1': {'1': 4000, '2': 10000}, 'BD-2': {'2': 9000, '3': 7000}, 'BD-3': {'3': 12000}}
+FUTURE_DAILY_T = {'BD-1': {'1': 9500, '2': 5500}, 'BD-2': {'2': 12500, '3': 5000}, 'BD-3': {'3': 12500}}
 FUTURE_INTERVAL_JITTER = (0.85, 1.15)
 FUTURE_STATUSES = ('planned', 'underway')
 TEMPERATURE = dict(base=25.0, age_cap=180, age_rise=25.0, low_cv=8.0, noise=2.0, low=25.0, high=60.0)
@@ -377,6 +378,7 @@ def _future_voyages(out: _Emitter, berth_specs: dict, coals: dict, coal_of: dict
         pool = pool or sorted(name for name in coals if not coals[name].get('anthracite'))
         yards, daily = sorted(targets), sum(targets.values())
         serial = {YEAR: LAST_SERIAL[berth_no]}
+        delivered = dict.fromkeys(yards, 0.)
         arrival = start + FUTURE_LEAD
         previous_end = max(berth_ends.get(berth_id, start), start)
         while arrival < horizon_end:
@@ -399,13 +401,10 @@ def _future_voyages(out: _Emitter, berth_specs: dict, coals: dict, coal_of: dict
                 serial[year] += 1
             number = f'{year}-{berth_no}-{serial[year]:03}'
             underway = departure <= start
-            share = d['yard'] * daily
-            yard = yards[-1]
-            for name in yards:
-                if share < targets[name]:
-                    yard = name
-                    break
-                share -= targets[name]
+            # 그날까지 목표 대비 가장 덜 받은 저탄장으로 보낸다(무작위로 고르면 배가 적어 한쪽으로 쏠린다).
+            elapsed = (end - start).total_seconds() / 86400
+            yard = max(yards, key=lambda name: (targets[name] * elapsed - delivered[name], targets[name], name))
+            delivered[yard] += bl
             dem_low, dem_high = DEMURRAGE[capesize]
             planned = dict(zip(EVENTS, (departure, arrival_at, berth, end)))
             proposal = dict(classification='actual', voyage_number=number, status='underway' if underway else 'planned',
