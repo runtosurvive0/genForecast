@@ -759,7 +759,7 @@ export function OperationsBerth({
           <section className="gf-ob-panel gf-ob-schedule">
             <div className="gf-ob-section-head">
               <h2>부두별 입항 일정</h2>
-              <span>11.05–11.11 · KST</span>
+              <span>{calendarDays[0]}–{calendarDays[calendarDays.length - 1]} · KST</span>
             </div>
             <div
               className="gf-ob-calendar-scroll"

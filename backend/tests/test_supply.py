@@ -324,3 +324,15 @@ def test_hourly_quadratic_heat_works_without_manual_hr():
     output = simulate(r, plan(mw=100), START + timedelta(hours=1), 7)
     expected = sum((master[u].heat[0] * 100**2 + master[u].heat[1] * 100 + master[u].heat[2]) * 1000/5500 for u in UNITS)
     assert output['kpis']['stock'] == pytest.approx(300000 - expected)
+
+
+def test_exhausted_stock_reports_zero_days_not_negative_days():
+    r = records()
+    r['baselines'][0]['tonnes'] = 5000  # 1,920 t/일이면 사흘 안에 소진
+    output = simulate(r, plan(), START, 7)
+    g = output['groups'][0]
+    assert g['min_days'] == 0
+    assert g['min_stock'] < 0  # 부족량은 그대로 보인다
+    assert g['risk'] == 'danger'
+    assert all(p['groups']['g14']['days'] >= 0 for p in output['forecast'])
+    assert output['kpis']['min_days'] == 0
