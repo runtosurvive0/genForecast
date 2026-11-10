@@ -23,6 +23,7 @@ import "./operations-berth.css";
 import { useYardBaseline } from '@/domain/use-yard-baseline';
 import { yardBaselineLots } from '@/domain/yard-baseline-lots.js';
 import { estimateUnload } from '@/domain/berth-unload-forecast';
+import { demoFleet, kstParts } from "@/data/demo-fleet";
 
 export interface OperationsBerthProps {
   feed: BerthFeed;
@@ -43,64 +44,16 @@ const record = (value: unknown): Record<string, unknown> =>
     : {};
 const finite = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
-// Approved prototype voyage examples, separate from the account's AIS and DB ledger.
-const voyageExamples = [
-  {
-    id: "V-26041",
-    name: "GEN4CAST HORIZON",
-    origin: "인도네시아 · Taboneo",
-    tons: 75000,
-    date: "11.05",
-    time: "02:00",
-    berth: 1,
-    coal: "GN-A",
-    discharged: 31200,
-  },
-  {
-    id: "V-26042",
-    name: "GEN4CAST PACIFIC",
-    origin: "호주 · Newcastle",
-    tons: 82000,
-    date: "11.05",
-    time: "05:00",
-    berth: 2,
-    coal: "GN-B",
-    discharged: 18600,
-  },
-  {
-    id: "V-26043",
-    name: "GEN4CAST OCEAN",
-    origin: "인도네시아 · Muara Jawa",
-    tons: 70000,
-    date: "11.07",
-    time: "06:00",
-    berth: 3,
-    coal: "GN-C",
-    discharged: null,
-  },
-  {
-    id: "V-26044",
-    name: "GEN4CAST DAWN",
-    origin: "호주 · Gladstone",
-    tons: 78000,
-    date: "11.11",
-    time: "14:00",
-    berth: null,
-    coal: "GN-D",
-    discharged: null,
-  },
-  {
-    id: "V-26045",
-    name: "GEN4CAST ATLAS",
-    origin: "인도네시아 · Balikpapan",
-    tons: 68000,
-    date: "11.18",
-    time: "08:00",
-    berth: null,
-    coal: "GN-E",
-    discharged: null,
-  },
-];
+// 시연 모의 선박: 선박 지도·관심 선박과 같은 목록(src/data/demo-fleet.ts). 실제 AIS·DB 원장과 별개.
+const voyageExamples = demoFleet().map((voyage) => ({ ...voyage, ...kstParts(voyage.arrivalAt) }));
+// 접안 일정 머리글: 첫 접안일부터 7일(KST)
+const calendarDays = Array.from({ length: 7 }, (_, i) =>
+  kstParts(new Date(Date.parse(voyageExamples[0].arrivalAt) + i * 86_400_000).toISOString()).date,
+);
+const nextArrival = voyageExamples.find((voyage) => voyage.state !== "arrived");
+const upcomingTons = voyageExamples
+  .filter((voyage) => voyage.state !== "arrived")
+  .reduce((total, voyage) => total + voyage.tons, 0);
 const stepNames = [
   "하역기",
   "부두 컨베이어",
@@ -337,7 +290,7 @@ export function OperationsBerth({
             <strong>
               {demo ? (
                 <>
-                  11.07<small>06:00 KST</small>
+                  {nextArrival?.date}<small>{nextArrival?.time} KST</small>
                 </>
               ) : feed.checked ? (
                 kst(feed.checked).split(" ").at(-1)
@@ -405,7 +358,7 @@ export function OperationsBerth({
                       </b>
                       <span>
                         {index === 2
-                          ? "11.07 06:00 예정"
+                          ? `${voyage.date} ${voyage.time} 예정`
                           : `${voyage.coal} · ${number(voyage.tons)} t`}
                       </span>
                     </span>
@@ -818,15 +771,7 @@ export function OperationsBerth({
                 <div className="gf-ob-calendar-head">
                   <span>부두 / 선박</span>
                   <div>
-                    {[
-                      "11.05",
-                      "11.06",
-                      "11.07",
-                      "11.08",
-                      "11.09",
-                      "11.10",
-                      "11.11",
-                    ].map((day) => (
+                    {calendarDays.map((day) => (
                       <span key={day}>{day}</span>
                     ))}
                   </div>
@@ -851,7 +796,7 @@ export function OperationsBerth({
                       ) : (
                         <span className="gf-ob-arrival">
                           <Ship />
-                          06:00 입항 예정
+                          {voyage.date} {voyage.time} 입항 예정
                         </span>
                       )}
                     </span>
@@ -867,7 +812,7 @@ export function OperationsBerth({
           <section className="gf-ob-panel gf-ob-upcoming">
             <div className="gf-ob-section-head">
               <h2>다음 입항</h2>
-              <span>3항차 · 216,000 t</span>
+              <span>{voyageExamples.length - 2}항차 · {number(upcomingTons)} t</span>
             </div>
             <div
               className="gf-ob-upcoming-scroll"
