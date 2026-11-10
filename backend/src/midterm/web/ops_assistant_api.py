@@ -27,7 +27,8 @@ class HistoryMessage(BaseModel):
     content: str = Field(max_length=4000)
 
 
-CONTEXT_KEYS = {"yard", "unit", "lot", "run_id", "input_id", "view"}
+CONTEXT_KEYS = {"yard", "unit", "lot", "run_id", "input_id", "view",
+                "vessel", "voyage_no", "cargo_grade", "cargo_cv", "cargo_t", "berth", "dest_yard"}
 
 
 class AskContext(BaseModel):

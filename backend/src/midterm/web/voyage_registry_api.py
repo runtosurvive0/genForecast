@@ -12,7 +12,7 @@ from midterm.voyage_registry_excel import MAX_FILE, parse_workbook, workbook_byt
 from midterm.stock_inventory import inventory_snapshot, assign_receipt, correct_balance, reconcile_receipt
 from midterm.stock_baseline import read_baseline, save_baseline
 from midterm.blend_recommendation import recommend_blend
-from midterm.baseline_quality import match_lot_quality
+from midterm.baseline_quality import blend_lots, match_lot_quality
 from midterm.receipt_plans import list_plans, save_plan, PlanConflict
 
 router = APIRouter(prefix='/api/voyage-registry', tags=['voyage-registry'])
@@ -202,10 +202,6 @@ async def blend_baseline_recommend(request: Request):
     if len(rows) != len(ids) or len({r.get('source_id') for r in rows}) != len(ids):
         raise HTTPException(422, '기준재고의 더미 식별자를 확인하세요')
     register = await run_in_threadpool(checked, snapshot, path(request))
-    lots = []
-    for row in rows:
-        assay = match_lot_quality(row, register)['assay'] or {}
-        lots.append({'id': row['source_id'], 'available_t': row['tonnes'], 'gcv_arb': assay.get('gcv_arb'),
-                     'tm_ar': assay.get('tm_ar'), 'sulfur_ar': assay.get('sulfur_ar')})
+    lots = blend_lots(rows, register)
     result = await run_in_threadpool(inventory_checked, recommend_blend, lots, criteria)
     return {**result, 'baseline_revision': baseline['revision'], 'as_of': baseline['as_of'], 'registry_revision': register['revision']}

@@ -210,6 +210,11 @@ def _largest(slots: list[dict], grade: str, layout: dict) -> dict | None:
     return best["placement"] if best else None
 
 
+def blocked_result(as_of, blocked: str) -> dict:
+    """추천할 수 없을 때 돌려주는 결과 모양(화물 없음, 이유만 담는다)."""
+    return {"as_of": as_of, "cargo": None, "options": [], "no_fit": None, "gaps": [], "blocked": blocked}
+
+
 def recommend(cargo: dict, baseline: dict, layout: dict, routes: dict[int, set[str]]) -> dict:
     cargo = validate_cargo(cargo)
     lots = (baseline or {}).get("lots") or []

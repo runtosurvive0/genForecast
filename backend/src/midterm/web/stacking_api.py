@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from midterm import database
 from midterm.dummy_data.profiles import load_profiles
-from midterm.stacking import load_layout, load_routes, recommend, validate_cargo
+from midterm.stacking import blocked_result, load_layout, load_routes, recommend, validate_cargo
 from midterm.stacking.registry_cargo import cargo_from_voyage, waiting_voyages
 from midterm.stock_baseline import read_baseline
 from midterm.voyage_registry import RegistryError, snapshot
@@ -54,8 +54,7 @@ def post_recommend(request: Request, body=Body(...), db_path: Path = Depends(get
             register, baseline = _read_inputs(db_path)
             cargo, blocked = cargo_from_voyage(voyage_no, register, baseline, load_profiles())
             if blocked:
-                return {"as_of": baseline.get("as_of"), "cargo": None, "options": [], "no_fit": None,
-                        "gaps": [], "blocked": blocked}
+                return blocked_result(baseline.get("as_of"), blocked)
         else:
             cargo = validate_cargo(body)
             baseline = read_baseline(db_path)

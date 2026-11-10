@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from midterm.assistant import checks
+from midterm.baseline_quality import blend_lots
+from midterm.blend_recommendation import recommend_blend
+from midterm.dummy_data.profiles import load_profiles
+from midterm.stacking import blocked_result, load_layout, load_routes, recommend, validate_cargo
+from midterm.stacking.registry_cargo import cargo_from_voyage, waiting_voyages
+from midterm.stock_baseline import read_baseline
 from midterm.supply import KST, timestamp
 from midterm.voyage_registry import STATUSES, snapshot
 from midterm.vessels.waiting import waiting_candidates
@@ -270,6 +276,71 @@ def _screen_checks(args: dict, ctx: ToolContext) -> dict:
     return _ok(result["as_of"], _CHECK_SOURCE[args["screen"]], result)
 
 
+# ---------------------------------------------------------------- 적치·혼탄 추천 (읽기 전용)
+CARGO_KEYS = ("vessel_name", "coal_name", "grade", "cv", "tonnes", "berth", "destination_yard")
+MAX_BLEND_LOTS = 100
+
+
+def _recommend_stacking(args: dict, ctx: ToolContext) -> dict:
+    try:
+        baseline = read_baseline(ctx.db_path)
+        as_of = baseline.get("as_of")
+        given = [k for k in CARGO_KEYS if args.get(k) is not None]
+        if args.get("voyage_no") is not None:
+            if given:
+                return _fail("항차 번호와 화물 정보를 함께 줄 수 없습니다")
+            cargo, blocked = cargo_from_voyage(args["voyage_no"], snapshot(ctx.db_path), baseline, load_profiles())
+            if blocked:
+                return _ok(as_of, "registry", blocked_result(as_of, blocked))
+            source = "registry"
+        else:
+            if not given:
+                return _fail("voyage_no 또는 화물 정보(선명·톤수·부두)가 필요합니다")
+            cargo = validate_cargo({"source": "scenario", "ref": args.get("vessel_name"),
+                                    **{k: args.get(k) for k in CARGO_KEYS}})
+            source = "scenario"
+        return _ok(as_of, source, recommend(cargo, baseline, load_layout(), load_routes()))
+    except ValueError as exc:
+        return _fail(f"적치 추천 입력 오류: {exc}")
+    except Exception as exc:
+        return _fail(f"적치 추천 실패: {exc}")
+
+
+def _stacking_candidates(args: dict, ctx: ToolContext) -> dict:
+    try:
+        baseline = read_baseline(ctx.db_path)
+        items = waiting_voyages(snapshot(ctx.db_path), baseline, load_profiles())
+        return _ok(baseline.get("as_of"), "actual", {"items": items})
+    except Exception as exc:
+        return _fail(f"하역 대기 목록 조회 실패: {exc}")
+
+
+def _recommend_blend(args: dict, ctx: ToolContext) -> dict:
+    try:
+        baseline = read_baseline(ctx.db_path)
+        ids = args.get("lot_ids")
+        rows = [r for r in baseline["lots"] if r.get("source_id") and (r.get("tonnes") or 0) > 0]
+        if ids:
+            if len(ids) > MAX_BLEND_LOTS or len(set(ids)) != len(ids) or any(not isinstance(i, str) for i in ids):
+                return _fail(f"lot_ids는 중복 없는 문자열 {MAX_BLEND_LOTS}개 이하여야 합니다")
+            chosen = [r for r in rows if r["source_id"] in set(ids)]
+            if len(chosen) != len(ids):
+                return _fail("기준재고에 없는 원탄이 lot_ids에 있습니다")
+            rows = chosen
+        elif len(rows) > MAX_BLEND_LOTS:
+            return _fail(f"기준재고 원탄이 {MAX_BLEND_LOTS}개를 넘습니다. lot_ids로 대상 원탄을 지정하세요")
+        if not rows:
+            return _fail("혼탄에 쓸 기준재고 원탄이 없습니다")
+        criteria = {k: args[k] for k in ("tonnes", "target_gcv_arb", "gcv_tolerance", "max_tm_ar", "max_sulfur_ar")
+                    if k in args}
+        result = recommend_blend(blend_lots(rows, snapshot(ctx.db_path)), criteria)
+        return _ok(baseline.get("as_of"), "actual", {**result, "baseline_revision": baseline.get("revision")})
+    except ValueError as exc:
+        return _fail(f"혼탄 추천 입력 오류: {exc}")
+    except Exception as exc:
+        return _fail(f"혼탄 추천 실패: {exc}")
+
+
 # ---------------------------------------------------------------- 등록
 _DAY = {"type": ["string", "null"], "pattern": DAY_PATTERN}
 
@@ -310,6 +381,34 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
             "input_id": {"type": "integer"},
             "yard": {"type": "integer", "minimum": 1, "maximum": 3},
         }, "required": ["screen"]}, _screen_checks),
+    ToolSpec("recommend_stacking", "하역 대기 화물을 저탄장 어디에 내리면 되는지 추천한다(읽기 전용). 항차 원장의 항차는 "
+             "voyage_no로, 시나리오 선박은 선명·탄종·고(고열량)/저(저열량)·열량·톤수·하역 부두로 지정한다. "
+             "막힌 경우 data.blocked에 이유가 담긴다.", {
+        "type": "object",
+        "properties": {
+            "voyage_no": {"type": "string"},
+            "vessel_name": {"type": "string"},
+            "coal_name": {"type": ["string", "null"]},
+            "grade": {"type": ["string", "null"], "enum": ["고", "저", None]},
+            "cv": {"type": ["number", "null"], "description": "열량(kcal/kg)"},
+            "tonnes": {"type": "number", "description": "물량(t)"},
+            "berth": {"type": "integer", "minimum": 1, "maximum": 3},
+            "destination_yard": {"type": ["integer", "null"], "minimum": 1, "maximum": 3},
+        }, "required": []}, _recommend_stacking),
+    ToolSpec("stacking_candidates", "지금 하역 대기 중인 항차(도착했고 부두가 배정됐으며 아직 하역 전)와 "
+             "각 항차의 화물 정보·추천 불가 이유를 조회한다.", {
+        "type": "object", "properties": {}, "required": []}, _stacking_candidates),
+    ToolSpec("recommend_blend", "기준재고 원탄으로 목표 발열량에 맞는 혼탄 구성을 추천한다(저장하지 않음). "
+             "lot_ids가 없으면 기준재고 원탄 전체를 쓰며, 100개를 넘으면 lot_ids를 지정해야 한다.", {
+        "type": "object",
+        "properties": {
+            "tonnes": {"type": "number", "description": "요청량(t)"},
+            "target_gcv_arb": {"type": "number", "description": "목표 발열량(kcal/kg, 수입기준)"},
+            "gcv_tolerance": {"type": "number"},
+            "max_tm_ar": {"type": "number"},
+            "max_sulfur_ar": {"type": "number"},
+            "lot_ids": {"type": "array", "description": "대상 원탄 source_id(최대 100개)"},
+        }, "required": ["tonnes", "target_gcv_arb", "gcv_tolerance", "max_tm_ar", "max_sulfur_ar"]}, _recommend_blend),
 ]}
 
 

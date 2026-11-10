@@ -183,3 +183,13 @@ def test_ask_without_context_unchanged(auth_client, capture_llm):
 def test_ask_context_rejected(auth_client, fake_llm_override, context):
     r = auth_client.post('/api/assistant/ask', {'question': '질문', 'history': [], 'context': context})
     assert r.status_code == 422
+
+
+def test_context_accepts_cargo_keys(auth_client, capture_llm):
+    selection = {'vessel': 'GEN4CAST OCEAN', 'voyage_no': 'V1', 'cargo_grade': '저', 'cargo_cv': 4800,
+                 'cargo_t': 30000, 'berth': 2, 'dest_yard': 1}
+    body = {'question': '질문', 'history': [], 'context': {'screen': 'forecast', 'selection': selection}}
+    assert auth_client.post('/api/assistant/ask', body).status_code == 200
+    assert 'GEN4CAST OCEAN' in capture_llm.systems[0]
+    bad = {'question': '질문', 'history': [], 'context': {'screen': 'forecast', 'selection': {'cargo': 'x'}}}
+    assert auth_client.post('/api/assistant/ask', bad).status_code == 422

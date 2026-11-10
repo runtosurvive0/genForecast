@@ -103,7 +103,7 @@ def test_blend_grade_unknown(db):
 def test_blend_tonnes_zero_ignored(db):
     build(db, [('s1', 'A', 0, {'lot': {'grade': ''}})])
     result = run_checks('blend', {}, ctx_for(db))
-    assert result['items'] == []
+    assert real(result) == []
     assert result['details'] == {'lots': {}}
 
 
@@ -128,7 +128,7 @@ def test_result_shape_and_as_of(db):
     build(db, [('s1', 'A', 100, {'assay': FULL})])
     result = run_checks('blend', {}, ctx_for(db))
     assert result['screen'] == 'blend' and result['as_of'] == '2026-11-05T09:00:00+09:00'
-    assert result['items'] == [] and result['errors'] == []
+    assert real(result) == [] and result['errors'] == []
 
 
 def test_sort_order():
@@ -287,7 +287,7 @@ def test_forecast_sample_inputs(db):
     got = by_id(run_checks('forecast', {'live': ['stock']}, ctx_for(db)))['forecast.sample_inputs']
     assert got['kind'] == 'sample'
     assert [t['label'] for t in got['targets']] == ['하역 잔량', '호기 출력']
-    assert run_checks('forecast', {'live': ['stock', 'ships', 'units']}, ctx_for(db))['items'] == []
+    assert real(run_checks('forecast', {'live': ['stock', 'ships', 'units']}, ctx_for(db))) == []
 
 
 def test_forecast_unknown_live_name(db):
@@ -337,3 +337,33 @@ def test_simulation_short_run_uses_allowed_horizon(db, monkeypatch, days, horizo
     got = run_checks('simulation', {}, ctx_for(db))
     assert reached == [horizon]  # HTTPException(400)이었다면 dashboard에 닿지 못한다
     assert '벗어납니다' not in repr(got) and '조회 기간은' not in repr(got)
+
+
+# ---- stacking items ----
+def real(result):
+    return [i for i in result['items'] if not i['id'].startswith('stacking.')]
+
+
+def test_checks_stacking_items(db):
+    lots = [('s1', 'A', 100, {'assay': FULL}), ('s2', 'B', 100, {'assay': FULL})]
+    build(db, lots, baseline_lots=[
+        {'source_id': 's1', 'location': 'P6', 'coal_name': 'A', 'tonnes': 100, 'voyage_number': '26-1-001',
+         'grade': '고열량'},
+        {'source_id': 's2', 'location': 'P1', 'coal_name': 'B', 'tonnes': 100, 'voyage_number': '26-1-002',
+         'grade': '고열량', 'start_m': 0, 'end_m': 10}])
+    for screen in ('blend', 'forecast'):
+        got = by_id(run_checks(screen, {'live': ['stock', 'ships', 'units']}, ctx_for(db)))
+        mock = got['stacking.mock_layout']
+        assert mock['kind'] == 'dummy' and mock['title'] == '적치 추천은 모의 Pile 길이·칸 용량을 씁니다'
+    got = by_id(run_checks('blend', {}, ctx_for(db)))
+    unplaced = got['stacking.unplaced']
+    assert unplaced['kind'] == 'missing' and unplaced['count'] == 1
+    assert unplaced['title'] == '구간을 모르는 원탄 1건'
+    assert unplaced['targets'][0]['label'].startswith('P6 · A')
+
+
+def test_checks_stacking_unplaced_absent_when_placed(db):
+    build(db, [('s1', 'A', 100, {'assay': FULL})], baseline_lots=[
+        {'source_id': 's1', 'location': 'P1', 'coal_name': 'A', 'tonnes': 100, 'voyage_number': '26-1-001',
+         'grade': '고열량', 'start_m': 0, 'end_m': 10}])
+    assert 'stacking.unplaced' not in by_id(run_checks('blend', {}, ctx_for(db)))
