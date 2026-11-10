@@ -6,7 +6,8 @@ export interface BerthAssignment {
   /** 고정(이미 접안한) 행은 null */
   eta: string | null;
   berth_at: string | null; unload_end: string | null;
-  tonnes: number; demurrage_hours: number | null; demurrage_usd: number | null;
+  /** 고정(이미 접안한) 행은 null */
+  tonnes: number | null; demurrage_hours: number | null; demurrage_usd: number | null;
   reasons: string[]; changed: boolean; fixed: boolean;
 }
 export interface BerthKpis {
@@ -49,7 +50,7 @@ function checkKpis(v: unknown): void {
 function checkAssignments(v: unknown): void {
   if (!Array.isArray(v)) bad();
   for (const a of v as unknown[]) {
-    if (!isObj(a) || !isStr(a.voyage_no) || !isNum(a.tonnes) || !strArray(a.reasons)
+    if (!isObj(a) || !isStr(a.voyage_no) || !numOrNull(a.tonnes) || !strArray(a.reasons)
       || typeof a.changed !== 'boolean' || typeof a.fixed !== 'boolean'
       || !strOrNull(a.voyage_number) || !strOrNull(a.vessel_name) || !strOrNull(a.yard)
       || !strOrNull(a.berth_id) || !strOrNull(a.eta) || !strOrNull(a.berth_at) || !strOrNull(a.unload_end)

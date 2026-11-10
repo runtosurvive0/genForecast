@@ -63,6 +63,17 @@ test('고정 행의 eta null, 불가능 안의 kpis null, message null, current 
   assert.equal(r.current, null);
 });
 
+// 백엔드 plan.py는 고정 점유 행에 tonnes·eta·unload_end를 null로 보낸다(고정 행은 물량 원장 밖).
+test('고정 점유 행의 tonnes null과 unload_end null을 허용한다', () => {
+  const raw = clone();
+  raw.options[0].assignments.unshift({ voyage_no: 'f', voyage_number: 'V-F', vessel_name: '선박 f', yard: '1', berth_id: 'X', eta: null, berth_at: '2026-11-10T00:00:00+09:00', unload_end: null, tonnes: null, demurrage_hours: null, demurrage_usd: null, reasons: [], changed: false, fixed: true });
+  const r = parseBerthPlan(raw);
+  assert.equal(r.options[0].assignments[0].tonnes, null);
+  assert.equal(r.options[0].assignments[0].fixed, true);
+  const strTonnes = clone(); strTonnes.options[0].assignments[0].tonnes = '1';
+  assert.throws(() => parseBerthPlan(strTonnes), { message: BAD });
+});
+
 test('형식이 다르면 throw한다', () => {
   const noOptions = clone(); delete noOptions.options;
   assert.throws(() => parseBerthPlan(noOptions), { message: BAD });
