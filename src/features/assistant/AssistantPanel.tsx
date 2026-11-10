@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { X } from 'lucide-react';
 import {
   askAssistant, formatAsOf, SOURCE_LABEL,
@@ -182,7 +183,7 @@ export function AssistantPanel({ open, onClose, pending = null, onPendingSent, s
             <AnswerDetail answer={m.content} result={m.result} />
           </div>
         ))}
-        {sending && <p className="gf-asst-status" role="status">확인하는 중입니다…</p>}
+        {sending && <ProcessingOrb state="solving" label="답을 확인하는 중" className="gf-asst-status" />}
         {error && <p className="gf-asst-error" role="alert">{error}</p>}
       </div>
       <form className="gf-asst-form" onSubmit={e => { e.preventDefault(); void submit(); }}>

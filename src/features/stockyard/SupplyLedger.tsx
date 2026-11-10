@@ -1,4 +1,5 @@
 import type { PlanningState } from '@/domain/use-planning';
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { SUPPLY_GROUPS } from '@/domain/supply';
 import { useYardBaseline } from '@/domain/use-yard-baseline';
 import { sumKnownInventory, supplyFeeds } from './supply-view';
@@ -14,7 +15,7 @@ export function SupplyLedger({ planning, selectedDay }: { planning: PlanningStat
   return <div className="gf-supply-ledger">
     <section className="gf-supply-ledger__section" aria-label="저탄장 기준재고">
       <header><h2>저탄장 기준재고</h2><span>{data?.as_of ? `${data.as_of} 기준` : '기준일 미확인'}</span></header>
-      {error ? <p role="alert">{error}</p> : !data ? <p role="status">기준재고 조회 중</p> : !data.as_of ? <p>등록된 기준재고가 없습니다.</p> : <>
+      {error ? <p role="alert">{error}</p> : !data ? <ProcessingOrb state="searching" label="기준재고 조회 중" /> : !data.as_of ? <p>등록된 기준재고가 없습니다.</p> : <>
         <strong>{fmt(data.total_t)}</strong>
         <div className="gf-supply-ledger__yards">{[1, 2, 3].map(yard => {
           const lots = data.lots.filter(row => yard === 3 ? /^[AB]/.test(row.location) : /^P\d+$/.test(row.location) && (Number(row.location.slice(1)) <= 4 ? 1 : 2) === yard);

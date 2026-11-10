@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { Section } from '@/components/tower/primitives';
 import { Button } from '@/components/ui/button';
 import { authJson } from '@/lib/auth-client';
@@ -30,7 +31,7 @@ export function OutageSchedule() {
   return <div className="gf-outage-schedule">
     <Section title="호기별 계획정지 일정" note={data ? `${data.name} · DB 입력 ${data.input_id ?? '기본 설정'} · 종료일 포함, 다음 날 00:00 복귀` : 'DB에 등록된 석탄·원전 정비계획'}
       action={<Button variant="outline" disabled={loading} onClick={()=>setRevision(n=>n+1)}>다시 조회</Button>}>
-      {loading && <p role="status">정비 일정을 불러오는 중…</p>}
+      {loading && <ProcessingOrb state="searching" label="정비 일정을 불러오는 중" />}
       {error && <p role="alert">{error}</p>}
       {!loading && !error && data && <>
         <div className="gf-outage-filters">

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { LoaderCircle } from 'lucide-react';
+import { InlineOrb } from '@/components/ProcessingOrb';
 import { topBarLabel, type PlanningJobView } from '@/domain/planning-job';
 import './planning-job.css';
 
@@ -34,7 +34,7 @@ export function PlanningJobIndicator({ view, onOpen }: { view: PlanningJobView; 
   const label = topBarLabel(view);
   if (!label) return null;
   return <span className="gf-job-indicator-slot"><button type="button" className="gf-job-indicator" aria-label={`${label} · 전망 입력·계산 화면 열기`} title={view.detail} onClick={onOpen}>
-    <LoaderCircle size={14} aria-hidden="true" className="gf-job-indicator-icon" />
+    <InlineOrb state="solving" className="gf-job-indicator-icon" />
     <span className="gf-job-indicator-text">{label}</span>
     <span className="gf-job-indicator-short" aria-hidden="true">{view.percent !== null ? `${view.percent}%` : '준비'}</span>
   </button></span>;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import {
   ArrowRight,
   Layers3,
@@ -296,7 +297,7 @@ export function OperationsYard({
           <div className="gf-oy-manual" aria-label="수기 원장 구역별 잔량" aria-live="polite">
             <span className="gf-oy-manual-title">입하 배분 원장</span>
             {manualError ? <span>불러오지 못했습니다. 재고 원장에서 다시 확인하세요.</span> :
-              !manualLots ? <span>불러오는 중</span> : manualSummary.length === 0 ?
+              !manualLots ? <ProcessingOrb state="searching" label="입하 배분 원장 불러오는 중" /> : manualSummary.length === 0 ?
                 <span>입하 배분 기록 없음 · 기준재고와 별도</span> :
                 manualSummary.map(item => <button type="button" className="gf-oy-manual-item" key={item.location} onClick={onOpenLedger} title="수기 재고 원장 열기">
                   {item.location.startsWith('P') ? `Pile ${item.location.slice(1)}` : `${item.location[0]}${item.location.slice(1)} 셀`}

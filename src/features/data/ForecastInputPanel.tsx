@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { useAccount } from '@/lib/account-context';
 import { Button } from '@/components/ui/button';
 import { PlanningInputForm, type PlanningInputDetail } from './PlanningInputForm';
@@ -87,7 +88,7 @@ export function ForecastInputPanel({onResult, onSetup}: {onResult: (run: {id: st
   const completed = active?.state === 'done' && active.summary ? active : undefined;
   const failed = active?.state === 'error' ? active : undefined;
   return <div className="forecast-input-panel milp-admin">
-    {loading && !inputs.length && <p role="status">DB에서 전망 조건을 불러오는 중…</p>}
+    {loading && !inputs.length && <ProcessingOrb state="searching" label="DB에서 전망 조건을 불러오는 중" />}
     {loadError && <div role="alert"><p>{loadError}</p><Button variant="outline" onClick={()=>void refreshInputs()}>조건 다시 불러오기</Button></div>}
     {!loading && !loadError && !inputs.length && <div className="forecast-input-empty"><h2>저장된 전망 조건이 없습니다</h2><p>수요·정비·단가의 기준 조건을 먼저 등록해 주세요. 한 번 등록하면 다음 계산부터 가져올 수 있습니다.</p>{canEdit && <Button onClick={onSetup}>기준 조건 등록</Button>}</div>}
     {!canEdit && <p className="planning-input-note">저장된 조건과 계산 결과를 조회할 수 있습니다. 조건 저장과 전망 실행은 관리자 권한이 필요합니다.</p>}

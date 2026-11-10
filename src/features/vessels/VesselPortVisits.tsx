@@ -126,7 +126,7 @@ export function VesselPortVisits({
         <p role="status">유효한 MMSI를 등록하면 조회할 수 있습니다.</p>
       )}
       {eligible && (!ready || !owner) && (
-        <p role="status">관심 선박의 서버 등록을 기다리는 중입니다.</p>
+        <ProcessingOrb theme={theme} state="connecting" label="관심 선박의 서버 등록을 기다리는 중" />
       )}
       {location.protocol === "file:" && (
         <p role="status">

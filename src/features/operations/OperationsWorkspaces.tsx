@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import {
   ArrowRight,
   RefreshCw,
@@ -687,7 +688,7 @@ function ReceiptReview({ snapshot: s, demoSnapshot, demoStatus, demoCatalog }: {
           <button type="button" className="gf-ow-action" disabled={plansLoading || saving} onClick={() => void savePlan()}>{saving ? '저장 중' : selectedPlan ? '계획 저장' : '새 계획 저장'}</button>
           {selectedPlan && <button type="button" className="gf-ow-link" disabled={saving} onClick={() => void savePlan(true)}>별도 계획으로 저장</button>}
         </div>
-        {plansLoading && <p className="gf-ow-note" role="status">저장된 계획을 불러오는 중입니다.</p>}
+        {plansLoading && <ProcessingOrb state="searching" label="저장된 계획을 불러오는 중" className="gf-ow-note" />}
         {selectedPlan && (selectedPlan.plan.runId !== s.run_id || selectedPlan.plan.forecastStart !== s.start || selectedPlan.plan.forecastHorizon !== String(s.horizon_days)) && <p className="gf-ow-error" role="status">이 계획의 저장 당시 전망 기준은 {selectedPlan.plan.runId} · {selectedPlan.plan.forecastStart} · {selectedPlan.plan.forecastHorizon}일입니다. 현재 선택한 전망과 다르므로 비교 기준을 확인하세요.</p>}
         {dirty && <p className="gf-ow-note">저장되지 않은 변경이 있습니다.</p>}
         {planMessage && <p className="gf-ow-note" role="status">{planMessage}</p>}

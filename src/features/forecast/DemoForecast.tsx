@@ -1,6 +1,7 @@
 // 수급 예측: D+7~90 재고·고갈·접안을 계산하고, 상황 변경과 어시스턴트 지시를 바로 반영한다.
 // 어시스턴트는 ZGX의 LLM 해석을 먼저 쓰고, 쓸 수 없으면 규칙 기반 해석으로 대신한다.
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { Bot, RotateCcw, Sparkles, Check } from "lucide-react";
 import { Area, Bar, CartesianGrid, ComposedChart, Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
@@ -410,7 +411,7 @@ export function DemoForecast({ theme, snapshot, status, onAsk, onNavigate, onOpe
                             <p className="dfc-stack-note">시나리오 가정 · 현재 기준재고 기준(도착 시 재고가 달라질 수 있음)</p>
                             {(() => {
                               const view = stackViews[v.id];
-                              if (!view || view.status === "loading") return <p className="dfc-stack-note" role="status">적치 추천을 계산하는 중입니다.</p>;
+                              if (!view || view.status === "loading") return <ProcessingOrb state="solving" label="적치 추천을 계산하는 중" className="dfc-stack-note" />;
                               if (view.status === "error") return <p className="dfc-stack-note dfc-stack-error">적치 추천을 불러오지 못했습니다: {view.message}</p>;
                               return <StackingOptions result={view.result} onOpenYard={onOpenStacking ? p => onOpenStacking(stackingFocusValue(p)) : undefined} />;
                             })()}

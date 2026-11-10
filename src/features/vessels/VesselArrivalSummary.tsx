@@ -1,4 +1,5 @@
 import { ChevronRight, Info } from "lucide-react";
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { Metric } from "@/components/tower/primitives";
 import { Button } from "@/components/ui/button";
 import { freshness } from "@/domain/control-tower";
@@ -99,7 +100,7 @@ export function VesselArrivalSummary({
           label={loadingArrival ? "도착 상태 확인 중" : berth ? `${berth.actualLabel ?? "부두 인근 상태"} · KST` : "입항 전망 · KST"}
           value={
             <span className="vessel-eta-primary">
-              {loadingArrival ? <span className="gf-voyage-skeleton" role="status" aria-label="정보 불러오는 중" /> : berth ? berth.actual ? etaDate(berth.actual) : berth.observation.stale ? "마지막 위치 · 확인 필요" : berth.observation.estimated ? "AIS 접안 추정" : "접안 판별 대기" : eta
+              {loadingArrival ? <ProcessingOrb state="searching" label="정보 불러오는 중" hideLabel className="gf-voyage-skeleton" /> : berth ? berth.actual ? etaDate(berth.actual) : berth.observation.stale ? "마지막 위치 · 확인 필요" : berth.observation.estimated ? "AIS 접안 추정" : "접안 판별 대기" : eta
                 ? etaDate(eta)
                 : basic?.state === "blocked"
                   ? "ETA 계산 보류"
@@ -113,7 +114,7 @@ export function VesselArrivalSummary({
             label={berth ? "마지막 AIS 관측 · KST" : basic ? "기상으로 추가되는 시간" : "등록 계획 대비"}
             value={
               <span className="vessel-weather-eta-delay">
-                {loadingArrival ? <span className="gf-voyage-skeleton" role="status" aria-label="정보 불러오는 중" /> : berth ? etaDate(berth.observation.observedAt) : basic
+                {loadingArrival ? <ProcessingOrb state="searching" label="정보 불러오는 중" hideLabel className="gf-voyage-skeleton" /> : berth ? etaDate(berth.observation.observedAt) : basic
                   ? weather?.delayH == null
                     ? "미확정"
                     : `+${n(weather.delayH, 1)}`
@@ -139,7 +140,7 @@ export function VesselArrivalSummary({
         <div className="vessel-arrival-facts">
           <Metric
             label="관측 속도"
-            value={validSpeed ? `${n(speed, 1)} ` : loadingArrival ? <span className="gf-voyage-skeleton" role="status" aria-label="정보 불러오는 중" /> : "미수신"}
+            value={validSpeed ? `${n(speed, 1)} ` : loadingArrival ? <ProcessingOrb state="searching" label="정보 불러오는 중" hideLabel className="gf-voyage-skeleton" /> : "미수신"}
             unit={validSpeed ? "kn" : undefined}
             note={`${basic ? "예상" : "등록"} 잔여거리 ${distance == null ? "미확정" : `${n(distance)} nm`}`}
           />

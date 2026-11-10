@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ProcessingOrb } from "@/components/ProcessingOrb";
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import {
   checksQuery, useAssistantChecks, useLlmStatus,
@@ -94,7 +95,7 @@ export function AssistantSection({ screen, params, context, questions, onAsk, on
       </header>
       {open && (
         <div className="gf-as-body" id={bodyId}>
-          {state === 'loading' && !result && <p className="gf-as-note" role="status">점검하는 중입니다…</p>}
+          {state === 'loading' && !result && <ProcessingOrb state="searching" label="점검하는 중" className="gf-as-note" />}
           {state === 'error' && (
             <p className="gf-as-note gf-as-error" role="alert">
               점검을 불러오지 못했습니다 <button type="button" className="gf-as-link" onClick={reload}>다시 시도</button>
