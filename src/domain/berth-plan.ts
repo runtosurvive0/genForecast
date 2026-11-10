@@ -1,4 +1,4 @@
-// 접안 추천 API(ZGX) 타입·파서·호출. 실패를 합성 결과로 대신하지 않는다.
+// 접안 추천 API(ZGX) 결과 타입·파서·표시 도우미. 호출은 berth-plan-api.ts에 둔다.
 
 export interface BerthAssignment {
   voyage_no: string; voyage_number: string | null; vessel_name: string | null;
@@ -81,14 +81,6 @@ export function parseBerthPlan(raw: unknown): BerthPlanResult {
     checkAssignments(opt.assignments);
   }
   return { ...r, current: r.current ?? null } as unknown as BerthPlanResult;
-}
-
-export async function fetchBerthPlan(
-  body: { horizon_days?: number; penalty_usd?: number }, signal?: AbortSignal,
-): Promise<BerthPlanResult> {
-  // auth-client는 지연 로드: 순수 파서 시험이 브라우저 전용 모듈을 끌어오지 않게 한다.
-  const { authJson } = await import('../lib/auth-client');
-  return parseBerthPlan(await authJson<unknown>('/api/berth-plan/recommend', { method: 'POST', body: JSON.stringify(body), signal }));
 }
 
 /** 백엔드 reasons 코드를 화면 문구로 바꾼다. 모르는 코드는 그대로 돌려준다. */
