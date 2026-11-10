@@ -107,7 +107,7 @@ export function BerthGantt({ result, option, theme }: { result: BerthPlanResult;
               const y = HEAD_H + berths.indexOf(o.berth) * ROW_H + 3;
               return (
                 <g key={`outage-${o.berth}-${o.start}`}>
-                  <title>{`${o.berth} 정비 · ${kstLabel(o.start)} ~ ${kstLabel(o.end)}`}</title>
+                  <title>{`${o.berth} 정비${o.reason ? ` · ${o.reason}` : ""} · ${kstLabel(o.start)} ~ ${kstLabel(o.end)}`}</title>
                   <rect className="gf-bp-outage" data-on={o.berth} x={x(from)} y={y} width={Math.max(2, x(to) - x(from))} height={ROW_H - 6} fill={`url(#${uid}-outage)`} />
                   <rect className="gf-bp-outage-edge" x={x(from)} y={y} width={Math.max(2, x(to) - x(from))} height={ROW_H - 6} />
                 </g>

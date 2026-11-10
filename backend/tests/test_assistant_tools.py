@@ -343,3 +343,35 @@ def test_optimize_berth_schedule_tool_failure_is_reported(monkeypatch):
     monkeypatch.setattr('midterm.assistant.tools.load_inputs', boom)
     r = run_tool('optimize_berth_schedule', {}, ctx_for())
     assert not r['ok'] and r['error'].startswith('접안 추천 실패')
+
+
+def test_optimize_berth_schedule_tool_time_budget_and_penalty_cap(monkeypatch):
+    from midterm.berth_plan.inputs import build_inputs, load_berths
+    from test_berth_plan_api import AS_OF, REGISTRY
+
+    berths, outages = load_berths()
+    monkeypatch.setattr('midterm.assistant.tools.load_inputs',
+                        lambda db_path, as_of, horizon_days: build_inputs(REGISTRY, berths, outages, None, AS_OF,
+                                                                          horizon_days))
+    seen = {}
+
+    def fake_recommend(inputs, penalty_usd=20000., locks=(), time_limit_s=30.):
+        seen.update(penalty_usd=penalty_usd, time_limit_s=time_limit_s)
+        return {'as_of': AS_OF.isoformat(), 'options': []}
+    monkeypatch.setattr('midterm.assistant.tools.recommend_berth_plan', fake_recommend)
+    assert run_tool('optimize_berth_schedule', {}, ctx_for())['ok']
+    assert seen['time_limit_s'] == 10
+    for penalty in (1e9 + 1, 1e308):
+        r = run_tool('optimize_berth_schedule', {'penalty_usd': penalty}, ctx_for())
+        assert not r['ok'] and '벌점 단가는 0 이상 1,000,000,000 이하로 입력하세요' in r['error']
+    assert run_tool('optimize_berth_schedule', {'penalty_usd': 1e9}, ctx_for())['ok']
+
+
+def test_optimize_berth_schedule_tool_registry_error(monkeypatch):
+    from midterm.voyage_registry import RegistryError
+
+    def fail(*args, **kwargs):
+        raise RegistryError('원장 파일 잠김', 503)
+    monkeypatch.setattr('midterm.assistant.tools.load_inputs', fail)
+    r = run_tool('optimize_berth_schedule', {}, ctx_for())
+    assert not r['ok'] and r['error'] == '항차 원장 읽기 실패: 원장 파일 잠김'

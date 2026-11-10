@@ -37,7 +37,7 @@ const plan = (extra: Row = {}) => ({
   gaps: [{ kind: 'no_demurrage', voyage_no: 'V-002', message: '체선료 단가 없음 · 체선료 계산에서 제외' }, { kind: 'no_specs', voyage_no: null, message: '선형 제한 미적용(선박 제원 없음)' }],
   message: null, current, options: [optionA, optionB, optionC],
   berths: [{ id: 'BD-1', yards: ['1', '2'] }, { id: 'BD-2', yards: ['2', '3'] }, { id: 'BD-3', yards: ['3'] }],
-  outages: [{ berth: 'BD-2', start: T(13, 8), end: T(14, 20) }],
+  outages: [{ berth: 'BD-2', start: T(13, 8), end: T(14, 20), reason: '하역기 정비(예시)' }],
   ...extra,
 });
 const stacking = { as_of: T(10, 9), cargo: null, options: [{ rank: 1, placements: [{ yard: 2, target: 'P4', from_m: 0, to_m: 120, tonnes: 80000 }], reasons: [], warnings: [], assumptions: [] }], no_fit: null, gaps: [], blocked: null };
@@ -110,6 +110,7 @@ test('간트: 안이 부두 2개만 써도 부두 3줄과 정비 빗금을 그�
   await expect(gantt.locator('.gf-bp-bar[data-on="BD-2"]')).toHaveCount(0);
   await expect(gantt.locator('.gf-bp-outage')).toHaveCount(1);
   await expect(gantt.locator('.gf-bp-outage')).toHaveAttribute('data-on', 'BD-2');
+  await expect(gantt.locator('g:has(> .gf-bp-outage) > title')).toHaveText('BD-2 정비 · 하역기 정비(예시) · 11-13 08:00 ~ 11-14 20:00');
   await expect(page.locator('.gf-bp-legend')).toContainText('정비');
 });
 

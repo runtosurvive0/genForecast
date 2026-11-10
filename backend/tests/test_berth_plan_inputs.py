@@ -53,6 +53,7 @@ def test_load_berths_reads_dummy_file():
     assert outages[0].berth == 'BD-2'
     assert outages[0].start == timestamp('2026-11-20T08:00:00+09:00')
     assert outages[0].end == timestamp('2026-11-21T20:00:00+09:00')
+    assert outages[0].reason == '하역기 정비(예시)'
 
 
 def test_unload_hours():

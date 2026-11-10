@@ -30,6 +30,7 @@ class Outage:
     berth: str
     start: datetime
     end: datetime
+    reason: str | None = None  # berths.json의 reason(예시 문구). 없으면 None
 
 
 @dataclass(frozen=True)
@@ -86,7 +87,8 @@ def load_berths(path: Path | None = None) -> tuple[dict[str, Berth], list[Outage
     berths = {key: Berth(key, float(v['unload_tph']), float(v['work_hours_per_day']),
                          tuple(str(y) for y in v.get('yards') or []))
               for key, v in (raw.get('berths') or {}).items()}
-    outages = [Outage(o['berth'], timestamp(o['start']), timestamp(o['end']))
+    outages = [Outage(o['berth'], timestamp(o['start']), timestamp(o['end']),
+                      str(o['reason']) if o.get('reason') else None)
                for o in raw.get('outage_examples') or []]
     return berths, outages
 

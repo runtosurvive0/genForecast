@@ -237,3 +237,33 @@ def test_realistic_size_solves_without_overlap():
     for a in result.assignments:
         v = next(x for x in inputs.voyages if x.voyage_no == a.voyage_no)
         assert a.berth_id in v.allowed and a.berth_at >= v.eta
+
+
+def _fake_time_limit(monkeypatch, status, mip_gap):
+    """실제 풀이 결과의 해는 그대로 두고 상태·gap만 바꾼다."""
+    from types import SimpleNamespace
+    from midterm.berth_plan import solve
+    real = solve.milp
+
+    def fake(*args, **kwargs):
+        res = real(*args, **kwargs)
+        return SimpleNamespace(x=res.x, status=status, mip_gap=mip_gap, message='fake')
+    monkeypatch.setattr(solve, 'milp', fake)
+
+
+def test_time_limit_without_mip_gap_reports_unknown_gap(monkeypatch):
+    _fake_time_limit(monkeypatch, 1, None)
+    result = solve_option(make_inputs([berth('X')], [ship('a', h(0), 12000)]), 0.)
+    assert result.status == 'time_limit' and result.gap_pct is None and result.assignments
+
+
+def test_time_limit_with_mip_gap_reports_percent(monkeypatch):
+    _fake_time_limit(monkeypatch, 1, 0.05)
+    result = solve_option(make_inputs([berth('X')], [ship('a', h(0), 12000)]), 0.)
+    assert result.status == 'time_limit' and abs(result.gap_pct - 5.) < 1e-9
+
+
+def test_other_status_with_solution_is_time_limit(monkeypatch):
+    _fake_time_limit(monkeypatch, 4, None)
+    result = solve_option(make_inputs([berth('X')], [ship('a', h(0), 12000)]), 0.)
+    assert result.status == 'time_limit' and result.gap_pct is None

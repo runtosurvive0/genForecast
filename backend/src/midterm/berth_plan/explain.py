@@ -37,9 +37,20 @@ def _occupied(at: datetime, berth_id: str, others: list[Assignment]) -> bool:
     return False
 
 
-def reasons(inputs: BerthInputs, assignments: list[Assignment]) -> dict[str, list[str]]:
-    """체선이 생긴 항차마다 `berth_busy`·`outage`·`stock_priority:<항차번호>` 중 해당하는 원인."""
+def reasons(inputs: BerthInputs, assignments: list[Assignment],
+            caution_weight_usd: float = 0.) -> dict[str, list[str]]:
+    """체선이 생긴 항차마다 원인 코드. 하나도 해당하지 않으면 `wait`.
+
+    - `berth_busy`: 기다린 모든 시간에 허용 부두가 모두 다른 배로 차 있었다.
+    - `outage`: 고른 부두의 정비 때문에 시작을 미뤘다.
+    - `stock_priority:<항차번호>`: ETA가 늦은 다른 그룹의 배가 같은 허용 부두에서 먼저 시작했고,
+      그 안에 재고 벌점 항이 있었다(재고를 알고 `caution_weight_usd` > 0).
+    - `order:<항차번호>`: ETA가 늦은 배가 먼저 시작했지만 재고 때문이라고 할 근거가 없다
+      (재고 모름·가중치 0·같은 그룹 등. 예: 체선료 단가 차이).
+    - `wait`: 체선은 있으나 위 원인을 특정할 수 없다(예: 다른 부두 정비 + 고른 부두 점유).
+    현재 계획은 풀이 결과가 아니므로 `caution_weight_usd` 0으로 부른다."""
     voyages = {v.voyage_no: v for v in inputs.voyages}
+    stock_term = inputs.stock is not None and caution_weight_usd > 0
     result: dict[str, list[str]] = {}
     for a in assignments:
         v = voyages.get(a.voyage_no)
@@ -68,6 +79,8 @@ def reasons(inputs: BerthInputs, assignments: list[Assignment]) -> dict[str, lis
                        key=lambda o: (o.berth_at, o.voyage_no))
         for o in ahead:
             other = voyages[o.voyage_no]
-            found.append(f'stock_priority:{other.voyage_number or other.voyage_no}')
-        result[a.voyage_no] = found
+            name = other.voyage_number or other.voyage_no
+            other_group = stock_term and v.group is not None and other.group is not None and other.group != v.group
+            found.append(f'stock_priority:{name}' if other_group else f'order:{name}')
+        result[a.voyage_no] = found or ['wait']
     return result

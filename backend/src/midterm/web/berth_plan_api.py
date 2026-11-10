@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from midterm import database
 from midterm.berth_plan import recommend_berth_plan
 from midterm.berth_plan.inputs import BerthInputs, load_inputs
+from midterm.berth_plan.plan import parse_penalty
 from midterm.supply import now, timestamp
 from midterm.voyage_registry import RegistryError
 from midterm.web.auth_api import get_store
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 BODY_KEYS = {"horizon_days", "penalty_usd", "locks"}
 LOCK_KEYS = {"voyage_no", "berth_id", "berth_at"}
+INTERNAL_ERROR = "내부 오류(서버 로그 확인)"
 
 
 def get_berth_plan_path(request: Request) -> Path:
@@ -43,13 +45,11 @@ def parse_options(body) -> tuple[int, float, list]:
     horizon = body.get("horizon_days", 14)
     if not isinstance(horizon, int) or isinstance(horizon, bool) or not 1 <= horizon <= 30:
         raise ValueError("기간(horizon_days)은 1~30 사이 정수여야 합니다")
-    penalty = body.get("penalty_usd", 20000)
-    if not isinstance(penalty, (int, float)) or isinstance(penalty, bool) or not penalty >= 0 or penalty == float("inf"):
-        raise ValueError("벌점 단가(penalty_usd)는 0 이상의 숫자여야 합니다")
+    penalty = parse_penalty(body.get("penalty_usd", 20000))
     locks = body.get("locks", [])
     if not isinstance(locks, list):
         raise ValueError("고정(locks)은 목록이어야 합니다")
-    return horizon, float(penalty), locks
+    return horizon, penalty, locks
 
 
 def validate_locks(locks: list, inputs: BerthInputs) -> list[dict]:
@@ -81,15 +81,24 @@ def validate_locks(locks: list, inputs: BerthInputs) -> list[dict]:
 @router.post("/recommend")
 def post_recommend(request: Request, body=Body(...), db_path: Path = Depends(get_berth_plan_path)) -> dict:
     _user_id(request)
+    # 입력 오류(본문·lock)만 422다. 읽기·계산 중 예외는 ValueError라도 500으로 숨기고 로그에 남긴다.
     try:
         horizon, penalty, raw_locks = parse_options(body)
-        inputs = load_inputs(db_path, now(), horizon)
-        locks = validate_locks(raw_locks, inputs)
-        return recommend_berth_plan(inputs, penalty, locks)
-    except RegistryError as exc:
-        raise HTTPException(exc.status, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    try:
+        inputs = load_inputs(db_path, now(), horizon)
+    except RegistryError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    except Exception:
+        logger.exception("Berth plan inputs failed")
+        raise HTTPException(500, INTERNAL_ERROR) from None
+    try:
+        locks = validate_locks(raw_locks, inputs)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    try:
+        return recommend_berth_plan(inputs, penalty, locks)
     except Exception:
         logger.exception("Berth plan recommendation failed")
-        raise HTTPException(500, "내부 오류(서버 로그 확인)") from None
+        raise HTTPException(500, INTERNAL_ERROR) from None

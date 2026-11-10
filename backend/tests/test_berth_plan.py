@@ -47,9 +47,61 @@ def test_reasons_outage():
 
 
 def test_reasons_stock_priority_names_other_voyage():
-    inputs = make_inputs([berth('X')], [ship('a', h(0), 12000, number='V-A'), ship('b', h(2), 12000, number='V-B')])
-    got = reasons(inputs, [Assignment('b', 'X', h(2), h(14)), Assignment('a', 'X', h(14), h(26))])
+    # 다른 그룹의 배가 재고 벌점(가중치 > 0) 아래에서 먼저 들어갔다.
+    inputs = make_inputs([berth('X', yards=('1', '5'))],
+                         [ship('a', h(0), 12000, number='V-A'),
+                          ship('b', h(2), 12000, yard='5', group='g58', number='V-B')], stock=rich_stock())
+    got = reasons(inputs, [Assignment('b', 'X', h(2), h(14)), Assignment('a', 'X', h(14), h(26))], 20000.)
     assert 'stock_priority:V-B' in got['a']
+    assert not any(r.startswith('order:') for r in got['a'])
+
+
+def test_reasons_same_group_is_order_not_stock_priority():
+    inputs = make_inputs([berth('X')], [ship('a', h(0), 12000, number='V-A'), ship('b', h(2), 12000, number='V-B')],
+                         stock=rich_stock())
+    got = reasons(inputs, [Assignment('b', 'X', h(2), h(14)), Assignment('a', 'X', h(14), h(26))], 20000.)
+    assert 'order:V-B' in got['a']
+    assert not any(r.startswith('stock_priority') for r in got['a'])
+
+
+def test_reasons_zero_weight_or_no_stock_is_order():
+    voyages = [ship('a', h(0), 12000, number='V-A'), ship('b', h(2), 12000, yard='5', group='g58', number='V-B')]
+    plan = [Assignment('b', 'X', h(2), h(14)), Assignment('a', 'X', h(14), h(26))]
+    for stock, weight in ((rich_stock(), 0.), (None, 20000.)):
+        inputs = make_inputs([berth('X', yards=('1', '5'))], voyages, stock=stock)
+        got = reasons(inputs, plan, weight)
+        assert 'order:V-B' in got['a'] and not any(r.startswith('stock_priority') for r in got['a'])
+
+
+def test_stock_unknown_demurrage_rate_reorder_is_order():
+    # 재고 모름(A안만): ETA가 늦은 b의 체선료 단가가 커서 b가 먼저 들어간다. 재고 때문이 아니다.
+    inputs = make_inputs([berth('X')], [ship('a', h(0), 12000, 24000., number='V-A'),
+                                        ship('b', h(1), 12000, 480000., number='V-B')])
+    out = recommend_berth_plan(inputs)
+    rows = {r['voyage_no']: r for r in out['options'][0]['assignments']}
+    assert rows['b']['berth_at'] == h(1).isoformat()
+    assert 'order:V-B' in rows['a']['reasons']
+    assert not any(r.startswith('stock_priority') for r in rows['a']['reasons'])
+
+
+def test_reasons_wait_when_no_other_cause():
+    # 고른 부두 X는 고정 점유, 다른 부두 Y는 정비: berth_busy·outage·order 어느 것도 아니다.
+    inputs = make_inputs([berth('X'), berth('Y')], [ship('a', h(0), 12000)], outages=[Outage('Y', h(0), h(10))])
+    got = reasons(inputs, [Assignment('f', 'X', h(0), h(10), True), Assignment('a', 'X', h(10), h(22))])
+    assert got['a'] == ['wait']
+
+
+def test_current_plan_reasons_never_stock_priority():
+    inputs = crowded()
+    inputs = replace(inputs, voyages=[
+        replace(inputs.voyages[0], current_berth='X', current_berth_at=h(13), current_unload_end=h(25)),
+        replace(inputs.voyages[1], current_berth='X', current_berth_at=h(1), current_unload_end=h(13))])
+    out = recommend_berth_plan(inputs, 20000.)
+    current = {r['voyage_no']: r for r in out['current']['assignments']}
+    assert 'order:V-Q' in current['p']['reasons']
+    assert not any(r.startswith('stock_priority') for r in current['p']['reasons'])
+    best = {r['voyage_no']: r for r in out['options'][0]['assignments']}
+    assert 'stock_priority:V-Q' in best['p']['reasons']
 
 
 def test_current_plan_uses_registry_values():
@@ -82,6 +134,22 @@ def test_three_options_and_ranking():
     assert a['label'] == 'A. 체선 최소' and a['merged'] == ['A']
     assert a['assignments'][0]['voyage_no'] == 'p'
     assert out['options'][0]['assignments'][0]['voyage_no'] == 'q'
+
+
+def test_infeasible_b_ranked_after_feasible(monkeypatch):
+    from midterm.berth_plan import plan
+    from midterm.berth_plan.solve import OptionResult
+    real = plan.solve_option
+
+    def fake(inputs, weight, locks, time_limit_s):
+        if weight == 20000.:
+            return OptionResult('infeasible', None, [], False, '해 없음(시험)')
+        return real(inputs, weight, locks, time_limit_s)
+    monkeypatch.setattr(plan, 'solve_option', fake)
+    out = recommend_berth_plan(crowded(), 20000.)
+    assert [o['id'] for o in out['options']] == ['A', 'C', 'B']
+    assert [o['rank'] for o in out['options']] == [1, 2, 3]
+    assert out['options'][2]['status'] == 'infeasible'
 
 
 def test_identical_options_merged():
@@ -163,15 +231,23 @@ def test_berths_and_outages_in_response():
         Outage('Y', h(70), h(80)),           # 기간 끝(72시간)에 걸침: 포함
         Outage('Y', h(72), h(90)),           # 기간 뒤: 제외
     ])
+    inputs = replace(inputs, outages=[replace(o, reason='하역기 정비(예시)') if o.berth == 'X' else o
+                                      for o in inputs.outages])
     out = recommend_berth_plan(inputs)
     assert out['berths'] == [{'id': 'X', 'yards': ['1']}, {'id': 'Y', 'yards': ['2', '1']}]
     assert out['outages'] == [
-        {'berth': 'X', 'start': h(-2).isoformat(), 'end': h(4).isoformat()},
-        {'berth': 'Y', 'start': h(70).isoformat(), 'end': h(80).isoformat()},
+        {'berth': 'X', 'start': h(-2).isoformat(), 'end': h(4).isoformat(), 'reason': '하역기 정비(예시)'},
+        {'berth': 'Y', 'start': h(70).isoformat(), 'end': h(80).isoformat(), 'reason': None},
     ]
+    assert '정비 일정: 예시값' in out['assumptions']
+
+
+def test_no_outage_assumption_without_outages():
+    out = recommend_berth_plan(make_inputs([berth('X')], [ship('a', h(0), 12000)]))
+    assert '정비 일정: 예시값' not in out['assumptions']
 
 
 def test_no_targets_still_lists_berths_and_outages():
     out = recommend_berth_plan(make_inputs([berth('X')], [], outages=[Outage('X', h(1), h(5))]))
     assert out['options'] == [] and out['berths'] == [{'id': 'X', 'yards': ['1']}]
-    assert out['outages'] == [{'berth': 'X', 'start': h(1).isoformat(), 'end': h(5).isoformat()}]
+    assert out['outages'] == [{'berth': 'X', 'start': h(1).isoformat(), 'end': h(5).isoformat(), 'reason': None}]

@@ -253,7 +253,9 @@ def solve_option(inputs: BerthInputs, caution_weight_usd: float, locks: list[dic
     if res.status == 0:
         status, gap = 'optimal', 0.
     else:
-        status, gap = 'time_limit', float(getattr(res, 'mip_gap', None) or 0.) * 100
+        # 해는 있으나 최적 증명 전에 멈췄다. gap을 모르면 0으로 꾸미지 않고 None으로 둔다.
+        mip_gap = getattr(res, 'mip_gap', None)
+        status, gap = 'time_limit', (float(mip_gap) * 100 if mip_gap is not None else None)
     chosen = [cands[k] for k in range(len(cands)) if res.x[k] > .5]
     assignments = [Assignment(voyages[c.voyage].voyage_no, c.berth, c.start, c.end)
                    for c in sorted(chosen, key=lambda c: (c.start, voyages[c.voyage].voyage_no))]

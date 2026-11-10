@@ -86,8 +86,18 @@ test('부두 목록과 정비 구간을 파싱하고 형식이 다르면 throw�
   assert.throws(() => parseBerthPlan(badYards), { message: BAD });
   const badOutage = clone(); badOutage.outages[0].end = null;
   assert.throws(() => parseBerthPlan(badOutage), { message: BAD });
+  const numReason = clone(); numReason.outages[0].reason = 3;
+  assert.throws(() => parseBerthPlan(numReason), { message: BAD });
   const noOutages = clone(); noOutages.outages = {};
   assert.throws(() => parseBerthPlan(noOutages), { message: BAD });
+});
+
+test('정비 구간 reason은 문자열·null·없음을 허용한다', () => {
+  const withReason = clone(); withReason.outages[0].reason = '하역기 정비(예시)';
+  assert.equal(parseBerthPlan(withReason).outages[0].reason, '하역기 정비(예시)');
+  const nullReason = clone(); nullReason.outages[0].reason = null;
+  assert.equal(parseBerthPlan(nullReason).outages[0].reason, null);
+  assert.equal(parseBerthPlan(clone()).outages[0].reason ?? null, null);
 });
 
 test('형식이 다르면 throw한다', () => {
@@ -107,6 +117,8 @@ test('reasonLabel', () => {
   assert.equal(reasonLabel('berth_busy'), '부두 모두 사용 중');
   assert.equal(reasonLabel('outage'), '정비');
   assert.equal(reasonLabel('stock_priority:26-2-003'), '재고 우선(26-2-003 먼저)');
+  assert.equal(reasonLabel('order:26-2-004'), '다른 배 먼저(26-2-004)');
+  assert.equal(reasonLabel('wait'), '부두 사용 불가 시간');
   assert.equal(reasonLabel('unknown_code'), 'unknown_code');
 });
 

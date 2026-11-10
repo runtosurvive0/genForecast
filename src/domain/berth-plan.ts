@@ -23,8 +23,8 @@ export interface BerthOption {
 }
 export interface BerthGap { kind: string; voyage_no: string | null; message: string }
 export interface BerthInfo { id: string; yards: string[] }
-/** 조회 기간에 걸치는 정비 구간(ISO, KST). */
-export interface BerthOutage { berth: string; start: string; end: string }
+/** 조회 기간에 걸치는 정비 구간(ISO, KST). reason은 부두 자료의 정비 사유(없으면 null). */
+export interface BerthOutage { berth: string; start: string; end: string; reason?: string | null }
 export interface BerthPlanResult {
   as_of: string; horizon_days: number; source: Record<string, string>;
   assumptions: string[]; gaps: BerthGap[]; message?: string | null;
@@ -77,7 +77,7 @@ export function parseBerthPlan(raw: unknown): BerthPlanResult {
     if (!isObj(b) || !isStr(b.id) || !strArray(b.yards)) bad();
   }
   for (const o of r.outages as unknown[]) {
-    if (!isObj(o) || !isStr(o.berth) || !isStr(o.start) || !isStr(o.end)) bad();
+    if (!isObj(o) || !isStr(o.berth) || !isStr(o.start) || !isStr(o.end) || !strOrNull(o.reason)) bad();
   }
   if (r.current !== null && r.current !== undefined) {
     const c = r.current;
@@ -100,7 +100,9 @@ export function parseBerthPlan(raw: unknown): BerthPlanResult {
 export function reasonLabel(code: string): string {
   if (code === 'berth_busy') return '부두 모두 사용 중';
   if (code === 'outage') return '정비';
+  if (code === 'wait') return '부두 사용 불가 시간';
   if (code.startsWith('stock_priority:')) return `재고 우선(${code.slice('stock_priority:'.length)} 먼저)`;
+  if (code.startsWith('order:')) return `다른 배 먼저(${code.slice('order:'.length)})`;
   return code;
 }
 

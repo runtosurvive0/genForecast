@@ -108,3 +108,32 @@ def test_unexpected_error_is_500_generic(api, monkeypatch):
     monkeypatch.setattr(berth_plan_api, 'recommend_berth_plan', boom)
     r = api.post('/api/berth-plan/recommend', json={})
     assert r.status_code == 500 and r.json()['detail'] == '내부 오류(서버 로그 확인)'
+
+
+PENALTY_MESSAGE = '벌점 단가는 0 이상 1,000,000,000 이하로 입력하세요'
+
+
+@pytest.mark.parametrize('penalty', [1e308, 10**400, 1e9 + 1])
+def test_huge_penalty_is_422(api, penalty):
+    r = api.post('/api/berth-plan/recommend', json={'penalty_usd': penalty})
+    assert r.status_code == 422 and r.json()['detail'] == PENALTY_MESSAGE
+
+
+def test_penalty_at_cap_is_accepted(api):
+    assert api.post('/api/berth-plan/recommend', json={'penalty_usd': 1e9}).status_code == 200
+
+
+def test_value_error_during_calculation_is_500(api, monkeypatch):
+    def boom(*args, **kwargs):
+        raise ValueError('계산 중 내부 오류')
+    monkeypatch.setattr(berth_plan_api, 'recommend_berth_plan', boom)
+    r = api.post('/api/berth-plan/recommend', json={})
+    assert r.status_code == 500 and r.json()['detail'] == '내부 오류(서버 로그 확인)'
+
+
+def test_value_error_while_loading_inputs_is_500(api, monkeypatch):
+    def boom(*args, **kwargs):
+        raise ValueError('자료 형식 오류')
+    monkeypatch.setattr(berth_plan_api, 'load_inputs', boom)
+    r = api.post('/api/berth-plan/recommend', json={})
+    assert r.status_code == 500 and r.json()['detail'] == '내부 오류(서버 로그 확인)'
