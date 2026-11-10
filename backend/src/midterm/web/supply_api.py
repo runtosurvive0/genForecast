@@ -366,6 +366,7 @@ def build_dashboard(horizon: int, at: datetime | None, plan_key: str | None,
         issues.append("호기별 시간계획이 조회기간 또는 재고일수 계산용 추가 7일을 완전히 덮지 않음")
     if source and source.get("classification") == "functional_demo":
         issues.insert(0, "동작 확인용 MIP 결과 · 운영 계획 확인 필요")
+    issues.extend(result["plan_issues"])
     issues.extend("이탄 원장 " + issue for issue in result["transfer_issues"])
     if source and result["kpis"]["risk"] == "unknown" and not issues:
         issues.append("재고일수 분모가 0이거나 추가 7일 계획자료가 부족하여 위험도 판단 보류")
