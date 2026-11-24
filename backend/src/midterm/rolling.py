@@ -63,6 +63,35 @@ def _elapsed(history, initial_online, initial_elapsed, online_now):
     return float(k + (initial_elapsed if initial_online == online_now else 0.0))
 
 
+def _since_events(history, initial_online, initial_elapsed, now):
+    """(마지막 기동 뒤 시간, 마지막 정지 뒤 시간) -- 이어 붙인 기간의 끝(now)에서 센다. 모르면 nan.
+
+    경과시간은 마지막 상태 변화만 말한다. 섰다가 다시 켜진 호기의 정지는 거기 없어서, 긴 페어 정지 간격
+    (삼천포3·4 26시간 등)을 다음 창이 지킬 수 없다 -- `uc._transition_rule_rows`.
+    """
+    last = {True: None, False: None}  # 기동(True)·정지(False)가 난 시각
+    previous = bool(initial_online)
+    for hour, state in enumerate(history):
+        if state != previous:
+            last[state] = hour
+        previous = state
+    out = []
+    for kind in (True, False):
+        if last[kind] is not None:
+            out.append(float(now - last[kind]))
+        elif bool(initial_online) == kind:
+            out.append(float(now + initial_elapsed))  # 첫 창 앞에서 난 사건
+        else:
+            out.append(float("nan"))
+    return tuple(out)
+
+
+#: 48시간 창 안에서만 뜻이 있는 기동정지 규칙 인자. 구간 전체 연결 검사(`_joined_physical_check`)에서 뺀다 --
+#: 기동 순서는 "창 끝까지" 를 보고, DSS·Warm·Cold 는 창 시작부터 센 정지시간 상한으로 고르므로 수십 일 구간에
+#: 그대로 걸면 정상 계획도 위반으로 읽힌다. 규칙은 창마다 하드 제약으로 지키고 경계는 `_since_events` 로 잇는다.
+_WINDOW_RULE_KEYWORDS = ("transition_rules", "initial_since_start", "initial_since_stop")
+
+
 def _startup_relief(minimum, maximum, ramp, history, origin, output, a, b):
     """Move only already-adopted startup terms to the next window's floor RHS."""
     low, high, rr = (np.asarray(v, float)[a:b] for v in (minimum, maximum, ramp))
@@ -159,9 +188,13 @@ def solve_rolling(solve, target, minimum, maximum, ramp, costs, must, outage, up
             "initial_elapsed_hours": [_elapsed(history[j], bool(origin[0][j]), float(origin[1][j]),
                                                bool(online[last, j])) for j in range(n)],
         }
+        since = [_since_events(history[j], bool(origin[0][j]), float(origin[1][j]), a + keep) for j in range(n)]
+        carried["initial_since_start"] = [s[0] for s in since]
+        carried["initial_since_stop"] = [s[1] for s in since]
     answer = _stitch(pieces, hours, window, step)
     if p3:
-        answer['joined_physical_check'] = _joined_physical_check((*positional, uptime, downtime), original_kw, answer)
+        physical_kw = {key: value for key, value in original_kw.items() if key not in _WINDOW_RULE_KEYWORDS}
+        answer['joined_physical_check'] = _joined_physical_check((*positional, uptime, downtime), physical_kw, answer)
         if any(answer['joined_physical_check'].values()):
             answer.update(has_plan=False, status='joined_constraints_violated',
                           message='Joined rolling plan failed the original full-horizon physical constraints')

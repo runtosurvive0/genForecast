@@ -173,7 +173,7 @@ def coal_inputs(units: list[CoalUnit], prices: dict[str, list[float]], outages: 
 
 
 def group_constraints(inputs: CoalInputs, target: np.ndarray) -> dict:
-    """집단 기수 하한(당진 2묶음·삼천포·여수·영흥), 동해안 MW 상한, 동해안 발전소별 1기 상한.
+    """집단 기수 하한(당진 2묶음·삼천포·여수·영흥·거래소 단지 그룹), 동해안·당진 MW 상한, 동해안 발전소별 1기 상한.
 
     하한을 채울 가용 호기가 모자란 시간은 그 시간의 하한을 가용 대수로 낮춘다(원천은 그 발전소
     제약을 통째로 뺐다 -- 1년을 푸는 여기서는 정비 몇 주 때문에 1년 내내 빼면 안 된다).
@@ -216,5 +216,20 @@ def group_constraints(inputs: CoalInputs, target: np.ndarray) -> dict:
         if len(index) > EAST_PLANT_MAX_UNITS:
             line = np.where(target <= EAST_PLANT_COAL_MAX_MW, EAST_PLANT_MAX_UNITS, len(index))
             maximums.append({"indices": index, "maximum_units": line.tolist()})
+    # 당진 합계출력 하드 상한 -- national-solar-forecast `coal_uc_comparison.dangjin_output_caps` 와 같은 값.
+    # 3~10호기 ≤4,000 MW(전 시간), 1·2호기 ≤800 MW(07:00~19:00 KST). 정비로 가용 합계가 더 작으면 그 값이다.
+    daytime = np.asarray([7 <= at.hour < 19 for at in inputs.hours])
+    for numbers, ceiling, active in ((range(3, 11), 4000.0, np.ones(len(target), bool)),
+                                      (range(1, 3), 800.0, daytime)):
+        selected = {f"{DANGJIN}{k}" for k in numbers}
+        index = [j for j, name in enumerate(names) if canonical_unit_name(name) in selected]
+        if index:
+            possible = (inputs.maximum[:, index] * available[:, index]).sum(axis=1)
+            caps.append({"indices": index,
+                         "maximum_mw": np.where(active, np.minimum(ceiling, possible), possible).tolist()})
+    from midterm.pair_rules import group_minimums
+    # 거래소 대단위 발전단지 그룹 최소호기. 위 당진·발전소 하한과 겹쳐도 둘 다 걸면 더 엄한 쪽이 남는다.
+    for group in group_minimums(names, outage):
+        add_minimum(group["group"], group["index"], group["minimum_units_hourly"])
     return {"group_online_minimums": minimums, "group_caps": caps,
             "group_online_maximums": maximums, "notes": notes}

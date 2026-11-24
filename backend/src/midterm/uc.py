@@ -246,6 +246,128 @@ def ramp_floor_from(start, minimum, ramp_up, hour):
 RESERVE_SHORTFALL_WON_PER_MW = 3e6
 
 
+def _checked_indices(values, n, label):
+    out = [int(j) for j in values]
+    if (not out or len(set(out)) != len(out)
+            or any(not isinstance(j, (int, np.integer)) or not 0 <= j < n for j in values)):
+        raise ValueError(f'Invalid transition rule indices ({label})')
+    return out
+
+
+def _checked_hours(value, label):
+    value = float(value)
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f'Invalid transition rule hours ({label})')
+    return value
+
+
+def _transition_rule_rows(rules, ix, *, h, n, initial, known, elapsed, up, down, outage, since=None):
+    """페어·그룹 기동정지 규칙(`pair_rules`)을 선형 제약으로. ([(항, 하한, 상한)], [0 으로 묶을 변수]).
+
+    national-solar-forecast `coal_uc._transition_rule_rows` 와 같다(연간 검증용 고정 운전 인자만 뺐다).
+    변수는 ix(1,t,j) 운전, ix(2,t,j) 기동(t 에 처음 켜짐), ix(3,t,j) 정지(t 에 처음 꺼짐)다.
+
+    페어 간격은 "x 가 t 에 기동하면 y 는 그 전 G-1 시간과 같은 시각에 기동하지 않았다" 를 x·y 두 방향으로
+    건다 -- 나중에 켜는 쪽의 기동 종류(DSS·Warm·Cold)가 G 를 정한다. y 의 기동이 그 창에 여러 번 들 수
+    있으면(동해 20시간 > 최소운전+최소정지) 계수 M 으로 "x 가 켜질 때만" 묶이게 한다. 창 앞에서 이미 난
+    사건은 `since` -- {2: 마지막 기동 뒤 시간, 3: 마지막 정지 뒤 시간}(호기별, 모르면 nan) -- 로 센다. 없으면
+    아는 초기상태(`known`)의 경과시간으로 센다: 켜져 있으면 그만큼 전에 기동, 꺼져 있으면 그만큼 전에 정지.
+    모르는 호기는 충족 가정이라 묶지 않는다.
+
+    기동 순서(`start_order`)와 DSS·Warm·Cold 판정은 풀이 창 길이에 기대므로 이 행들은 48시간 창 단위로만
+    뜻이 있다 -- `rolling._joined_physical_check` 의 구간 전체 검사에는 넣지 않는다.
+    """
+    rows, zero = [], []
+    if not rules:
+        return rows, zero
+    warm_after = _checked_hours(rules.get('warm_after_hours', 24.0), 'warm')
+    cold_after = _checked_hours(rules.get('cold_after_hours', 72.0), 'cold')
+    cycle = np.maximum(1, up + down)  # 같은 호기의 두 기동(두 정지) 사이 최소 시간
+
+    def most(j, span):
+        return (span - 1) // int(cycle[j]) + 1
+
+    def last_event(y, kind):
+        """창 시작 몇 시간 전에 y 의 마지막 기동(kind=2)·정지(3)가 났나. 모르면 None."""
+        if since is not None and since.get(kind) is not None and math.isfinite(since[kind][y]):
+            return float(since[kind][y])
+        if known[y] and (initial[y] if kind == 2 else not initial[y]):
+            return float(elapsed[y])
+        return None
+
+    def downtime_bound(x, t):
+        # 기동 직전 정지시간의 상한. 처음부터 꺼져 있던 호기는 이미 선 시간 + t, 창 안에서 섰다 켜면 t 보다 짧다.
+        return (0.0 if initial[x] else float(elapsed[x])) + t
+
+    for pair in rules.get('pairs', ()):
+        label = pair.get('label', '')
+        a, b = _checked_indices(pair['indices'], n, label)
+        if a == b:
+            raise ValueError(f'Invalid transition rule indices ({label})')
+        dss, warm, cold = (_checked_hours(v, label) for v in pair['start_hours'])
+        stop_gap = _checked_hours(pair['stop_hours'], label)
+
+        def start_gap(x, t, dss=dss, warm=warm, cold=cold):
+            d = downtime_bound(x, t)
+            return cold if d >= cold_after else warm if d >= warm_after else dss
+
+        for kind, gap_of in ((2, start_gap), (3, lambda x, t, s=stop_gap: s)):
+            for x, y in ((a, b), (b, a)):
+                for t in range(h):
+                    g = int(math.ceil(gap_of(x, t) - 1e-9))
+                    if g <= 0:
+                        continue
+                    before = last_event(y, kind)
+                    if before is not None and t + before < g:
+                        zero.append(ix(kind, t, x))
+                        continue
+                    lo = max(0, t - g + 1)
+                    m = most(y, t - lo + 1)
+                    rows.append(([(ix(kind, k, y), 1) for k in range(lo, t + 1)] + [(ix(kind, t, x), m)],
+                                 -np.inf, m))
+    for group in rules.get('group_stop_limits', ()):
+        idx = _checked_indices(group['indices'], n, group.get('label', ''))
+        # 한 시각 정지 수 ≤ 내림(직전 운전 수 / 2)  <=>  2 x 정지 수 ≤ 직전 운전 수 (정수)
+        rows.append(([(ix(3, 0, j), 2) for j in idx], -np.inf, float(sum(bool(initial[j]) for j in idx))))
+        for t in range(1, h):
+            rows.append(([(ix(3, t, j), 2) for j in idx] + [(ix(1, t - 1, j), -1) for j in idx], -np.inf, 0))
+    for group in rules.get('group_start_spacing', ()):
+        label = group.get('label', '')
+        idx = _checked_indices(group['indices'], n, label)
+        g = int(math.ceil(_checked_hours(group['hours'], label) - 1e-9))
+        recent = [e for j in idx if (e := last_event(j, 2)) is not None and e < g]
+        for t in range(h):
+            if recent and t + min(recent) < g:
+                zero.extend(ix(2, t, j) for j in idx)
+                continue
+            rows.append(([(ix(2, k, j), 1) for k in range(max(0, t - g + 1), t + 1) for j in idx], -np.inf, 1))
+    for group in rules.get('group_start_caps', ()):
+        label = group.get('label', '')
+        idx = _checked_indices(group['indices'], n, label)
+        cap = _checked_hours(group['maximum'], label)
+        for t in range(h):
+            rows.append(([(ix(2, t, j), 1) for j in idx], -np.inf, cap))
+    for item in rules.get('start_bridges', ()):
+        j = _checked_indices([item['unit']], n, 'bridge')[0]
+        bridge = _checked_indices(item['bridge'], n, 'bridge')
+        via = _checked_indices(bridge + [int(k) for k in item.get('also', ())], n, 'bridge')
+        if j in via:
+            raise ValueError('Invalid transition rule indices (bridge)')
+        # 가운데 호기가 모두 정비면 그 경로를 묻지 않는다 -- 공문도 전체 정지는 현장 상황으로 정한다고 둔다.
+        if not all(outage[0, k] for k in bridge) and not any(initial[k] for k in via):
+            zero.append(ix(2, 0, j))
+        for t in range(1, h):
+            if all(outage[t - 1, k] for k in bridge):
+                continue
+            rows.append(([(ix(2, t, j), 1)] + [(ix(1, t - 1, k), -1) for k in via], -np.inf, 0))
+    for item in rules.get('start_order', ()):
+        first, then = _checked_indices([item['first'], item['then']], n, item.get('label', ''))
+        for t in range(h):
+            m = most(first, h - t)
+            rows.append(([(ix(2, k, first), 1) for k in range(t, h)] + [(ix(2, t, then), m)], -np.inf, m))
+    return rows, zero
+
+
 def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
                   uptime, downtime, *, startup_cost=0.0, shutdown_cost=0.0,
                   initial_target=None, initial_online=None, initial_output=None,
@@ -256,9 +378,15 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
                   ramp_down=None, reserve_mw=None, commitment_reference=None, inertia_won=0.0,
                   group_online_targets=(), event_penalty=None, mip_rel_gap=0.001,
                   single_stage=False, slack_penalty_won=5e7, highs_options=None,
-                  objective_scale=1.0, no_load_won=None, _build_only=False,
+                  objective_scale=1.0, no_load_won=None, transition_rules=None,
+                  initial_since_start=None, initial_since_stop=None, _build_only=False,
                   _initial_floor_relief=None, _milp=None):
     """Daily inputs have shape (hours, units). Unknown initial ages are satisfied.
+
+    `transition_rules` 는 페어·그룹 기동정지 규칙(`pair_rules.transition_rules`)이다. 하드 제약이다 --
+    지킬 수 없으면 수급을 못 맞춘 답으로 돌아오고, 규칙을 조용히 풀지 않는다. `initial_since_start` /
+    `initial_since_stop` 은 호기별로 창 시작 몇 시간 전에 마지막으로 기동·정지했나(모르면 nan) -- 이어 푸는
+    창(`rolling.solve_rolling`)이 넘긴다.
 
     Slack is minimised before money. Nonzero slack is explicitly infeasible for
     the requested coal target, never reported as a feasible dispatch plan.
@@ -512,6 +640,20 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
                 add([(p,1),(ix(0,t-1,j),-1),(y,-allowance[t,j]),
                      (ix(1,t-1,j),-ramp_up[t,j]*60)],ub=0)
                 add([(ix(0,t-1,j),1),(p,-1),(z,-minimum[t-1,j])],ub=ramp_down[t,j]*60)
+    since = {}
+    for kind, given in ((2, initial_since_start), (3, initial_since_stop)):
+        if given is not None:
+            given = np.asarray(given, float)
+            if given.shape != (n,) or (given[np.isfinite(given)] < 0).any() or np.isinf(given).any():
+                raise ValueError('Invalid hours since last start/stop')
+            since[kind] = given
+    rule_rows, rule_zero = _transition_rule_rows(transition_rules, ix, h=h, n=n, initial=initial, known=known,
+                                                 elapsed=elapsed, up=up, down=down, outage=outage,
+                                                 since=since or None)
+    for terms, lb, ub in rule_rows:
+        add(terms, lb, ub)
+    for col in rule_zero:
+        upper[col] = 0
     if allow_approximate:
         for begin in range(0,h,24):
             chunk=target[begin:begin+24]
@@ -737,6 +879,7 @@ def solve_coal_uc(target, minimum, maximum, ramp, costs, must, outage,
             'initial_output_mw':p0.tolist(),'initial_target_mw':needed,
             'initial_online':initial.tolist(),
             'minimum_downtime_hours':down.tolist(),
+            'transition_rule_rows':len(rule_rows),
             'initial_state_source':('provided' if pinned is not None and known.all()
                                     else 'partial' if pinned is not None else 'estimated'),
             'initial_state_known_units':int(known.sum()) if pinned is not None else 0,

@@ -70,20 +70,32 @@ class AnnualResult:
 # 병렬 작업자
 # ------------------------------------------------------------------------------------------
 
+def _mismatch_mwh(result: dict) -> float:
+    return float(np.sum(result.get("shortage_mw", 0.0)) + np.sum(result.get("excess_mw", 0.0)))
+
+
 def _solve_window(queue, segment, counter, *args, **kwargs):
-    """창 하나. 해가 없으면 시간을 늘리고 간격을 넓혀 두 번 더 시도한다."""
+    """창 하나. 해가 없거나 석탄목표를 못 맞춘 근사해면 시간을 늘리고 간격을 넓혀 두 번 더 시도한다.
+
+    근사해도 다시 푸는 까닭: 기동정지 규칙(`pair_rules`)을 건 창은 30초 안에 정확해를 못 찾고 주말 뒤
+    월요일 아침을 모자란 채로 두는 일이 있다(2026-12-06~07 시험: 30초 1.1 GWh 부족, 90초 0). 시도 중
+    불일치가 가장 작은 해를 쓴다.
+    """
     from midterm.headroom_uc import solve_headroom_uc
 
     attempts = [(1.0, kwargs["mip_rel_gap"]), (3.0, max(kwargs["mip_rel_gap"], 0.01)),
                 (6.0, 0.05)]
     base = kwargs["time_limit"]
-    result = None
+    result = best = None
     for factor, gap in attempts:
         kw = {**kwargs, "time_limit": base * factor, "cost_time_limit": base * factor,
               "mip_rel_gap": gap}
         result = solve_headroom_uc(*args, **kw)
-        if result.get("has_plan"):
+        if result.get("has_plan") and (best is None or _mismatch_mwh(result) < _mismatch_mwh(best)):
+            best = result
+        if best is not None and best.get("target_met", True):
             break
+    result = best if best is not None else result
     counter[0] += 1
     if queue is not None:
         queue.put({"segment": segment, "windows_done": counter[0],
@@ -185,6 +197,8 @@ def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: floa
     """`prepare` 가 만든 목표·입력행렬로 MILP 를 푼다. 백테스트는 실적 석탄을 목표로 넣어 부른다."""
     inputs, target = prep["inputs"], prep["target"]
     groups = group_constraints(inputs, target)
+    from midterm.pair_rules import transition_rules
+    rules = transition_rules(inputs.names)
     time_limit, gap = QUALITY[scenario.quality]
     total_days = len(prep["all_days"]) - WARMUP_DAYS
     workers = scenario.workers or max(1, (os.cpu_count() or 2) - 1)
@@ -222,6 +236,7 @@ def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: floa
             "group_caps": group_slice(groups["group_caps"], "maximum_mw", h0, h1),
             "group_online_minimums": group_slice(groups["group_online_minimums"], "minimum_units", h0, h1),
             "group_online_maximums": group_slice(groups["group_online_maximums"], "maximum_units", h0, h1),
+            "transition_rules": rules,
             "allow_approximate": True, "single_stage": False, "slack_penalty_won": SLACK_PENALTY_WON,
             "objective_scale": 1e-3, "time_limit": time_limit, "cost_time_limit": time_limit,
             "mip_rel_gap": gap,
@@ -299,6 +314,7 @@ def solve_prepared(prep: dict, scenario: Scenario, notify: Progress, began: floa
                      "reserve_requirement_basis": "coal_target * reserve_ratio, both directions; not autumn p50",
                      "reserve_shortfall_won_per_mwh": RESERVE_SHORTFALL_WON_PER_MW,
                      "inertia_won": 0, "maximum_off_hours": None,
+                     "transition_rules": True, "dangjin_output_caps": True,
                      "backend": "highspy==1.12.0", "solver_threads_per_worker": 1,
                      "stages": "feasibility front, then validated cost start; existing quality/retries",
                      "reserve_met": bool(max(headroom['up_short_mw'].max(), headroom['down_short_mw'].max()) <= .01),
