@@ -109,6 +109,7 @@ import { InventoryWorkspace } from "@/components/inventory/InventoryWorkspace";
 import { OperationsBlend } from "@/features/stockyard/OperationsBlend";
 import { useBerthFeed } from "@/domain/use-berth-feed";
 import { OperationsBerth } from "@/features/berth/OperationsBerth";
+import { BerthPlanWorkspace } from "@/features/berth-plan/BerthPlanWorkspace";
 import { DemoForecast } from "@/features/forecast/DemoForecast";
 import { UnitsWorkspace, AnalysisWorkspace, ProcurementWorkspace, ConnectionsWorkspace } from "@/features/operations/OperationsWorkspaces";
 const baseMs = new Date(BASE_TIME).getTime();
@@ -209,6 +210,7 @@ function WorkspaceApp({page,initialLotId,initialStack,demoEnabled,onDemoEnabled}
   const scenePage = page === 'yard' || page === 'berth';
   const ownHeading = scenePage || ['demo-control','units','costs','procurement','connections','blend','vessels','inventory','forecast'].includes(page);
   const [blendView,setBlendView]=useState<'diagram'|'analysis'>('diagram');
+  const [simulationView,setSimulationView]=useState<'plan'|'berth'>('plan');
   const [dataInitialTab, setDataInitialTab] = useState<'status'|'upload'>('status');
   const [dataTabRequest, setDataTabRequest] = useState(0);
   const [dataTab, setDataTab] = useState<'status' | 'upload' | null>(null);
@@ -821,13 +823,14 @@ function WorkspaceApp({page,initialLotId,initialStack,demoEnabled,onDemoEnabled}
           {page === 'connections' && <ConnectionsWorkspace planning={planning} status={demo.status} receivedAt={demo.receivedAt} onNavigate={navigateFromScreen}/>}
           {page === 'members' && <MemberManagement/>}
           {page === 'forecast' && <DemoForecast theme={theme} snapshot={demo.snapshot} status={demo.status} plan={planReference(planning)} onAsk={openAssistant} onNavigate={navigateFromScreen} onOpenStacking={openStacking}/>}
-          {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed>저장된 발전·수급 계획</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
+          {page === 'simulation' && <div className="gf-workflow-tabs"><button aria-pressed={simulationView==='plan'} onClick={()=>setSimulationView('plan')}>저장된 발전·수급 계획</button><button aria-pressed={simulationView==='berth'} onClick={()=>setSimulationView('berth')}>접안 추천</button><button onClick={()=>navigate('scenario')}>단기 조건 비교</button><button disabled={!planning.current} onClick={()=>navigate('procurement')}>이 결과로 구매 검토<ArrowRight size={14}/></button><button onClick={()=>navigate('data')}>계산 입력·실행</button><p>저장 결과 조회 · 공용 계획을 자동 변경하지 않습니다.</p></div>}
           {page === 'fuel' && <div className="gf-workflow-tabs"><button aria-pressed>DB 수급 원장</button><button onClick={()=>navigate('yard')}>저탄장 3D 배치</button><button onClick={()=>navigate('blend')}>상탄·혼탄</button></div>}
           {page === 'blend' && <OperationsBlend key={initialLotId} initialLotId={initialLotId} theme={theme} snapshot={demo.snapshot} status={demo.status} view={blendView} onView={setBlendView} onNavigate={navigateFromScreen} onAsk={openAssistant} onOpenYard={id=>navigate('yard',id)}/>}
           {page === "overview" && overviewSource === "milp" && (
             <OperationsStatus demo={demo} runs={planning.runs} runsLoading={planning.listLoading} runsError={planning.runs.length ? null : planning.failed || null} berthFeed={berthFeed} onNavigate={(next) => navigate(next as Page)} />
           )}
-          {page === "simulation" && (
+          {page === "simulation" && simulationView === "berth" && <BerthPlanWorkspace theme={theme} />}
+          {page === "simulation" && simulationView === "plan" && (
             <PlanningWorkspace state={planning} renderInputs={onResult => <ForecastInputPanel onResult={onResult} onSetup={() => { setDataInitialTab('upload'); navigate('data'); }}/>}>
               {(snapshot) => <>{snapshot.classification === 'functional_demo' && <p className="midterm-source" role="status">가정 입력 기반 계산 · 실제 발전계획 및 운전 실적과 구분해 확인하세요.</p>}<MidtermDashboard snapshot={snapshot} theme={theme} assistant={<AssistantSection screen="simulation" params={{ runId: snapshot.run_id }} context={{ screen: "simulation", selection: { run_id: snapshot.run_id } }} questions={SCREEN_QUESTIONS.simulation} onAsk={openAssistant} onNavigate={navigateFromScreen} />} onPurchasing={() => navigate('procurement')} onSupplyTarget={(target) => {
                 setSupplyTarget(target);
